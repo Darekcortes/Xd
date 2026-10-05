@@ -1,0 +1,692 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Casino de la Suerte</title>
+<style>
+  :root {
+    --bg: #12081f;
+    --panel: #1f1235;
+    --panel2: #2b1a48;
+    --gold: #ffd34d;
+    --gold2: #ff9f1c;
+    --text: #f5ecff;
+    --muted: #b9a6d6;
+    --good: #4ade80;
+    --bad: #f87171;
+    --accent: #c084fc;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; min-height: 100vh;
+    background: radial-gradient(circle at 50% -20%, #3b1d6b 0%, var(--bg) 60%);
+    color: var(--text);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    user-select: none;
+  }
+  header {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between;
+    padding: 10px 16px; background: rgba(18, 8, 31, .92); backdrop-filter: blur(6px);
+    border-bottom: 1px solid #ffffff14;
+  }
+  h1 { margin: 0; font-size: 1.25rem; color: var(--gold); letter-spacing: .5px; }
+  .stats { display: flex; flex-wrap: wrap; gap: 8px; font-weight: 700; }
+  .chip { background: var(--panel2); padding: 6px 10px; border-radius: 999px; font-size: .9rem; white-space: nowrap; }
+  .chip.coins { color: var(--gold); }
+  .xpbar { width: 80px; height: 6px; background: #ffffff1a; border-radius: 4px; display: inline-block; vertical-align: middle; margin-left: 6px; overflow: hidden; }
+  .xpbar > i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .4s; }
+  nav { display: flex; gap: 6px; padding: 12px 16px 0; overflow-x: auto; max-width: 900px; margin: 0 auto; }
+  nav button {
+    flex: 0 0 auto; border: 0; cursor: pointer; padding: 10px 14px; border-radius: 12px 12px 0 0;
+    background: var(--panel); color: var(--muted); font-weight: 700; font-size: .95rem;
+  }
+  nav button.active { background: var(--panel2); color: var(--gold); }
+  nav button.locked { opacity: .45; }
+  main { max-width: 900px; margin: 0 auto; padding: 0 16px 40px; }
+  .screen { display: none; background: var(--panel2); border-radius: 0 16px 16px 16px; padding: 20px; }
+  .screen.active { display: block; animation: fade .25s; }
+  @keyframes fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; } }
+  h2 { margin: 0 0 4px; }
+  p.hint { margin: 0 0 16px; color: var(--muted); font-size: .9rem; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: center; margin: 14px 0; }
+  .btn {
+    border: 0; cursor: pointer; padding: 12px 22px; border-radius: 12px; font-weight: 800; font-size: 1rem;
+    background: linear-gradient(180deg, var(--gold), var(--gold2)); color: #2a1300;
+    box-shadow: 0 4px 0 #a35f00; transition: transform .08s;
+  }
+  .btn:active { transform: translateY(3px); box-shadow: 0 1px 0 #a35f00; }
+  .btn:disabled { filter: grayscale(1); opacity: .5; cursor: not-allowed; }
+  .btn.ghost { background: var(--panel); color: var(--text); box-shadow: 0 4px 0 #0c0616; }
+  .bet { display: flex; align-items: center; gap: 6px; background: var(--panel); padding: 6px; border-radius: 12px; }
+  .bet button { width: 34px; height: 34px; border: 0; border-radius: 8px; background: var(--panel2); color: var(--text); font-size: 1.1rem; cursor: pointer; }
+  .bet span { min-width: 70px; text-align: center; font-weight: 800; color: var(--gold); }
+  .msg { min-height: 1.6em; text-align: center; font-weight: 800; font-size: 1.1rem; }
+  .msg.win { color: var(--good); } .msg.lose { color: var(--bad); } .msg.big { color: var(--gold); font-size: 1.4rem; }
+
+  /* Tragamonedas */
+  .slots { display: flex; justify-content: center; gap: 10px; padding: 16px; background: #0d0618; border-radius: 16px; border: 3px solid var(--gold2); max-width: 420px; margin: 0 auto; }
+  .reel { width: 100px; height: 110px; overflow: hidden; background: #fff; border-radius: 10px; position: relative; }
+  .reel .strip { position: absolute; left: 0; right: 0; top: 0; }
+  .reel .sym { height: 110px; display: flex; align-items: center; justify-content: center; font-size: 60px; }
+  .reel.win { box-shadow: 0 0 0 4px var(--good), 0 0 20px var(--good); }
+  .paytable { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 6px; font-size: .85rem; color: var(--muted); max-width: 520px; margin: 0 auto; }
+  .paytable div { background: var(--panel); border-radius: 8px; padding: 6px 8px; text-align: center; }
+
+  /* Ruleta */
+  .wheel-wrap { position: relative; width: min(340px, 100%); margin: 0 auto; aspect-ratio: 1; }
+  .wheel-wrap canvas { width: 100%; height: 100%; }
+  .pointer { position: absolute; top: -6px; left: 50%; transform: translateX(-50%); width: 0; height: 0; border-left: 16px solid transparent; border-right: 16px solid transparent; border-top: 30px solid var(--gold); filter: drop-shadow(0 2px 2px #000); z-index: 2; }
+  .choices { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+  .choice { border: 2px solid transparent; cursor: pointer; padding: 10px 14px; border-radius: 10px; font-weight: 800; color: #fff; }
+  .choice.sel { border-color: var(--gold); box-shadow: 0 0 12px var(--gold); }
+
+  /* Raspa */
+  .scratch { position: relative; width: min(330px, 100%); aspect-ratio: 1; margin: 0 auto; border-radius: 14px; overflow: hidden; }
+  .scratch .grid { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(3, 1fr); background: #fff7d6; }
+  .scratch .grid div { display: flex; align-items: center; justify-content: center; font-size: 48px; border: 1px dashed #e5c977; }
+  .scratch canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; cursor: crosshair; }
+
+  /* Cofres */
+  .chests { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+  .chest { width: 110px; height: 110px; font-size: 64px; display: flex; align-items: center; justify-content: center; background: var(--panel); border-radius: 16px; cursor: pointer; transition: transform .15s; border: 2px solid #ffffff14; flex-direction: column; }
+  .chest:hover { transform: translateY(-4px) rotate(-2deg); }
+  .chest.open { cursor: default; transform: none; }
+  .chest small { font-size: .85rem; font-weight: 800; }
+  .chest.picked { border-color: var(--gold); box-shadow: 0 0 16px var(--gold); }
+
+  /* Dados */
+  .dice { display: flex; gap: 16px; justify-content: center; font-size: 80px; }
+  .dice span { display: inline-block; }
+  .dice.rolling span { animation: roll .15s infinite; }
+  @keyframes roll { 0% { transform: rotate(0); } 50% { transform: rotate(20deg) scale(1.1); } 100% { transform: rotate(-20deg); } }
+
+  /* Tienda / logros */
+  .grid-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+  .card { background: var(--panel); border-radius: 12px; padding: 14px; display: flex; flex-direction: column; gap: 8px; }
+  .card h3 { margin: 0; font-size: 1rem; }
+  .card p { margin: 0; color: var(--muted); font-size: .85rem; flex: 1; }
+  .card.done { outline: 2px solid var(--good); }
+  .card.lockedach { opacity: .5; }
+
+  .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--gold); color: #2a1300; padding: 10px 18px; border-radius: 12px; font-weight: 800; z-index: 50; animation: toast 2.6s forwards; max-width: calc(100% - 32px); text-align: center; }
+  @keyframes toast { 0% { opacity: 0; transform: translate(-50%, 20px); } 10%, 85% { opacity: 1; transform: translate(-50%, 0); } 100% { opacity: 0; } }
+  .coin-rain { position: fixed; top: -40px; font-size: 28px; pointer-events: none; z-index: 40; animation: fall linear forwards; }
+  @keyframes fall { to { transform: translateY(110vh) rotate(720deg); } }
+  .lockmsg { text-align: center; padding: 40px 10px; color: var(--muted); font-size: 1.1rem; }
+  footer { text-align: center; color: var(--muted); font-size: .8rem; padding: 0 16px 24px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🎰 Casino de la Suerte</h1>
+  <div class="stats">
+    <span class="chip coins">🪙 <span id="coins">0</span></span>
+    <span class="chip">⭐ Nivel <span id="level">1</span><span class="xpbar"><i id="xp"></i></span></span>
+    <span class="chip" title="Racha de victorias: multiplica tus premios">🔥 x<span id="streak">1.0</span></span>
+    <span class="chip" title="Amuletos de suerte activos">🍀 <span id="luck">0</span>%</span>
+  </div>
+</header>
+
+<nav id="tabs"></nav>
+
+<main>
+  <!-- Tragamonedas -->
+  <section class="screen" id="s-slots">
+    <h2>🎰 Tragamonedas</h2>
+    <p class="hint">Tres iguales = gran premio. Dos iguales = devuelves algo. ¡Tres 💎 es el JACKPOT!</p>
+    <div class="slots" id="reels"></div>
+    <div class="msg" id="slots-msg"></div>
+    <div class="row">
+      <div class="bet" data-game="slots"></div>
+      <button class="btn" id="spin-btn">GIRAR</button>
+      <button class="btn ghost" id="auto-btn">Auto x10</button>
+    </div>
+    <div class="paytable" id="paytable"></div>
+  </section>
+
+  <!-- Ruleta -->
+  <section class="screen" id="s-wheel">
+    <h2>🎡 Ruleta</h2>
+    <p class="hint">Elige un color y gira. Rojo/Negro pagan x2, Verde paga x14.</p>
+    <div class="wheel-wrap"><div class="pointer"></div><canvas id="wheel" width="600" height="600"></canvas></div>
+    <div class="msg" id="wheel-msg"></div>
+    <div class="choices" id="wheel-choices"></div>
+    <div class="row">
+      <div class="bet" data-game="wheel"></div>
+      <button class="btn" id="wheel-btn">GIRAR RULETA</button>
+    </div>
+  </section>
+
+  <!-- Raspa y gana -->
+  <section class="screen" id="s-scratch">
+    <h2>🎟️ Raspa y Gana</h2>
+    <p class="hint">Compra un boleto y ráspalo con el dedo o el ratón. Tres símbolos iguales en línea (fila, columna o diagonal) = premio.</p>
+    <div class="scratch" id="scratch">
+      <div class="grid" id="scratch-grid"></div>
+      <canvas id="scratch-cover" width="330" height="330"></canvas>
+    </div>
+    <div class="msg" id="scratch-msg"></div>
+    <div class="row">
+      <button class="btn" id="scratch-buy">Comprar boleto (<span id="scratch-price"></span> 🪙)</button>
+      <button class="btn ghost" id="scratch-reveal" disabled>Revelar todo</button>
+    </div>
+  </section>
+
+  <!-- Cofres -->
+  <section class="screen" id="s-chests">
+    <h2>🧰 Cofres Misteriosos</h2>
+    <p class="hint">Paga la entrada y elige UN cofre. Puede haber oro... o una calavera.</p>
+    <div class="chests" id="chests"></div>
+    <div class="msg" id="chest-msg"></div>
+    <div class="row">
+      <button class="btn" id="chest-btn">Nueva ronda (<span id="chest-price"></span> 🪙)</button>
+    </div>
+  </section>
+
+  <!-- Dados -->
+  <section class="screen" id="s-dice">
+    <h2>🎲 Mayor o Menor</h2>
+    <p class="hint">Apuesta si la suma de dos dados será mayor o menor que 7 (paga x2.3). ¿Exactamente 7? Paga x5.</p>
+    <div class="dice" id="dice"><span>🎲</span><span>🎲</span></div>
+    <div class="msg" id="dice-msg"></div>
+    <div class="row">
+      <div class="bet" data-game="dice"></div>
+    </div>
+    <div class="row">
+      <button class="btn ghost dice-pick" data-pick="low">⬇️ Menor que 7</button>
+      <button class="btn dice-pick" data-pick="seven">🎯 Justo 7</button>
+      <button class="btn ghost dice-pick" data-pick="high">⬆️ Mayor que 7</button>
+    </div>
+  </section>
+
+  <!-- Tienda -->
+  <section class="screen" id="s-shop">
+    <h2>🛍️ Tienda de Amuletos</h2>
+    <p class="hint">Los amuletos aumentan tu suerte en todos los juegos. Se acumulan.</p>
+    <div class="row">
+      <button class="btn" id="daily-btn">🎁 Regalo diario</button>
+      <button class="btn ghost" id="rescue-btn">🆘 Préstamo de rescate</button>
+    </div>
+    <div class="grid-cards" id="shop"></div>
+  </section>
+
+  <!-- Logros -->
+  <section class="screen" id="s-ach">
+    <h2>🏆 Logros</h2>
+    <p class="hint">Cada logro da monedas extra.</p>
+    <div class="grid-cards" id="ach"></div>
+    <div class="row"><button class="btn ghost" id="reset-btn">Reiniciar partida</button></div>
+  </section>
+</main>
+<footer>Juego de pura suerte con monedas ficticias. No se usa dinero real.</footer>
+
+<script>
+(() => {
+  // ---------- Estado ----------
+  const SAVE_KEY = 'casino-suerte-v1';
+  const defaults = {
+    coins: 500, xp: 0, level: 1, streak: 0, charms: {}, ach: {},
+    stats: { spins: 0, jackpots: 0, wins: 0, losses: 0, biggest: 0, scratches: 0, chests: 0, dice: 0, wheel: 0 },
+    lastDaily: 0, bets: { slots: 10, wheel: 10, dice: 10 }
+  };
+  let S;
+  try { S = Object.assign(structuredClone(defaults), JSON.parse(localStorage.getItem(SAVE_KEY)) || {}); }
+  catch { S = structuredClone(defaults); }
+  S.stats = Object.assign({}, defaults.stats, S.stats);
+  S.bets = Object.assign({}, defaults.bets, S.bets);
+  const save = () => { try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch {} };
+
+  const $ = id => document.getElementById(id);
+  const rand = n => Math.floor(Math.random() * n);
+  const fmt = n => Math.floor(n).toLocaleString('es');
+
+  // ---------- Amuletos ----------
+  const CHARMS = [
+    { id: 'trebol', name: '🍀 Trébol de 4 hojas', desc: '+3% de suerte', luck: 3, price: 400 },
+    { id: 'herradura', name: '🧲 Herradura dorada', desc: '+5% de suerte', luck: 5, price: 1200 },
+    { id: 'gato', name: '🐈‍⬛ Gato de la fortuna', desc: '+8% de suerte', luck: 8, price: 4000 },
+    { id: 'dado', name: '🎲 Dado trucado', desc: '+10% de suerte', luck: 10, price: 12000 },
+    { id: 'estrella', name: '🌠 Estrella fugaz', desc: '+15% de suerte', luck: 15, price: 40000 },
+  ];
+  const luck = () => Math.min(45, CHARMS.reduce((a, c) => a + (S.charms[c.id] ? c.luck : 0), 0) + (S.level - 1));
+  const lucky = () => Math.random() * 100 < luck(); // tirada extra de suerte
+  const streakMult = () => 1 + Math.min(S.streak, 10) * 0.1;
+
+  // ---------- Juegos / desbloqueo ----------
+  const TABS = [
+    { id: 'slots', label: '🎰 Tragamonedas', lvl: 1 },
+    { id: 'wheel', label: '🎡 Ruleta', lvl: 1 },
+    { id: 'scratch', label: '🎟️ Raspa', lvl: 2 },
+    { id: 'dice', label: '🎲 Dados', lvl: 3 },
+    { id: 'chests', label: '🧰 Cofres', lvl: 4 },
+    { id: 'shop', label: '🛍️ Tienda', lvl: 1 },
+    { id: 'ach', label: '🏆 Logros', lvl: 1 },
+  ];
+  let current = 'slots';
+  function renderTabs() {
+    const nav = $('tabs'); nav.innerHTML = '';
+    TABS.forEach(t => {
+      const b = document.createElement('button');
+      const locked = S.level < t.lvl;
+      b.textContent = locked ? `🔒 Nv.${t.lvl}` : t.label;
+      b.className = (t.id === current ? 'active ' : '') + (locked ? 'locked' : '');
+      b.onclick = () => {
+        if (locked) return toast(`Se desbloquea en el nivel ${t.lvl}`);
+        current = t.id; renderTabs(); showScreen();
+      };
+      nav.appendChild(b);
+    });
+  }
+  function showScreen() {
+    document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === 's-' + current));
+    if (current === 'shop') renderShop();
+    if (current === 'ach') renderAch();
+  }
+
+  // ---------- HUD ----------
+  const xpNeeded = l => 100 + (l - 1) * 80;
+  function hud() {
+    $('coins').textContent = fmt(S.coins);
+    $('level').textContent = S.level;
+    $('xp').style.width = (100 * S.xp / xpNeeded(S.level)) + '%';
+    $('streak').textContent = streakMult().toFixed(1);
+    $('luck').textContent = luck();
+    document.querySelectorAll('.bet').forEach(renderBet);
+    checkAch(); save();
+  }
+  function addXp(n) {
+    S.xp += n;
+    while (S.xp >= xpNeeded(S.level)) {
+      S.xp -= xpNeeded(S.level); S.level++;
+      const bonus = S.level * 100;
+      S.coins += bonus;
+      toast(`⭐ ¡Subiste a nivel ${S.level}! +${fmt(bonus)} 🪙`);
+      coinRain(25); renderTabs();
+    }
+  }
+
+  // Resultado común: bet = apostado, payout = total devuelto (0 si pierde)
+  function settle(bet, payout, msgEl, label) {
+    S.stats.spins++;
+    addXp(Math.max(2, Math.round(bet / 5)));
+    let net;
+    if (payout > 0) {
+      const boosted = Math.round(payout * streakMult());
+      S.coins += boosted; net = boosted - bet;
+      if (net > 0) { S.streak++; S.stats.wins++; } else { S.streak = 0; }
+      S.stats.biggest = Math.max(S.stats.biggest, boosted);
+      const big = boosted >= bet * 10;
+      msgEl.className = 'msg ' + (big ? 'big' : 'win');
+      msgEl.textContent = `${label ? label + ' ' : ''}+${fmt(boosted)} 🪙` + (streakMult() > 1 && net > 0 ? ` (racha x${streakMult().toFixed(1)})` : '');
+      if (big) coinRain(40); else if (net > 0) coinRain(8);
+    } else {
+      S.streak = 0; S.stats.losses++;
+      msgEl.className = 'msg lose';
+      msgEl.textContent = label || `Perdiste ${fmt(bet)} 🪙. ¡La próxima es la buena!`;
+    }
+    hud();
+  }
+
+  function pay(amount) {
+    if (S.coins < amount) { toast('No tienes suficientes monedas 😢 Visita la tienda.'); return false; }
+    S.coins -= amount; hud(); return true;
+  }
+
+  // ---------- Apuestas ----------
+  const BET_STEPS = [5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000];
+  function renderBet(el) {
+    const g = el.dataset.game;
+    if (!el.children.length) {
+      el.innerHTML = `<button data-d="-1">−</button><span></span><button data-d="1">+</button><button data-d="max" title="Máximo">MAX</button>`;
+      el.querySelectorAll('button').forEach(b => b.style.width = b.dataset.d === 'max' ? '50px' : '');
+      el.onclick = e => {
+        const d = e.target.dataset.d; if (!d) return;
+        let i = BET_STEPS.indexOf(S.bets[g]); if (i < 0) i = 1;
+        if (d === 'max') i = Math.max(0, BET_STEPS.filter(v => v <= S.coins).length - 1);
+        else i = Math.max(0, Math.min(BET_STEPS.length - 1, i + +d));
+        S.bets[g] = BET_STEPS[i]; hud();
+      };
+    }
+    el.querySelector('span').textContent = '🪙 ' + fmt(S.bets[g]);
+  }
+
+  // ---------- Tragamonedas ----------
+  const SYMS = [
+    { s: '🍒', w: 30, p3: 5, p2: 1 },
+    { s: '🍋', w: 25, p3: 8, p2: 1 },
+    { s: '🍉', w: 20, p3: 12, p2: 1.5 },
+    { s: '🔔', w: 12, p3: 25, p2: 2 },
+    { s: '⭐', w: 8, p3: 50, p2: 3 },
+    { s: '7️⃣', w: 4, p3: 150, p2: 5 },
+    { s: '💎', w: 1.5, p3: 1000, p2: 10 },
+  ];
+  const totalW = SYMS.reduce((a, b) => a + b.w, 0);
+  const pickSym = () => { let r = Math.random() * totalW; for (const x of SYMS) { if ((r -= x.w) < 0) return x; } return SYMS[0]; };
+  $('paytable').innerHTML = SYMS.map(x => `<div>${x.s}${x.s}${x.s} x${x.p3}<br><small>2 = x${x.p2}</small></div>`).join('');
+  const reels = [];
+  for (let i = 0; i < 3; i++) {
+    const r = document.createElement('div'); r.className = 'reel';
+    r.innerHTML = `<div class="strip"><div class="sym">${SYMS[rand(SYMS.length)].s}</div></div>`;
+    $('reels').appendChild(r); reels.push(r);
+  }
+  let spinning = false;
+  function spinReel(reel, final, duration) {
+    return new Promise(res => {
+      const strip = reel.querySelector('.strip');
+      const n = 20 + Math.floor(duration / 60);
+      let html = '';
+      for (let i = 0; i < n; i++) html += `<div class="sym">${SYMS[rand(SYMS.length)].s}</div>`;
+      html += `<div class="sym">${final.s}</div>`;
+      strip.innerHTML = html;
+      strip.style.transition = 'none'; strip.style.transform = 'translateY(0)';
+      strip.offsetHeight;
+      strip.style.transition = `transform ${duration}ms cubic-bezier(.15,.85,.25,1.02)`;
+      strip.style.transform = `translateY(-${n * 110}px)`;
+      setTimeout(() => { strip.innerHTML = `<div class="sym">${final.s}</div>`; strip.style.transition = 'none'; strip.style.transform = 'none'; res(); }, duration + 30);
+    });
+  }
+  async function spinSlots() {
+    if (spinning) return false;
+    const bet = S.bets.slots;
+    if (!pay(bet)) return false;
+    spinning = true; $('spin-btn').disabled = true;
+    reels.forEach(r => r.classList.remove('win'));
+    $('slots-msg').className = 'msg'; $('slots-msg').textContent = '...';
+    let res = [pickSym(), pickSym(), pickSym()];
+    // La suerte puede "empujar" el tercer rodillo para igualar
+    if (res[0] === res[1] && res[2] !== res[0] && lucky()) res[2] = res[0];
+    else if (res[0] !== res[1] && lucky()) res[1] = res[0];
+    await Promise.all(reels.map((r, i) => spinReel(r, res[i], 900 + i * 450)));
+    let payout = 0, label = '';
+    if (res[0] === res[1] && res[1] === res[2]) {
+      payout = bet * res[0].p3; reels.forEach(r => r.classList.add('win'));
+      if (res[0].s === '💎') { label = '💎💎💎 ¡¡JACKPOT!!'; S.stats.jackpots++; }
+      else label = '¡Tres iguales!';
+    } else {
+      const pairs = [[0, 1], [1, 2], [0, 2]].find(([a, b]) => res[a] === res[b]);
+      if (pairs) { payout = Math.round(bet * res[pairs[0]].p2); pairs.forEach(i => reels[i].classList.add('win')); label = 'Pareja'; }
+    }
+    settle(bet, payout, $('slots-msg'), payout ? label : '');
+    spinning = false; $('spin-btn').disabled = false;
+    return true;
+  }
+  $('spin-btn').onclick = spinSlots;
+  $('auto-btn').onclick = async () => {
+    $('auto-btn').disabled = true;
+    for (let i = 0; i < 10; i++) { if (!(await spinSlots())) break; await new Promise(r => setTimeout(r, 400)); }
+    $('auto-btn').disabled = false;
+  };
+
+  // ---------- Ruleta ----------
+  // 15 casillas: 7 rojas, 7 negras, 1 verde
+  const SEGS = [];
+  for (let i = 0; i < 15; i++) SEGS.push(i === 0 ? 'green' : (i % 2 ? 'red' : 'black'));
+  const COLORS = { red: '#dc2626', black: '#1f2937', green: '#16a34a' };
+  const PAYS = { red: 2, black: 2, green: 14 };
+  const NAMES = { red: 'Rojo', black: 'Negro', green: 'Verde' };
+  let wheelPick = 'red', wheelAngle = 0, wheelBusy = false;
+  const wctx = $('wheel').getContext('2d');
+  function drawWheel() {
+    const c = wctx, R = 290, seg = 2 * Math.PI / SEGS.length;
+    c.clearRect(0, 0, 600, 600);
+    c.save(); c.translate(300, 300); c.rotate(wheelAngle);
+    SEGS.forEach((col, i) => {
+      c.beginPath(); c.moveTo(0, 0); c.arc(0, 0, R, i * seg, (i + 1) * seg); c.closePath();
+      c.fillStyle = COLORS[col]; c.fill(); c.strokeStyle = '#ffd34d'; c.lineWidth = 3; c.stroke();
+      c.save(); c.rotate(i * seg + seg / 2); c.fillStyle = '#fff'; c.font = 'bold 30px sans-serif'; c.textAlign = 'right';
+      c.fillText(col === 'green' ? '★' : String(i), R - 18, 10); c.restore();
+    });
+    c.beginPath(); c.arc(0, 0, 50, 0, 2 * Math.PI); c.fillStyle = '#ffd34d'; c.fill();
+    c.fillStyle = '#2a1300'; c.font = 'bold 40px sans-serif'; c.textAlign = 'center'; c.fillText('🍀', 0, 14);
+    c.restore();
+  }
+  drawWheel();
+  $('wheel-choices').innerHTML = Object.keys(PAYS).map(k => `<button class="choice${k === wheelPick ? ' sel' : ''}" data-c="${k}" style="background:${COLORS[k]}">${NAMES[k]} x${PAYS[k]}</button>`).join('');
+  $('wheel-choices').onclick = e => {
+    const k = e.target.dataset.c; if (!k || wheelBusy) return;
+    wheelPick = k; document.querySelectorAll('.choice').forEach(b => b.classList.toggle('sel', b.dataset.c === k));
+  };
+  $('wheel-btn').onclick = () => {
+    if (wheelBusy) return;
+    const bet = S.bets.wheel; if (!pay(bet)) return;
+    wheelBusy = true; $('wheel-btn').disabled = true;
+    $('wheel-msg').className = 'msg'; $('wheel-msg').textContent = 'Girando...';
+    let target = rand(SEGS.length);
+    if (SEGS[target] !== wheelPick && lucky()) {
+      const opts = SEGS.map((c, i) => c === wheelPick ? i : -1).filter(i => i >= 0);
+      target = opts[rand(opts.length)];
+    }
+    const seg = 2 * Math.PI / SEGS.length;
+    // El puntero está arriba (ángulo -PI/2). Queremos que el centro del segmento target quede ahí.
+    const jitter = (Math.random() - .5) * seg * .7;
+    const want = -Math.PI / 2 - (target * seg + seg / 2) + jitter;
+    const start = wheelAngle;
+    let end = want + Math.ceil((start - want) / (2 * Math.PI) + 5) * 2 * Math.PI;
+    const dur = 4200, t0 = performance.now();
+    (function anim(t) {
+      const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 4);
+      wheelAngle = start + (end - start) * e; drawWheel();
+      if (k < 1) return requestAnimationFrame(anim);
+      wheelAngle %= 2 * Math.PI;
+      const col = SEGS[target];
+      S.stats.wheel++;
+      settle(bet, col === wheelPick ? bet * PAYS[col] : 0, $('wheel-msg'), col === wheelPick ? `¡Salió ${NAMES[col]}!` : `Salió ${NAMES[col]}. Perdiste ${fmt(bet)} 🪙`);
+      wheelBusy = false; $('wheel-btn').disabled = false;
+    })(t0);
+  };
+
+  // ---------- Raspa y gana ----------
+  const SCR = [{ s: '💰', m: 50, w: 2 }, { s: '🍀', m: 15, w: 5 }, { s: '🌈', m: 8, w: 8 }, { s: '🎈', m: 4, w: 12 }, { s: '🍬', m: 2, w: 16 }];
+  const scrW = SCR.reduce((a, b) => a + b.w, 0);
+  const pickScr = () => { let r = Math.random() * scrW; for (const x of SCR) if ((r -= x.w) < 0) return x; return SCR[4]; };
+  const LINES = [[0,1,2],[3,4,5],[6,7,8],[0,3,6],[1,4,7],[2,5,8],[0,4,8],[2,4,6]];
+  const scratchPrice = () => 50 * S.level;
+  let ticket = null;
+  const cover = $('scratch-cover'), cctx = cover.getContext('2d');
+  function paintCover() {
+    cctx.globalCompositeOperation = 'source-over';
+    const g = cctx.createLinearGradient(0, 0, 330, 330);
+    g.addColorStop(0, '#c0c0c0'); g.addColorStop(.5, '#e8e8e8'); g.addColorStop(1, '#9ca3af');
+    cctx.fillStyle = g; cctx.fillRect(0, 0, 330, 330);
+    cctx.fillStyle = '#6b7280'; cctx.font = 'bold 28px sans-serif'; cctx.textAlign = 'center';
+    cctx.fillText(ticket ? '¡RASPA AQUÍ!' : 'Compra un boleto', 165, 172);
+  }
+  paintCover();
+  function buyTicket() {
+    if (ticket && !ticket.done) return toast('Termina de raspar tu boleto actual');
+    const price = scratchPrice(); if (!pay(price)) return;
+    const cells = Array.from({ length: 9 }, pickScr);
+    if (lucky()) { const l = LINES[rand(LINES.length)], s = pickScr(); l.forEach(i => cells[i] = s); }
+    ticket = { cells, price, done: false, scratched: 0 };
+    $('scratch-grid').innerHTML = cells.map(c => `<div>${c.s}</div>`).join('');
+    $('scratch-msg').className = 'msg'; $('scratch-msg').textContent = '';
+    $('scratch-reveal').disabled = false;
+    paintCover();
+  }
+  function finishTicket() {
+    if (!ticket || ticket.done) return;
+    ticket.done = true; $('scratch-reveal').disabled = true;
+    cctx.clearRect(0, 0, 330, 330);
+    let mult = 0;
+    LINES.forEach(l => { const [a, b, c] = l.map(i => ticket.cells[i]); if (a === b && b === c) mult += a.m; });
+    S.stats.scratches++;
+    settle(ticket.price, ticket.price * mult, $('scratch-msg'), mult ? `¡Línea ganadora x${mult}!` : 'Sin premio esta vez 😅');
+  }
+  let drawing = false;
+  function scratchAt(e) {
+    if (!ticket || ticket.done) return;
+    const r = cover.getBoundingClientRect();
+    const p = e.touches ? e.touches[0] : e;
+    const x = (p.clientX - r.left) * 330 / r.width, y = (p.clientY - r.top) * 330 / r.height;
+    cctx.globalCompositeOperation = 'destination-out';
+    cctx.beginPath(); cctx.arc(x, y, 22, 0, Math.PI * 2); cctx.fill();
+    if (++ticket.scratched % 15 === 0) {
+      const d = cctx.getImageData(0, 0, 330, 330).data; let clear = 0;
+      for (let i = 3; i < d.length; i += 4 * 16) if (d[i] === 0) clear++;
+      if (clear / (d.length / 64) > .6) finishTicket();
+    }
+  }
+  cover.addEventListener('pointerdown', e => { drawing = true; scratchAt(e); });
+  cover.addEventListener('pointermove', e => { if (drawing) scratchAt(e); });
+  window.addEventListener('pointerup', () => drawing = false);
+  $('scratch-buy').onclick = buyTicket;
+  $('scratch-reveal').onclick = finishTicket;
+
+  // ---------- Cofres ----------
+  const chestPrice = () => 100 * S.level;
+  let chestRound = null;
+  function newChests() {
+    if (chestRound && !chestRound.done) return toast('Elige un cofre primero');
+    const price = chestPrice(); if (!pay(price)) return;
+    const pool = [];
+    for (let i = 0; i < 3; i++) {
+      const r = Math.random();
+      pool.push(r < .3 ? 0 : r < .5 ? 0.5 : r < .7 ? 1.5 : r < .83 ? 2 : r < .92 ? 3 : r < .97 ? 5 : r < .995 ? 10 : 25);
+    }
+    chestRound = { price, pool, done: false };
+    $('chest-msg').className = 'msg'; $('chest-msg').textContent = 'Elige un cofre...';
+    $('chests').innerHTML = pool.map((_, i) => `<div class="chest" data-i="${i}">🧰</div>`).join('');
+  }
+  $('chests').onclick = e => {
+    const el = e.target.closest('.chest'); if (!el || !chestRound || chestRound.done) return;
+    const i = +el.dataset.i;
+    if (lucky()) { // la suerte cambia tu cofre por el mejor
+      const best = Math.max(...chestRound.pool), bi = chestRound.pool.indexOf(best);
+      [chestRound.pool[i], chestRound.pool[bi]] = [chestRound.pool[bi], chestRound.pool[i]];
+    }
+    chestRound.done = true;
+    const icon = m => m === 0 ? '💀' : m >= 10 ? '👑' : m >= 3 ? '💰' : '🪙';
+    [...$('chests').children].forEach((c, j) => {
+      const m = chestRound.pool[j];
+      c.classList.add('open'); if (j === i) c.classList.add('picked');
+      c.style.opacity = j === i ? 1 : .55;
+      c.innerHTML = `${icon(m)}<small>x${m}</small>`;
+    });
+    const m = chestRound.pool[i];
+    S.stats.chests++;
+    settle(chestRound.price, Math.round(chestRound.price * m), $('chest-msg'), m === 0 ? '💀 ¡Calavera! Cofre vacío.' : `Cofre x${m}!`);
+  };
+  $('chest-btn').onclick = newChests;
+  $('chests').innerHTML = '<div class="chest">🧰</div><div class="chest">🧰</div><div class="chest">🧰</div>';
+
+  // ---------- Dados ----------
+  const DIE = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+  let diceBusy = false;
+  document.querySelectorAll('.dice-pick').forEach(b => b.onclick = () => {
+    if (diceBusy) return;
+    const bet = S.bets.dice; if (!pay(bet)) return;
+    diceBusy = true;
+    const pick = b.dataset.pick, box = $('dice'), spans = box.children;
+    box.classList.add('rolling'); $('dice-msg').className = 'msg'; $('dice-msg').textContent = 'Rodando...';
+    const iv = setInterval(() => { spans[0].textContent = DIE[rand(6)]; spans[1].textContent = DIE[rand(6)]; }, 70);
+    setTimeout(() => {
+      clearInterval(iv); box.classList.remove('rolling');
+      const ok = s => pick === 'seven' ? s === 7 : pick === 'low' ? s < 7 : s > 7;
+      let a = rand(6) + 1, c = rand(6) + 1;
+      if (!ok(a + c) && lucky()) { for (let t = 0; t < 20 && !ok(a + c); t++) { a = rand(6) + 1; c = rand(6) + 1; } }
+      spans[0].textContent = DIE[a - 1]; spans[1].textContent = DIE[c - 1];
+      const sum = a + c, win = ok(sum);
+      S.stats.dice++;
+      settle(bet, win ? Math.round(bet * (pick === 'seven' ? 5 : 2.3)) : 0, $('dice-msg'), win ? `Suma ${sum} ✔` : `Suma ${sum}. Perdiste ${fmt(bet)} 🪙`);
+      diceBusy = false;
+    }, 1200);
+  });
+
+  // ---------- Tienda ----------
+  function renderShop() {
+    $('shop').innerHTML = CHARMS.map(c => `
+      <div class="card ${S.charms[c.id] ? 'done' : ''}">
+        <h3>${c.name}</h3><p>${c.desc}</p>
+        <button class="btn${S.charms[c.id] ? ' ghost' : ''}" data-buy="${c.id}" ${S.charms[c.id] ? 'disabled' : ''}>
+          ${S.charms[c.id] ? '✔ Comprado' : fmt(c.price) + ' 🪙'}</button>
+      </div>`).join('') + `<div class="card"><h3>⭐ Bonus de nivel</h3><p>Cada nivel suma +1% de suerte automáticamente (máximo total 45%).</p></div>`;
+    updateDaily();
+  }
+  $('shop').onclick = e => {
+    const id = e.target.dataset.buy; if (!id) return;
+    const c = CHARMS.find(x => x.id === id);
+    if (pay(c.price)) { S.charms[id] = true; toast(`Compraste ${c.name}`); hud(); renderShop(); }
+  };
+  const DAY = 20 * 60 * 60 * 1000;
+  function updateDaily() {
+    const left = S.lastDaily + DAY - Date.now();
+    $('daily-btn').disabled = left > 0;
+    $('daily-btn').textContent = left > 0 ? `🎁 Vuelve en ${Math.ceil(left / 3600000)} h` : '🎁 Regalo diario';
+    $('rescue-btn').disabled = S.coins >= 20;
+  }
+  $('daily-btn').onclick = () => {
+    if (S.lastDaily + DAY > Date.now()) return;
+    S.lastDaily = Date.now();
+    const roll = [100, 200, 300, 500, 1000, 2500][Math.min(5, Math.floor(Math.pow(Math.random(), 2.2) * 6))] * S.level;
+    S.coins += roll; toast(`🎁 ¡Regalo diario: +${fmt(roll)} 🪙!`); coinRain(20); hud(); updateDaily();
+  };
+  $('rescue-btn').onclick = () => {
+    if (S.coins >= 20) return;
+    S.coins += 150; S.streak = 0; toast('🆘 El casino te presta 150 🪙. ¡Suerte!'); hud(); updateDaily();
+  };
+
+  // ---------- Logros ----------
+  const ACH = [
+    { id: 'first', name: 'Primera apuesta', desc: 'Juega una vez', r: 50, ok: () => S.stats.spins >= 1 },
+    { id: 'hundred', name: 'Jugador habitual', desc: 'Juega 100 veces', r: 500, ok: () => S.stats.spins >= 100 },
+    { id: 'streak3', name: 'En racha', desc: 'Gana 3 seguidas', r: 200, ok: () => S.streak >= 3 },
+    { id: 'streak7', name: 'Imparable', desc: 'Gana 7 seguidas', r: 2000, ok: () => S.streak >= 7 },
+    { id: 'rich', name: 'Millonario de bolsillo', desc: 'Ten 10.000 🪙', r: 1000, ok: () => S.coins >= 10000 },
+    { id: 'richer', name: 'Magnate', desc: 'Ten 100.000 🪙', r: 10000, ok: () => S.coins >= 100000 },
+    { id: 'jackpot', name: '¡JACKPOT!', desc: 'Saca 💎💎💎', r: 5000, ok: () => S.stats.jackpots >= 1 },
+    { id: 'big', name: 'Golpe de suerte', desc: 'Gana 5.000 🪙 de una vez', r: 1000, ok: () => S.stats.biggest >= 5000 },
+    { id: 'scratch10', name: 'Rasca-rasca', desc: 'Raspa 10 boletos', r: 300, ok: () => S.stats.scratches >= 10 },
+    { id: 'chest10', name: 'Cazatesoros', desc: 'Abre 10 cofres', r: 600, ok: () => S.stats.chests >= 10 },
+    { id: 'charms', name: 'Supersticioso', desc: 'Compra todos los amuletos', r: 20000, ok: () => CHARMS.every(c => S.charms[c.id]) },
+    { id: 'lvl10', name: 'Leyenda del casino', desc: 'Llega a nivel 10', r: 5000, ok: () => S.level >= 10 },
+  ];
+  function checkAch() {
+    ACH.forEach(a => {
+      if (!S.ach[a.id] && a.ok()) {
+        S.ach[a.id] = true; S.coins += a.r;
+        toast(`🏆 Logro: ${a.name} (+${fmt(a.r)} 🪙)`);
+        $('coins').textContent = fmt(S.coins);
+      }
+    });
+  }
+  function renderAch() {
+    $('ach').innerHTML = ACH.map(a => `<div class="card ${S.ach[a.id] ? 'done' : 'lockedach'}"><h3>${S.ach[a.id] ? '🏆' : '🔒'} ${a.name}</h3><p>${a.desc}</p><small>+${fmt(a.r)} 🪙</small></div>`).join('');
+  }
+  $('reset-btn').onclick = () => {
+    if (!confirm('¿Seguro? Perderás todo tu progreso.')) return;
+    S = structuredClone(defaults); save(); location.reload();
+  };
+
+  // ---------- Efectos ----------
+  let toastQ = [], toastOn = false;
+  function toast(t) { toastQ.push(t); if (!toastOn) nextToast(); }
+  function nextToast() {
+    const t = toastQ.shift(); if (!t) { toastOn = false; return; }
+    toastOn = true;
+    const d = document.createElement('div'); d.className = 'toast'; d.textContent = t;
+    document.body.appendChild(d);
+    setTimeout(() => { d.remove(); nextToast(); }, 2600);
+  }
+  function coinRain(n) {
+    for (let i = 0; i < n; i++) {
+      const c = document.createElement('div'); c.className = 'coin-rain';
+      c.textContent = Math.random() < .15 ? '💎' : '🪙';
+      c.style.left = Math.random() * 100 + 'vw';
+      c.style.animationDuration = (1.2 + Math.random() * 1.5) + 's';
+      c.style.animationDelay = Math.random() * .6 + 's';
+      document.body.appendChild(c);
+      setTimeout(() => c.remove(), 3500);
+    }
+  }
+
+  // ---------- Inicio ----------
+  function prices() { $('scratch-price').textContent = fmt(scratchPrice()); $('chest-price').textContent = fmt(chestPrice()); }
+  const _hud = hud; hud = function () { _hud(); prices(); };
+  renderTabs(); showScreen(); hud();
+  if (!S.stats.spins) toast('¡Bienvenido! Tienes 500 🪙 para probar tu suerte 🍀');
+})();
+</script>
+</body>
+</html>
