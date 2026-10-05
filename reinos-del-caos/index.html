@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0f0c1d">
+<title>Reinos del Caos</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700;900&family=Alegreya+Sans:wght@400;500;700;800&display=swap">
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div id="app">
+  <!-- Barra superior -->
+  <header id="topbar">
+    <div class="tb-stat" title="Vida máxima">❤️ <b id="t-hp">0</b></div>
+    <div class="tb-stat gold" title="Monedas">💰 <b id="t-coins">0</b></div>
+    <div class="tb-stat gem" title="Cristales">💎 <b id="t-gems">0</b></div>
+    <div class="tb-level" title="Nivel y experiencia">
+      <span>Nv <b id="t-level">1</b></span>
+      <div class="xpbar"><i id="t-xp"></i></div>
+    </div>
+  </header>
+
+  <main id="screens">
+    <section class="screen" id="scr-menu"></section>
+    <section class="screen" id="scr-map"></section>
+    <section class="screen" id="scr-wheel"></section>
+    <section class="screen" id="scr-forge"></section>
+    <section class="screen" id="scr-inv"></section>
+    <section class="screen" id="scr-char"></section>
+    <section class="screen" id="scr-settings"></section>
+
+    <!-- Combate -->
+    <section class="screen" id="scr-battle">
+      <div class="b-top">
+        <button class="icon-btn" id="b-pause" data-act="pause" aria-label="Pausa">⏸</button>
+        <div class="b-info">
+          <div id="b-stage" class="b-stage"></div>
+          <div class="b-sub"><span id="b-progress"></span><span id="b-coins"></span><span id="b-mats"></span></div>
+        </div>
+      </div>
+      <div class="arena-wrap">
+        <div class="arena-inner" id="arena-inner">
+          <canvas id="arena"></canvas>
+          <div id="b-boss" class="boss-bar" hidden>
+            <span id="b-boss-name"></span>
+            <div class="bar"><i id="b-boss-fill"></i></div>
+          </div>
+          <div class="b-hp">
+            <div class="bar hp"><i id="b-hp-fill"></i><span id="b-hp-text"></span></div>
+          </div>
+        </div>
+      </div>
+      <div class="controls">
+        <div class="move">
+          <button class="ctl dir" data-hold="left" aria-label="Izquierda">◀</button>
+          <button class="ctl dir" data-hold="right" aria-label="Derecha">▶</button>
+        </div>
+        <div class="actions">
+          <div class="skills">
+            <button class="ctl skill" data-skill="fuego" aria-label="Ataque de fuego"><span>🔥</span><b class="cdtext"></b></button>
+            <button class="ctl skill" data-skill="hielo" aria-label="Ataque de hielo"><span>❄️</span><b class="cdtext"></b></button>
+            <button class="ctl skill" data-skill="rayo" aria-label="Ataque eléctrico"><span>⚡</span><b class="cdtext"></b></button>
+            <button class="ctl potion" id="b-potion" aria-label="Usar poción"><span>🧪</span><b id="b-potion-count">0</b></button>
+          </div>
+          <button class="ctl attack" data-hold="attack" aria-label="Atacar">⚔️</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="modal" class="modal" hidden>
+    <div class="modal-card" id="modal-card" role="dialog" aria-modal="true"></div>
+  </div>
+  <div id="toasts"></div>
+</div>
+
+<script src="js/data.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/state.js"></script>
+<script src="js/sprites.js"></script>
+<script src="js/battle.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

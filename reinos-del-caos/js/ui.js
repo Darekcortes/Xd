@@ -1,0 +1,795 @@
+'use strict';
+/* =====================================================================
+   INTERFAZ — pantallas, ventanas, ruleta, forja, inventario, personaje
+   Los botones usan data-act="acción" y se gestionan en un solo lugar
+   (ACTIONS) para que añadir pantallas o botones sea sencillo.
+   ===================================================================== */
+const UI = (() => {
+  const $ = id => document.getElementById(id);
+  const fmt = n => Math.floor(n).toLocaleString('es');
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const S = () => Game.S;
+  let current = 'menu';
+  const view = { forgeTab: 'craft', invTab: 'weapon', wheel: null, spinning: false, wheelRot: 0 };
+
+  const WORLD_BG = {
+    bosque: 'linear-gradient(160deg, #3f8f5a, #1b4a2e 60%, #10261a)',
+    desierto: 'linear-gradient(160deg, #e0a245, #a5611f 60%, #4a2a0c)',
+    hielo: 'linear-gradient(160deg, #7fb2ea, #2e5aa3 60%, #13244a)',
+    volcan: 'linear-gradient(160deg, #b2321a, #5c120a 60%, #1a0606)',
+    oscuro: 'linear-gradient(160deg, #6d28d9, #3b0764 60%, #0b0616)',
+  };
+  const worldBg = w => WORLD_BG[w.theme] || WORLD_BG.bosque;
+  const enemyIcon = id => ENEMIES[id].icon || ENEMIES[id].sprite.emoji || '👾';
+  const rc = r => RARITIES[r].color;
+  const stars = lvl => '★'.repeat(lvl) + '☆'.repeat(MAX_ITEM_LEVEL - lvl);
+
+  /* ---------- Navegación ---------- */
+  function show(id) {
+    if (current === 'battle' && id !== 'battle') Battle.stop();
+    current = id;
+    document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === 'scr-' + id));
+    $('topbar').hidden = id === 'battle';
+    if (RENDER[id]) RENDER[id]();
+    refreshTop();
+    window.scrollTo(0, 0);
+  }
+  const head = title => `<div class="screen-head"><button class="back" data-act="go" data-to="menu" aria-label="Volver al menú">←</button><h2>${title}</h2></div>`;
+
+  function refreshTop() {
+    const s = S(), P = Game.stats();
+    $('t-hp').textContent = fmt(P.maxHp);
+    $('t-coins').textContent = fmt(s.coins);
+    $('t-gems').textContent = fmt(s.gems);
+    $('t-level').textContent = s.level;
+    $('t-xp').style.width = Math.min(100, s.xp / xpForLevel(s.level) * 100) + '%';
+  }
+
+  /* ---------- Avisos y modales ---------- */
+  function toast(text, bad) {
+    const d = document.createElement('div');
+    d.className = 'toast' + (bad ? ' bad' : '');
+    d.textContent = text;
+    $('toasts').appendChild(d);
+    setTimeout(() => d.remove(), 2800);
+  }
+  let modalOnClose = null;
+  function openModal(html, onClose) {
+    $('modal-card').innerHTML = html;
+    $('modal').hidden = false;
+    modalOnClose = onClose || null;
+  }
+  function closeModal() {
+    $('modal').hidden = true;
+    $('modal-card').innerHTML = '';
+    const cb = modalOnClose; modalOnClose = null;
+    if (cb) cb();
+  }
+  function confetti(n = 60, colors = ['#fde047', '#f472b6', '#60a5fa', '#4ade80', '#fb923c']) {
+    for (let i = 0; i < n; i++) {
+      const c = document.createElement('div');
+      c.className = 'confetti';
+      c.style.left = Math.random() * 100 + 'vw';
+      c.style.background = colors[i % colors.length];
+      c.style.animationDuration = 1.6 + Math.random() * 1.6 + 's';
+      c.style.animationDelay = Math.random() * 0.5 + 's';
+      document.body.appendChild(c);
+      setTimeout(() => c.remove(), 3800);
+    }
+  }
+  function vibrate(ms) {
+    if (!S().settings.vibrate) return;
+    try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) { /* no disponible */ }
+  }
+  const costPills = (cost, coins, gems) => {
+    let h = '';
+    for (const k in cost) {
+      const have = Game.matCount(k), ok = have >= cost[k];
+      h += `<span class="pill ${ok ? 'ok' : 'no'}">${MATERIALS[k].icon} ${fmt(have)}/${cost[k]}</span>`;
+    }
+    if (coins) h += `<span class="pill ${S().coins >= coins ? 'ok' : 'no'}">💰 ${fmt(coins)}</span>`;
+    if (gems) h += `<span class="pill ${S().gems >= gems ? 'ok' : 'no'}">💎 ${gems}</span>`;
+    return h;
+  };
+
+  /* =================================================================
+     PANTALLAS
+     ================================================================= */
+  const RENDER = {};
+
+  /* ---------- Menú principal ---------- */
+  RENDER.menu = () => {
+    const s = S(), stage = s.unlocked, info = stageInfo(stage), P = Game.stats();
+    const allDone = s.cleared[MAX_STAGE];
+    const wheelReady = Object.values(WHEELS).some(w => w.world <= Game.highestWorld() && (Game.hasCost(w.cost) || s.gems >= w.gemCost));
+    const craftReady = RECIPES.some(r => r.item && !s.items[r.item] && r.world <= Game.highestWorld() && Game.hasCost(r.cost, r.coins));
+    const btn = (act, to, ico, label, badge) =>
+      `<button class="menu-btn" data-act="${act}" data-to="${to}"><span class="ico">${ico}</span>${label}${badge ? `<span class="badge">${badge}</span>` : ''}</button>`;
+    $('scr-menu').innerHTML = `
+      <div class="menu-hero" style="--hero:${worldBg(info.world)}">
+        <div class="crest">⚔️</div>
+        <h1>Reinos del Caos</h1>
+        <p class="tag">${info.world.icon} ${info.world.name} · Etapa ${stage}${info.boss ? ' 👹' : ''}</p>
+      </div>
+      <button class="btn btn-play" data-act="play">⚔️ JUGAR<small>${allDone ? 'Todos los reinos conquistados · repetir etapa ' + stage : `Etapa ${stage} · ${esc(info.name)}`}</small></button>
+      <div class="menu-grid">
+        ${btn('go', 'wheel', '🎰', 'RULETA', wheelReady ? '!' : '')}
+        ${btn('go', 'forge', '🔨', 'FORJA', craftReady ? '!' : '')}
+        ${btn('go', 'inv', '🎒', 'INVENTARIO')}
+        ${btn('go', 'map', '🗺️', 'MAPA')}
+        ${btn('go', 'char', '👤', 'PERSONAJE', s.points || '')}
+        ${btn('go', 'settings', '⚙️', 'AJUSTES')}
+      </div>
+      <div class="power-line">
+        <span class="pill">💥 Poder ${fmt(P.power)}</span>
+        <span class="pill">🧪 ${s.potions.pocion || 0} · ⚗️ ${s.potions.pocion_grande || 0}</span>
+        <span class="pill">☠️ ${fmt(s.stats.kills)} derrotados</span>
+      </div>`;
+  };
+
+  /* ---------- Mapa ---------- */
+  RENDER.map = () => {
+    const s = S();
+    let html = head('🗺️ Mapa');
+    for (const w of WORLDS) {
+      const first = (w.id - 1) * STAGES_PER_WORLD + 1, last = first + STAGES_PER_WORLD - 1;
+      const locked = first > s.unlocked;
+      const done = Array.from({ length: STAGES_PER_WORLD }, (_, i) => s.cleared[first + i]).filter(Boolean).length;
+      let route = w.id === 1 ? '<span class="start" aria-hidden="true">🏁</span><span class="arrow">→</span>' : '';
+      for (let st = first; st <= last; st++) {
+        const boss = isBossStage(st);
+        const cls = s.cleared[st] ? 'done' : st === s.unlocked ? 'current' : st > s.unlocked ? 'locked' : '';
+        const label = boss ? '👹' : st > s.unlocked ? '🔒' : st;
+        route += `<button class="node ${cls} ${boss ? 'boss' : ''}" data-act="stage" data-stage="${st}" aria-label="Etapa ${st}${boss ? ' (jefe)' : ''}">${label}</button>`;
+        if (st < last) route += '<span class="arrow">→</span>';
+      }
+      html += `
+        <div class="world ${locked ? 'locked' : ''}" style="--wbg:${worldBg(w)}">
+          <div class="world-head"><span class="wico">${w.icon}</span>
+            <div><h3>Mundo ${w.id} — ${w.name}</h3><small>Etapas ${first}-${last} · ${done}/${STAGES_PER_WORLD} completadas · Jefe: ${ENEMIES[w.boss].name}</small></div>
+          </div>
+          <div class="route">${route}</div>
+        </div>`;
+    }
+    html += `<div class="soon">🚧 Nuevos reinos llegarán pronto…<br><small>Más allá del Trono del Caos aguardan tierras inexploradas.</small></div>`;
+    $('scr-map').innerHTML = html;
+    const cur = $('scr-map').querySelector('.node.current');
+    if (cur) setTimeout(() => cur.scrollIntoView({ block: 'center', behavior: 'smooth' }), 60);
+  };
+
+  function openStage(stage) {
+    const s = S();
+    if (stage > s.unlocked) { toast(`🔒 Completa la etapa ${stage - 1} para desbloquearla`, true); return; }
+    const info = stageInfo(stage), P = Game.stats();
+    const powerOk = P.power >= info.power * 0.85;
+    const enemies = info.world.enemies.map(enemyIcon).join(' ');
+    const drops = Object.keys(info.world.drops).map(id => `<span title="${MATERIALS[id].name}">${MATERIALS[id].icon}</span>`).join('');
+    openModal(`
+      <h2>${info.boss ? '👹 ' : ''}Etapa ${stage}</h2>
+      <p class="sub">${esc(info.name)} · ${info.world.icon} ${info.world.name}</p>
+      <div class="info-rows">
+        <div class="info-row"><span>Enemigos</span><span class="icons">${enemies}</span></div>
+        ${info.boss ? `<div class="info-row"><span>Jefe</span><b style="color:#fca5a5">${enemyIcon(info.world.boss)} ${ENEMIES[info.world.boss].name}</b></div>` : `<div class="info-row"><span>Oleada</span><b>${info.enemyCount} enemigos</b></div>`}
+        <div class="info-row"><span>Poder recomendado</span><b style="color:${powerOk ? '#86efac' : '#fca5a5'}">💥 ${fmt(info.power)}</b></div>
+        <div class="info-row"><span>Tu poder</span><b>💥 ${fmt(P.power)}</b></div>
+        <div class="info-row"><span>Materiales</span><span class="icons">${drops}${info.boss ? MATERIALS[info.world.bossDrop].icon : ''}</span></div>
+        <div class="info-row"><span>Completada</span><b>${s.cleared[stage] ? `✅ ${s.cleared[stage]} ${s.cleared[stage] === 1 ? 'vez' : 'veces'}` : `No · primera vez: +${info.boss ? 5 : 1} 💎`}</b></div>
+      </div>
+      ${!powerOk ? '<p class="hint" style="text-align:center;margin-top:10px">⚠️ Tu poder es bajo. Mejora tu equipo en la forja o prueba suerte en la ruleta.</p>' : ''}
+      <div class="modal-actions">
+        <button class="btn" data-act="enter" data-stage="${stage}">⚔️ Entrar</button>
+        <button class="btn ghost" data-act="close">Cancelar</button>
+      </div>`);
+  }
+
+  /* ---------- Combate ---------- */
+  function enterStage(stage) {
+    closeModal();
+    show('battle');
+    Battle.start(stage, onBattleEnd);
+  }
+
+  function onBattleEnd(r) {
+    const s = S();
+    const k = r.victory ? 1 : 0.5;
+    const mats = {};
+    for (const id in r.loot.mats) {
+      const q = Math.floor(r.loot.mats[id] * k);
+      if (q > 0) { Game.addMat(id, q); mats[id] = q; }
+    }
+    const coins = Math.floor(r.loot.coins * k);
+    s.coins += coins;
+    let xp = Math.floor(r.loot.xp * k);
+    let first = false, gems = 0, bossReward = '';
+    if (r.victory) {
+      const info = stageInfo(r.stage);
+      xp += info.xp * (r.boss ? 10 : 4);
+      first = Game.completeStage(r.stage);
+      gems = first ? (r.boss ? 5 : 1) : (r.boss ? 2 : 0);
+      s.gems += gems;
+      if (r.boss) {
+        const w = worldOfStage(r.stage);
+        const firstBoss = !s.bossKills[w.boss];
+        s.bossKills[w.boss] = (s.bossKills[w.boss] || 0) + 1;
+        if (firstBoss) {
+          if (w.bossSkill) bossReward = Game.grant({ skill: w.bossSkill });
+          else {
+            const owned = SKILL_ORDER.filter(id => s.skills[id]);
+            owned.forEach(id => Game.giveSkill(id));
+            bossReward = owned.length ? '⬆️ Todas tus habilidades suben de nivel' : Game.grant({ gems: 10 });
+          }
+        }
+      }
+    } else s.stats.deaths++;
+    const lvlBefore = s.level;
+    const ups = Game.addXp(xp);
+    Game.save();
+    if (ups) Sfx.play('levelup');
+    showResults({ r, mats, coins, xp, first, gems, bossReward, ups, lvlBefore });
+  }
+
+  function lootChips(mats, coins) {
+    let h = coins ? `<span class="loot" style="--rc:#fde047">💰 ${fmt(coins)}</span>` : '';
+    Object.keys(mats).sort((a, b) => RARITY_ORDER.indexOf(MATERIALS[b].rarity) - RARITY_ORDER.indexOf(MATERIALS[a].rarity)).forEach((id, i) => {
+      h += `<span class="loot" style="--rc:${rc(MATERIALS[id].rarity)};animation-delay:${i * 0.05}s" title="${MATERIALS[id].name}">${MATERIALS[id].icon} ${mats[id]}</span>`;
+    });
+    return h || '<span class="hint">Nada esta vez</span>';
+  }
+
+  function showResults(o) {
+    const { r } = o, s = S();
+    const next = r.stage + 1;
+    let title;
+    if (r.abandoned) title = '<div class="reward-title lose">🏳️ Etapa abandonada</div><p class="sub">Conservas la mitad del botín</p>';
+    else if (!r.victory) title = '<div class="reward-title lose">💀 Has caído</div><p class="sub">Conservas la mitad del botín</p>';
+    else if (r.boss) title = `<div class="reward-title boss">🏆 ¡JEFE DERROTADO!</div><p class="sub">${ENEMIES[worldOfStage(r.stage).boss].name} ha caído</p>`;
+    else title = `<div class="reward-title">¡Etapa ${r.stage} completada!</div><p class="sub">${esc(stageInfo(r.stage).name)}</p>`;
+    const special = r.victory && r.specialDrop ? `<div class="levelup">✨ Material especial: ${MATERIALS[r.specialDrop].icon} ${MATERIALS[r.specialDrop].name}</div>` : '';
+    openModal(`
+      ${title}
+      <div class="info-rows">
+        <div class="info-row"><span>Experiencia</span><b>⭐ +${fmt(o.xp)} XP</b></div>
+        ${o.gems ? `<div class="info-row"><span>${o.first ? 'Primera victoria' : 'Victoria contra jefe'}</span><b style="color:var(--gem)">💎 +${o.gems}</b></div>` : ''}
+      </div>
+      <div class="loot-grid">${lootChips(o.mats, o.coins)}</div>
+      ${special}
+      ${o.bossReward ? `<div class="levelup">🎁 ${o.bossReward}</div>` : ''}
+      ${o.ups ? `<div class="levelup">⭐ ¡Subiste a nivel ${s.level}! +${o.ups * BALANCE.pointsPerLevel} puntos de estadística · +${o.ups} 💎</div>` : ''}
+      ${r.victory ? `
+        <div class="chest-wrap">
+          <button class="chest ${r.boss ? 'gold' : ''}" id="chest" data-act="chest" data-stage="${r.stage}" data-boss="${r.boss ? 1 : 0}" aria-label="Abrir cofre">${r.boss ? '👑' : '🧰'}</button>
+          <div class="chest-hint" id="chest-hint">Toca el ${r.boss ? 'cofre real' : 'cofre'} para abrirlo</div>
+          <div class="loot-grid" id="chest-loot"></div>
+        </div>` : '<p class="hint" style="text-align:center">Consejo: fabrica o mejora tu equipo en la 🔨 Forja, sube estadísticas en 👤 Personaje o gira la 🎰 Ruleta.</p>'}
+      <div class="modal-actions" id="result-actions" ${r.victory ? 'hidden' : ''}>
+        ${r.victory && next <= MAX_STAGE && next <= s.unlocked ? `<button class="btn" data-act="enter" data-stage="${next}">▶ Etapa ${next}</button>` : ''}
+        ${!r.victory ? `<button class="btn" data-act="enter" data-stage="${r.stage}">🔁 Reintentar</button>` : `<button class="btn ghost" data-act="enter" data-stage="${r.stage}">🔁 Repetir etapa</button>`}
+        <button class="btn ghost" data-act="go" data-to="wheel">🎰 Ruleta</button>
+        <button class="btn ghost" data-act="go" data-to="${r.victory ? 'map' : 'forge'}">${r.victory ? '🗺️ Mapa' : '🔨 Forja'}</button>
+        <button class="btn ghost" data-act="go" data-to="menu">🏠 Menú</button>
+      </div>`);
+    if (r.victory && r.boss) confetti(80);
+  }
+
+  function openChest(btn) {
+    if (btn.classList.contains('opening') || btn.classList.contains('open')) return;
+    const stage = +btn.dataset.stage, boss = btn.dataset.boss === '1';
+    btn.classList.add('opening');
+    Sfx.play('chest');
+    setTimeout(() => {
+      const rewards = Game.rollChest(stage, boss);
+      let html = '', best = 0;
+      rewards.forEach((p, i) => {
+        const text = Game.grant(p);
+        const rar = p.item ? ITEMS[p.item].rarity : p.mat ? MATERIALS[p.mat].rarity : p.potion ? POTIONS[p.potion].rarity : p.gems ? 'raro' : 'comun';
+        best = Math.max(best, RARITY_ORDER.indexOf(rar));
+        html += `<span class="loot" style="--rc:${rc(rar)};animation-delay:${i * 0.12}s">${esc(text)}</span>`;
+      });
+      Game.save();
+      refreshTop();
+      btn.classList.remove('opening');
+      btn.classList.add('open');
+      btn.textContent = '✨';
+      $('chest-hint').textContent = best >= 2 ? '¡Buen botín!' : '¡Cofre abierto!';
+      $('chest-loot').innerHTML = html;
+      $('result-actions').hidden = false;
+      if (best >= 3) { Sfx.play('legendary'); confetti(40); } else Sfx.play('coin');
+    }, 650);
+  }
+
+  function openPause() {
+    Battle.pause();
+    openModal(`
+      <h2>⏸ Pausa</h2>
+      <p class="sub">Si abandonas conservas la mitad del botín recogido.</p>
+      <div class="modal-actions">
+        <button class="btn" data-act="resume">▶ Continuar</button>
+        <button class="btn danger" data-act="abandon">🏳️ Abandonar etapa</button>
+      </div>`, () => { if (Battle.active && Battle.paused) Battle.resume(); });
+  }
+
+  /* ---------- Ruleta ---------- */
+  const unlockedWheels = () => Object.keys(WHEELS).filter(id => WHEELS[id].world <= Game.highestWorld());
+
+  RENDER.wheel = () => {
+    const ids = unlockedWheels();
+    if (!view.wheel || !ids.includes(view.wheel)) view.wheel = ids[ids.length - 1];
+    const w = WHEELS[view.wheel];
+    const tabs = Object.keys(WHEELS).map(id => {
+      const ok = ids.includes(id), W_ = WHEELS[id];
+      return `<button class="tab ${id === view.wheel ? 'active' : ''}" data-act="wheel-sel" data-id="${id}" ${ok ? '' : 'disabled'} title="${ok ? W_.name : 'Se desbloquea en el mundo ' + W_.world}">${ok ? W_.icon : '🔒'} ${W_.name.replace('Ruleta ', '')}</button>`;
+    }).join('');
+    const odds = RARITY_ORDER.map(r => {
+      const prizes = w.prizes.filter(p => p.r === r).map(p => Game.prizeLabel(p).full).join(', ');
+      return `<div class="odd-row" style="--rc:${rc(r)}"><b>${RARITIES[r].icon} ${RARITIES[r].name}</b><span class="prz">${esc(prizes)}</span><span class="pct">${w.odds[r]}%</span></div>`;
+    }).join('');
+    $('scr-wheel').innerHTML = `
+      ${head('🎰 Ruleta')}
+      <div class="tabs">${tabs}</div>
+      <div class="wheel-area">
+        <h3 style="color:var(--gold)">${w.icon} ${w.name}</h3>
+        <div class="wheel-box" style="--wglow:${w.rim}88">
+          <div class="wheel-glow"></div>
+          <div class="wheel-pointer"></div>
+          <canvas id="wheel-cv" width="640" height="640"></canvas>
+          <div class="wheel-hub">${w.icon}</div>
+        </div>
+        <div class="cost-row">${costPills(w.cost)}</div>
+        <div class="spin-row">
+          <button class="btn" data-act="spin" data-mode="mats" ${Game.hasCost(w.cost) ? '' : 'disabled'}>🎰 Girar con materiales</button>
+          <button class="btn ghost" data-act="spin" data-mode="gems" ${S().gems >= w.gemCost ? '' : 'disabled'}>Girar con 💎 ${w.gemCost}</button>
+        </div>
+        <p class="hint" style="text-align:center;margin:0">Si sale un objeto que ya tienes, sube un nivel.</p>
+        <div class="odds">${odds}</div>
+      </div>`;
+    drawWheel(w);
+    $('wheel-cv').style.transform = `rotate(${view.wheelRot}deg)`;
+  };
+
+  function drawWheel(w) {
+    const cv = $('wheel-cv'), c = cv.getContext('2d'), R = 320, n = w.prizes.length, seg = Math.PI * 2 / n;
+    c.clearRect(0, 0, 640, 640);
+    c.save(); c.translate(R, R);
+    c.fillStyle = w.rim; c.beginPath(); c.arc(0, 0, R, 0, Math.PI * 2); c.fill();
+    w.prizes.forEach((p, i) => {
+      const a0 = -Math.PI / 2 + i * seg, a1 = a0 + seg;
+      c.beginPath(); c.moveTo(0, 0); c.arc(0, 0, R - 16, a0, a1); c.closePath();
+      const g = c.createRadialGradient(0, 0, 40, 0, 0, R);
+      g.addColorStop(0, i % 2 ? w.wood : shadeHex(w.wood, -18));
+      g.addColorStop(1, RARITIES[p.r].color);
+      c.fillStyle = g; c.fill();
+      c.strokeStyle = '#00000088'; c.lineWidth = 3; c.stroke();
+      const lab = Game.prizeLabel(p);
+      c.save();
+      c.rotate(a0 + seg / 2);
+      c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.font = '56px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+      c.save(); c.translate(R * 0.6, 0); c.rotate(Math.PI / 2); c.fillText(lab.icon, 0, 0); c.restore();
+      c.font = '800 24px "Alegreya Sans", system-ui, sans-serif';
+      c.fillStyle = '#fff'; c.strokeStyle = '#000'; c.lineWidth = 5;
+      c.save(); c.translate(R * 0.83, 0); c.rotate(Math.PI / 2);
+      c.strokeText(lab.name, 0, 0); c.fillText(lab.name, 0, 0); c.restore();
+      c.restore();
+    });
+    // Remaches dorados
+    for (let i = 0; i < n * 2; i++) {
+      const a = -Math.PI / 2 + i * seg / 2;
+      c.fillStyle = '#fde68a'; c.beginPath(); c.arc(Math.cos(a) * (R - 8), Math.sin(a) * (R - 8), 5, 0, Math.PI * 2); c.fill();
+    }
+    c.restore();
+  }
+  function shadeHex(hex, amt) {
+    const n = parseInt(hex.slice(1), 16), f = v => Math.max(0, Math.min(255, v + amt));
+    return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`;
+  }
+
+  function spin(mode) {
+    if (view.spinning) return;
+    const w = WHEELS[view.wheel];
+    const paid = mode === 'gems' ? Game.payCost({}, 0, w.gemCost) : Game.payCost(w.cost);
+    if (!paid) { toast('No tienes suficientes recursos para girar', true); return; }
+    view.spinning = true;
+    S().stats.spins++;
+    refreshTop();
+    document.querySelectorAll('[data-act="spin"], [data-act="wheel-sel"], #scr-wheel .back').forEach(b => { b.disabled = true; });
+    // Elige rareza según probabilidades y luego un premio de esa rareza
+    const rar = weightedPick(w.odds);
+    const options = w.prizes.map((p, i) => i).filter(i => w.prizes[i].r === rar);
+    const idx = options[Math.floor(Math.random() * options.length)];
+    const n = w.prizes.length, segDeg = 360 / n;
+    const start = view.wheelRot;
+    const jitter = (Math.random() - 0.5) * segDeg * 0.7;
+    const want = -(idx + 0.5) * segDeg + jitter;
+    const delta = ((want - start) % 360 + 360) % 360;
+    const end = start + 360 * 5 + delta;
+    const dur = 2700, t0 = performance.now(), cv = $('wheel-cv');
+    let lastSeg = Math.floor(start / segDeg);
+    (function frame(t) {
+      const k = Math.min(1, (t - t0) / dur);
+      const e = 1 - Math.pow(1 - k, 4);
+      const rot = start + (end - start) * e;
+      cv.style.transform = `rotate(${rot}deg)`;
+      const sg = Math.floor(rot / segDeg);
+      if (sg !== lastSeg) { lastSeg = sg; Sfx.play('tick'); }
+      if (k < 1) return requestAnimationFrame(frame);
+      view.wheelRot = rot % 360;
+      view.spinning = false;
+      revealPrize(w.prizes[idx]);
+    })(t0);
+  }
+
+  function revealPrize(p) {
+    const text = Game.grant(p);
+    Game.save();
+    const lab = Game.prizeLabel(p), r = RARITIES[p.r], ri = RARITY_ORDER.indexOf(p.r);
+    const shout = ['Común', 'Poco común', '¡Raro!', '¡ÉPICO!', '🎉 ¡LEGENDARIO!', '🔥 ¡¡MÍTICO!!'][ri];
+    let name = lab.full;
+    if (p.item) name = `${ITEMS[p.item].icon} ${ITEMS[p.item].name}`;
+    openModal(`
+      <div class="prize-reveal ${ri >= 4 ? 'legend' : ri >= 3 ? 'epic' : ''}" style="--rc:${r.color}">
+        <div class="prize-rarity">${shout}</div>
+        <div class="prize-icon">${lab.icon}</div>
+        <div class="prize-name">${esc(name)}</div>
+        <div class="prize-detail">${esc(text)}</div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" data-act="close">¡Genial!</button>
+      </div>`, () => RENDER.wheel());
+    if (ri >= 4) { Sfx.play('legendary'); confetti(110, [r.color, '#fde047', '#ffffff']); vibrate(120); }
+    else if (ri >= 3) { Sfx.play('legendary'); confetti(50, [r.color, '#ffffff']); }
+    else Sfx.play('chest');
+    refreshTop();
+  }
+
+  /* ---------- Forja ---------- */
+  RENDER.forge = () => {
+    const s = S(), hw = Game.highestWorld();
+    let body = '';
+    if (view.forgeTab === 'craft') {
+      const cards = RECIPES.map((rec, i) => {
+        const locked = rec.world > hw;
+        if (rec.potion) {
+          const pd = POTIONS[rec.potion];
+          return `<div class="card item-card" style="--rc:${rc(pd.rarity)}">
+            <div class="item-head"><div class="item-icon">${pd.icon}</div><div><div class="item-name">${pd.name}</div><div class="item-meta">Cura ${Math.round(pd.heal * 100)}% de la vida · tienes ${s.potions[rec.potion] || 0}</div></div></div>
+            ${locked ? `<div class="item-meta">🔒 Se desbloquea en el mundo ${rec.world}</div>` : `<div class="stat-line">${costPills(rec.cost, rec.coins)}</div>
+            <button class="btn small" data-act="craft" data-i="${i}" ${Game.hasCost(rec.cost, rec.coins) ? '' : 'disabled'}>⚗️ Preparar</button>`}
+          </div>`;
+        }
+        const it = ITEMS[rec.item], owned = !!s.items[rec.item];
+        const st = Game.itemStats(rec.item, 1);
+        const statTxt = it.type === 'weapon'
+          ? `<span class="pill">⚔️ ${st.dmg}</span>${st.spd ? `<span class="pill">⚡ +${st.spd}</span>` : ''}${st.crit ? `<span class="pill">🎯 +${Math.round(st.crit * 100)}%</span>` : ''}`
+          : `<span class="pill">🛡️ ${st.def}</span><span class="pill">❤️ +${st.hp}</span>`;
+        return `<div class="card item-card" style="--rc:${rc(it.rarity)}" id="recipe-${i}">
+          <div class="item-head"><div class="item-icon">${locked ? '🔒' : it.icon}</div>
+            <div><div class="item-name">${it.name}</div><div class="item-meta">${RARITIES[it.rarity].icon} ${RARITIES[it.rarity].name} · ${it.type === 'weapon' ? 'Arma' : 'Armadura'}</div></div></div>
+          <div class="stat-line">${statTxt}</div>
+          ${locked ? `<div class="item-meta">🔒 Se desbloquea en el mundo ${rec.world} (${WORLDS[rec.world - 1].name})</div>`
+            : owned ? `<div class="item-meta">✅ Ya la tienes · mejórala en la pestaña «Mejorar»</div>`
+            : `<div class="stat-line">${costPills(rec.cost, rec.coins)}</div>
+               <button class="btn small" data-act="craft" data-i="${i}" ${Game.hasCost(rec.cost, rec.coins) ? '' : 'disabled'}>🔨 Fabricar</button>`}
+        </div>`;
+      }).join('');
+      body = `<p class="hint">Fabrica armas y armaduras con los materiales que sueltan los enemigos.</p><div class="cards">${cards}</div>`;
+    } else {
+      const ids = Object.keys(s.items).sort((a, b) => (ITEMS[a].type > ITEMS[b].type ? -1 : ITEMS[a].type < ITEMS[b].type ? 1 : 0) || RARITY_ORDER.indexOf(ITEMS[b].rarity) - RARITY_ORDER.indexOf(ITEMS[a].rarity));
+      const cards = ids.map(id => {
+        const it = ITEMS[id], lvl = s.items[id].lvl, cur = Game.itemStats(id, lvl);
+        const equipped = s.equip.weapon === id || s.equip.armor === id;
+        let action;
+        if (lvl >= MAX_ITEM_LEVEL) action = '<div class="item-meta">⭐ Nivel máximo</div>';
+        else {
+          const nxt = Game.itemStats(id, lvl + 1), c = upgradeCost(id);
+          const diff = it.type === 'weapon' ? `<span class="pill up">⚔️ ${cur.dmg} → ${nxt.dmg}</span>` : `<span class="pill up">🛡️ ${cur.def} → ${nxt.def}</span><span class="pill up">❤️ ${cur.hp} → ${nxt.hp}</span>`;
+          action = `<div class="stat-line">${diff}</div><div class="stat-line">${costPills(c.cost, c.coins)}</div>
+            <button class="btn small" data-act="upgrade" data-id="${id}" ${Game.hasCost(c.cost, c.coins) ? '' : 'disabled'}>⬆️ Mejorar a nivel ${lvl + 1}</button>`;
+        }
+        return `<div class="card item-card" style="--rc:${rc(it.rarity)}" id="up-${id}">
+          <div class="item-head"><div class="item-icon">${it.icon}</div>
+            <div><div class="item-name">${it.name}${equipped ? ' <small style="color:var(--heal)">(equipado)</small>' : ''}</div><div class="stars">${stars(lvl)}</div></div></div>
+          ${action}
+        </div>`;
+      }).join('');
+      body = `<p class="hint">Cada nivel aumenta un ${Math.round(ITEM_LEVEL_BONUS * 100)}% las estadísticas del objeto (máximo nivel ${MAX_ITEM_LEVEL}).</p><div class="cards">${cards}</div>`;
+    }
+    $('scr-forge').innerHTML = `${head('🔨 Forja')}
+      <div class="tabs">
+        <button class="tab ${view.forgeTab === 'craft' ? 'active' : ''}" data-act="forge-tab" data-tab="craft">🔨 Fabricar</button>
+        <button class="tab ${view.forgeTab === 'upgrade' ? 'active' : ''}" data-act="forge-tab" data-tab="upgrade">⬆️ Mejorar</button>
+      </div>${body}`;
+  };
+
+  function upgradeCost(id) {
+    const it = ITEMS[id], lvl = S().items[id].lvl, ri = RARITY_ORDER.indexOf(it.rarity);
+    const qty = Math.round((4 + ri * 2) * lvl);
+    return { cost: { [it.upg]: qty }, coins: Math.round(itemValue(id) * 0.6 * lvl) };
+  }
+
+  function craft(i) {
+    const rec = RECIPES[i];
+    if (!rec || rec.world > Game.highestWorld()) return;
+    if (rec.item && S().items[rec.item]) return;
+    if (!Game.payCost(rec.cost, rec.coins)) { toast('Te faltan materiales', true); return; }
+    Sfx.play('forge'); vibrate(40);
+    if (rec.potion) {
+      S().potions[rec.potion] = (S().potions[rec.potion] || 0) + 1;
+      toast(`${POTIONS[rec.potion].icon} ${POTIONS[rec.potion].name} preparada`);
+    } else {
+      Game.giveItem(rec.item);
+      S().stats.crafted++;
+      const it = ITEMS[rec.item];
+      openModal(`
+        <div class="prize-reveal ${RARITY_ORDER.indexOf(it.rarity) >= 3 ? 'epic' : ''}" style="--rc:${rc(it.rarity)}">
+          <div class="prize-rarity">🔨 ¡Forjado!</div>
+          <div class="prize-icon">${it.icon}</div>
+          <div class="prize-name">${it.name}</div>
+          <div class="prize-detail">${RARITIES[it.rarity].icon} ${RARITIES[it.rarity].name}</div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn" data-act="equip" data-id="${rec.item}">Equipar ahora</button>
+          <button class="btn ghost" data-act="close">Cerrar</button>
+        </div>`, () => RENDER.forge());
+    }
+    Game.save();
+    RENDER.forge(); refreshTop();
+  }
+
+  function upgrade(id) {
+    const s = S();
+    if (!s.items[id] || s.items[id].lvl >= MAX_ITEM_LEVEL) return;
+    const c = upgradeCost(id);
+    if (!Game.payCost(c.cost, c.coins)) { toast('Te faltan materiales o monedas', true); return; }
+    s.items[id].lvl++;
+    Game.save();
+    Sfx.play('forge'); vibrate(40);
+    toast(`⬆️ ${ITEMS[id].name} ahora es nivel ${s.items[id].lvl}`);
+    RENDER.forge(); refreshTop();
+    const card = $('up-' + id);
+    if (card) card.classList.add('forge-flash');
+  }
+
+  /* ---------- Inventario ---------- */
+  RENDER.inv = () => {
+    const s = S(), t = view.invTab;
+    const tab = (id, label) => `<button class="tab ${t === id ? 'active' : ''}" data-act="inv-tab" data-tab="${id}">${label}</button>`;
+    let body = '';
+    if (t === 'weapon' || t === 'armor') {
+      const ids = Object.keys(s.items).filter(id => ITEMS[id].type === t).sort((a, b) => RARITY_ORDER.indexOf(ITEMS[b].rarity) - RARITY_ORDER.indexOf(ITEMS[a].rarity));
+      body = `<div class="cards">${ids.map(id => {
+        const it = ITEMS[id], lvl = s.items[id].lvl, st = Game.itemStats(id, lvl);
+        const eq = s.equip[t] === id;
+        const stats = t === 'weapon'
+          ? `<span class="pill">⚔️ ${st.dmg}</span>${st.spd ? `<span class="pill">⚡ +${st.spd}</span>` : ''}${st.crit ? `<span class="pill">🎯 +${Math.round(st.crit * 100)}%</span>` : ''}`
+          : `<span class="pill">🛡️ ${st.def}</span><span class="pill">❤️ +${st.hp}</span>`;
+        return `<div class="card item-card" style="--rc:${rc(it.rarity)}">
+          <div class="item-head"><div class="item-icon">${it.icon}</div><div><div class="item-name">${it.name}</div><div class="stars">${stars(lvl)}</div><div class="item-meta">${RARITIES[it.rarity].icon} ${RARITIES[it.rarity].name}</div></div></div>
+          <div class="stat-line">${stats}</div>
+          <button class="btn small ${eq ? 'ghost' : ''}" data-act="equip" data-id="${id}" ${eq ? 'disabled' : ''}>${eq ? '✅ Equipado' : 'Equipar'}</button>
+        </div>`;
+      }).join('')}</div>`;
+    } else if (t === 'mats' || t === 'special') {
+      const ids = Object.keys(MATERIALS).filter(id => !!MATERIALS[id].special === (t === 'special') && Game.matCount(id) > 0)
+        .sort((a, b) => RARITY_ORDER.indexOf(MATERIALS[a].rarity) - RARITY_ORDER.indexOf(MATERIALS[b].rarity));
+      const extra = t === 'special' ? `<div class="mat" style="--rc:var(--gem)"><span class="mi">💎</span><span class="mq">${fmt(s.gems)}</span><span class="mn">Cristales</span></div>` : '';
+      body = ids.length || extra
+        ? `<div class="mat-grid">${extra}${ids.map(id => `<div class="mat" style="--rc:${rc(MATERIALS[id].rarity)}"><span class="mi">${MATERIALS[id].icon}</span><span class="mq">${fmt(Game.matCount(id))}</span><span class="mn">${MATERIALS[id].name}</span></div>`).join('')}</div>`
+        : '<div class="empty">Aún no tienes materiales. ¡Derrota enemigos para conseguirlos!</div>';
+      if (t === 'special') body += '<p class="hint" style="margin-top:12px">Los materiales especiales los sueltan los jefes y sirven para forjar equipo poderoso.</p>';
+    } else if (t === 'potions') {
+      body = `<div class="cards">${Object.keys(POTIONS).map(id => {
+        const pd = POTIONS[id];
+        return `<div class="card item-card" style="--rc:${rc(pd.rarity)}">
+          <div class="item-head"><div class="item-icon">${pd.icon}</div><div><div class="item-name">${pd.name} x${s.potions[id] || 0}</div><div class="item-meta">Cura ${Math.round(pd.heal * 100)}% de tu vida en combate (botón 🧪)</div></div></div>
+          <button class="btn small" data-act="buy-potion" data-id="${id}" ${s.coins >= pd.price ? '' : 'disabled'}>Comprar por 💰 ${pd.price}</button>
+        </div>`;
+      }).join('')}</div>`;
+    }
+    $('scr-inv').innerHTML = `${head('🎒 Inventario')}
+      <div class="tabs">${tab('weapon', '🗡️ Armas')}${tab('armor', '🛡️ Armaduras')}${tab('mats', '🪵 Materiales')}${tab('potions', '🧪 Pociones')}${tab('special', '✨ Especiales')}</div>
+      ${body}`;
+  };
+
+  function equip(id) {
+    const s = S(), it = ITEMS[id];
+    if (!it || !s.items[id]) return;
+    s.equip[it.type] = id;
+    Game.save();
+    Sfx.play('click');
+    toast(`Equipaste ${it.name}`);
+    if ($('modal').hidden === false) closeModal();
+    if (RENDER[current]) RENDER[current]();
+    refreshTop();
+  }
+
+  /* ---------- Personaje ---------- */
+  RENDER.char = () => {
+    const s = S(), P = Game.stats(), B = BALANCE;
+    const w = ITEMS[s.equip.weapon], a = ITEMS[s.equip.armor];
+    const row = (ico, lbl, val) => `<div class="stat-row"><span>${ico}</span><span class="lbl">${lbl}</span><b>${val}</b></div>`;
+    const skills = SKILL_ORDER.map(id => {
+      const sk = SKILLS[id], lvl = s.skills[id] || 0;
+      const how = WORLDS.find(wd => wd.bossSkill === id);
+      return `<div class="card skill-card ${lvl ? '' : 'locked'}">
+        <div class="big">${lvl ? sk.icon : '🔒'}</div>
+        <div><b>${sk.name}</b> ${lvl ? `<span class="stars">${'★'.repeat(lvl)}${'☆'.repeat(MAX_SKILL_LEVEL - lvl)}</span>` : ''}
+        <p>${sk.desc}</p>
+        <p>${lvl ? `Recarga ${Battle.skillCd(id).toFixed(1)} s · daño x${(sk.mult * (1 + 0.2 * (lvl - 1))).toFixed(1)}` : `Se desbloquea al vencer a ${how ? ENEMIES[how.boss].name : 'un jefe'} o en la ruleta.`}</p></div>
+      </div>`;
+    }).join('');
+    $('scr-char').innerHTML = `${head('👤 Personaje')}
+      <div class="char-top">
+        <canvas id="char-cv" width="300" height="400" aria-label="Tu guerrero"></canvas>
+        <div class="stat-rows">
+          ${row('⭐', 'Nivel', `${s.level} <small style="color:var(--muted)">(${fmt(s.xp)}/${fmt(xpForLevel(s.level))})</small>`)}
+          ${row('❤️', 'Vida', fmt(P.maxHp))}
+          ${row('⚔️', 'Daño', fmt(P.dmg))}
+          ${row('🛡️', 'Defensa', fmt(P.def))}
+          ${row('⚡', 'Velocidad', P.spd.toFixed(2) + '/s')}
+          ${row('🎯', 'Crítico', Math.round(P.crit * 100) + '%')}
+          <div class="stat-row power"><span>💥</span><span class="lbl">Poder total</span><b>${fmt(P.power)}</b></div>
+        </div>
+      </div>
+      <h3 class="section-title">Puntos de estadística: ${s.points}</h3>
+      <p class="hint">Ganas ${B.pointsPerLevel} puntos cada vez que subes de nivel.</p>
+      <div class="alloc">
+        <button class="btn ghost" data-act="alloc" data-stat="hp" ${s.points ? '' : 'disabled'}>❤️ +${B.pointHp} Vida<small>asignados: ${s.alloc.hp}</small></button>
+        <button class="btn ghost" data-act="alloc" data-stat="dmg" ${s.points ? '' : 'disabled'}>⚔️ +${B.pointDmg} Daño<small>asignados: ${s.alloc.dmg}</small></button>
+        <button class="btn ghost" data-act="alloc" data-stat="def" ${s.points ? '' : 'disabled'}>🛡️ +${B.pointDef} Defensa<small>asignados: ${s.alloc.def}</small></button>
+        <button class="btn ghost" data-act="alloc" data-stat="spd" ${s.points && P.spd < 2.6 ? '' : 'disabled'}>⚡ +${Math.round(B.pointSpd * 100)}% Velocidad<small>asignados: ${s.alloc.spd}</small></button>
+      </div>
+      <h3 class="section-title">Equipo</h3>
+      <div class="cards">
+        <div class="card item-card" style="--rc:${rc(w.rarity)}"><div class="item-head"><div class="item-icon">${w.icon}</div><div><div class="item-name">${w.name}</div><div class="stars">${stars(s.items[s.equip.weapon].lvl)}</div></div></div></div>
+        <div class="card item-card" style="--rc:${rc(a.rarity)}"><div class="item-head"><div class="item-icon">${a.icon}</div><div><div class="item-name">${a.name}</div><div class="stars">${stars(s.items[s.equip.armor].lvl)}</div></div></div></div>
+      </div>
+      <button class="btn ghost wide" style="margin-top:10px" data-act="go" data-to="inv">🎒 Cambiar equipo</button>
+      <h3 class="section-title">Habilidades</h3>
+      <div class="cards">${skills}</div>`;
+    drawCharPreview();
+  };
+
+  let previewRaf = 0;
+  function drawCharPreview() {
+    cancelAnimationFrame(previewRaf);
+    const cv = $('char-cv');
+    if (!cv) return;
+    const c = cv.getContext('2d'), s = S();
+    const t0 = performance.now();
+    (function frame(t) {
+      if (!document.body.contains(cv) || current !== 'char') return;
+      const time = (t - t0) / 1000;
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.clearRect(0, 0, 300, 400);
+      const sw = (time % 2.2) < 0.3 ? (time % 2.2) / 0.3 : -1;
+      Sprites.knight(c, 140, 330, 4.2, { face: 1, walk: 0, swing: sw, heavy: false, weaponColor: ITEMS[s.equip.weapon].color, armorColor: ITEMS[s.equip.armor].color, flash: false });
+      previewRaf = requestAnimationFrame(frame);
+    })(t0);
+  }
+
+  /* ---------- Ajustes ---------- */
+  RENDER.settings = () => {
+    const s = S();
+    $('scr-settings').innerHTML = `${head('⚙️ Ajustes')}
+      <div class="card setting"><div><b>🔊 Sonido</b><div class="item-meta">Efectos de sonido del juego</div></div><button class="switch ${s.settings.sound ? 'on' : ''}" data-act="toggle" data-key="sound" aria-label="Sonido"></button></div>
+      <div class="card setting"><div><b>📳 Vibración</b><div class="item-meta">Vibra al recibir daño (si tu teléfono lo permite)</div></div><button class="switch ${s.settings.vibrate ? 'on' : ''}" data-act="toggle" data-key="vibrate" aria-label="Vibración"></button></div>
+      <div class="card" style="margin-bottom:10px">
+        <b>💾 Guardado</b>
+        <p class="hint" style="margin:4px 0 0">Tu progreso se guarda automáticamente en este navegador.</p>
+        <div class="stat-line" style="margin-top:8px"><span class="pill">☠️ ${fmt(s.stats.kills)} enemigos</span><span class="pill">🎰 ${fmt(s.stats.spins)} giros</span><span class="pill">🔨 ${fmt(s.stats.crafted)} forjados</span><span class="pill">💀 ${fmt(s.stats.deaths)} derrotas</span></div>
+      </div>
+      <div class="card">
+        <b>🎮 Controles</b>
+        <p class="hint" style="margin:4px 0 0">Celular: ◀ ▶ para moverte, ⚔️ para atacar (mantén pulsado), 🔥❄️⚡ habilidades y 🧪 poción. Cada tercer golpe seguido es un golpe fuerte. Golpear los proyectiles los devuelve. Aléjate de las zonas rojas de los jefes.</p>
+        <p class="hint" style="margin:6px 0 0">Teclado: A/D o flechas, Espacio/J atacar, 1-2-3 habilidades, Q poción, Esc pausa.</p>
+      </div>
+      <button class="btn danger wide" style="margin-top:16px" data-act="reset">🗑️ Reiniciar progreso</button>`;
+  };
+
+  function askReset() {
+    openModal(`
+      <h2>⚠️ ¿Reiniciar progreso?</h2>
+      <p class="sub">Se borrará todo: nivel, etapas, materiales, equipo y habilidades. No se puede deshacer.</p>
+      <div class="modal-actions">
+        <button class="btn danger" data-act="reset-confirm">Sí, borrar todo</button>
+        <button class="btn ghost" data-act="close">Cancelar</button>
+      </div>`);
+  }
+
+  /* =================================================================
+     ACCIONES (delegación de eventos)
+     ================================================================= */
+  const ACTIONS = {
+    go: d => { closeModal(); show(d.to); },
+    play: () => openStage(S().unlocked),
+    stage: d => openStage(+d.stage),
+    enter: d => enterStage(+d.stage),
+    close: () => closeModal(),
+    pause: () => openPause(),
+    resume: () => closeModal(),
+    abandon: () => { $('modal').hidden = true; modalOnClose = null; Battle.abandon(); },
+    chest: (d, el) => openChest(el),
+    'wheel-sel': d => { if (!view.spinning) { view.wheel = d.id; RENDER.wheel(); } },
+    spin: d => spin(d.mode),
+    'forge-tab': d => { view.forgeTab = d.tab; RENDER.forge(); },
+    craft: d => craft(+d.i),
+    upgrade: d => upgrade(d.id),
+    'inv-tab': d => { view.invTab = d.tab; RENDER.inv(); },
+    equip: d => equip(d.id),
+    'buy-potion': d => {
+      const pd = POTIONS[d.id];
+      if (S().coins < pd.price) return;
+      S().coins -= pd.price; S().potions[d.id] = (S().potions[d.id] || 0) + 1;
+      Game.save(); Sfx.play('coin'); toast(`${pd.icon} Compraste ${pd.name}`); RENDER.inv(); refreshTop();
+    },
+    alloc: d => {
+      const s = S();
+      if (!s.points) return;
+      s.points--; s.alloc[d.stat]++;
+      Game.save(); Sfx.play('levelup'); RENDER.char(); refreshTop();
+    },
+    toggle: d => {
+      const s = S();
+      s.settings[d.key] = !s.settings[d.key];
+      if (d.key === 'sound') Sfx.setEnabled(s.settings.sound);
+      Game.save(); RENDER.settings();
+      if (d.key === 'sound' && s.settings.sound) Sfx.play('click');
+      if (d.key === 'vibrate') vibrate(60);
+    },
+    reset: () => askReset(),
+    'reset-confirm': () => { Game.reset(); Sfx.setEnabled(true); closeModal(); toast('Progreso reiniciado'); show('menu'); },
+  };
+
+  function bindEvents() {
+    document.addEventListener('click', e => {
+      Sfx.unlock();
+      const el = e.target.closest('[data-act]');
+      if (!el || el.disabled) return;
+      const fn = ACTIONS[el.dataset.act];
+      if (!fn) return;
+      if (!['spin', 'chest', 'craft', 'upgrade', 'alloc'].includes(el.dataset.act)) Sfx.play('click');
+      fn(el.dataset, el);
+    });
+    $('modal').addEventListener('click', e => {
+      // Tocar fuera de la ventana la cierra (salvo resultados de combate y ruleta)
+      if (e.target === $('modal') && $('modal-card').querySelector('[data-act="close"], [data-act="resume"]') && !view.spinning) closeModal();
+    });
+
+    // Controles táctiles de combate (mantener pulsado)
+    document.querySelectorAll('[data-hold]').forEach(btn => {
+      const key = btn.dataset.hold;
+      const on = e => { e.preventDefault(); Sfx.unlock(); Battle.setInput(key, true); btn.classList.add('pressed'); try { btn.setPointerCapture(e.pointerId); } catch (err) {} };
+      const off = () => { Battle.setInput(key, false); btn.classList.remove('pressed'); };
+      btn.addEventListener('pointerdown', on);
+      btn.addEventListener('pointerup', off);
+      btn.addEventListener('pointercancel', off);
+      btn.addEventListener('lostpointercapture', off);
+      btn.addEventListener('contextmenu', e => e.preventDefault());
+    });
+    document.querySelectorAll('[data-skill]').forEach(btn => {
+      btn.addEventListener('pointerdown', e => { e.preventDefault(); Sfx.unlock(); Battle.castSkill(btn.dataset.skill); });
+      btn.addEventListener('contextmenu', e => e.preventDefault());
+    });
+    $('b-potion').addEventListener('pointerdown', e => { e.preventDefault(); Battle.usePotion(); });
+    $('scr-battle').addEventListener('touchmove', e => e.preventDefault(), { passive: false });
+
+    // Teclado (computadora)
+    const KEYS = { ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right', ' ': 'attack', j: 'attack', J: 'attack' };
+    window.addEventListener('keydown', e => {
+      if (current !== 'battle' || !$('modal').hidden) return;
+      if (KEYS[e.key]) { e.preventDefault(); Battle.setInput(KEYS[e.key], true); }
+      else if (e.key === '1') Battle.castSkill('fuego');
+      else if (e.key === '2') Battle.castSkill('hielo');
+      else if (e.key === '3') Battle.castSkill('rayo');
+      else if (e.key === 'q' || e.key === 'Q') Battle.usePotion();
+      else if (e.key === 'Escape' || e.key === 'p') openPause();
+    });
+    window.addEventListener('keyup', e => { if (KEYS[e.key]) Battle.setInput(KEYS[e.key], false); });
+    window.addEventListener('blur', () => ['left', 'right', 'attack'].forEach(k => Battle.setInput(k, false)));
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden && current === 'battle' && Battle.active && !Battle.paused && $('modal').hidden) openPause();
+    });
+  }
+
+  return { show, toast, vibrate, refreshTop, bindEvents, get current() { return current; } };
+})();
