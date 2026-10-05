@@ -19,7 +19,7 @@ const Game = (() => {
       equip: { weapon: 'espada_madera', armor: 'ropa_viajero' },
       skills: {},                // { habilidad: nivel }
       bossKills: {},
-      settings: { sound: true, vibrate: true },
+      settings: { sound: true, vibrate: true, helmet: false },
       stats: { kills: 0, spins: 0, crafted: 0, deaths: 0 },
     };
   }

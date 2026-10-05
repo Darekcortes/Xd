@@ -107,7 +107,7 @@ const UI = (() => {
       `<button class="menu-btn" data-act="${act}" data-to="${to}"><span class="ico">${ico}</span>${label}${badge ? `<span class="badge">${badge}</span>` : ''}</button>`;
     $('scr-menu').innerHTML = `
       <div class="menu-hero" style="--hero:${worldBg(info.world)}">
-        <div class="crest">⚔️</div>
+        <canvas class="hero-knight" id="hero-knight" width="240" height="250" aria-label="Tu caballero"></canvas>
         <h1>Reinos del Caos</h1>
         <p class="tag">${info.world.icon} ${info.world.name} · Etapa ${stage}${info.boss ? ' 👹' : ''}</p>
       </div>
@@ -125,6 +125,7 @@ const UI = (() => {
         <span class="pill">🧪 ${s.potions.pocion || 0} · ⚗️ ${s.potions.pocion_grande || 0}</span>
         <span class="pill">☠️ ${fmt(s.stats.kills)} derrotados</span>
       </div>`;
+    animateKnight('hero-knight', 'menu', 85, 236, 3.5);
   };
 
   /* ---------- Mapa ---------- */
@@ -646,24 +647,23 @@ const UI = (() => {
       <button class="btn ghost wide" style="margin-top:10px" data-act="go" data-to="inv">🎒 Cambiar equipo</button>
       <h3 class="section-title">Habilidades</h3>
       <div class="cards">${skills}</div>`;
-    drawCharPreview();
+    animateKnight('char-cv', 'char', 100, 380, 4.4);
   };
 
-  let previewRaf = 0;
-  function drawCharPreview() {
-    cancelAnimationFrame(previewRaf);
-    const cv = $('char-cv');
+  /** Anima al caballero en reposo dentro de un canvas mientras su pantalla esté visible. */
+  const knightAnims = {};
+  function animateKnight(canvasId, screen, x, y, scale) {
+    cancelAnimationFrame(knightAnims[canvasId]);
+    const cv = $(canvasId);
     if (!cv) return;
-    const c = cv.getContext('2d'), s = S();
-    const t0 = performance.now();
+    const c = cv.getContext('2d'), s = S(), t0 = performance.now();
     (function frame(t) {
-      if (!document.body.contains(cv) || current !== 'char') return;
-      const time = (t - t0) / 1000;
+      if (!document.body.contains(cv) || current !== screen) return;
       c.setTransform(1, 0, 0, 1, 0, 0);
-      c.clearRect(0, 0, 300, 400);
-      const sw = (time % 2.2) < 0.3 ? (time % 2.2) / 0.3 : -1;
-      Sprites.knight(c, 140, 330, 4.2, { face: 1, walk: 0, swing: sw, heavy: false, weaponColor: ITEMS[s.equip.weapon].color, armorColor: ITEMS[s.equip.armor].color, flash: false });
-      previewRaf = requestAnimationFrame(frame);
+      c.clearRect(0, 0, cv.width, cv.height);
+      Sprites.knight(c, x, y, scale, { face: 1, walk: 0, swing: -1, heavy: false, time: (t - t0) / 1000,
+        weaponColor: ITEMS[s.equip.weapon].color, armorColor: ITEMS[s.equip.armor].color, flash: false, helmet: s.settings.helmet });
+      knightAnims[canvasId] = requestAnimationFrame(frame);
     })(t0);
   }
 
@@ -672,6 +672,7 @@ const UI = (() => {
     const s = S();
     $('scr-settings').innerHTML = `${head('⚙️ Ajustes')}
       <div class="card setting"><div><b>🔊 Sonido</b><div class="item-meta">Efectos de sonido del juego</div></div><button class="switch ${s.settings.sound ? 'on' : ''}" data-act="toggle" data-key="sound" aria-label="Sonido"></button></div>
+      <div class="card setting"><div><b>⛑️ Casco</b><div class="item-meta">Muestra el yelmo del caballero</div></div><button class="switch ${s.settings.helmet ? 'on' : ''}" data-act="toggle" data-key="helmet" aria-label="Casco"></button></div>
       <div class="card setting"><div><b>📳 Vibración</b><div class="item-meta">Vibra al recibir daño (si tu teléfono lo permite)</div></div><button class="switch ${s.settings.vibrate ? 'on' : ''}" data-act="toggle" data-key="vibrate" aria-label="Vibración"></button></div>
       <div class="card" style="margin-bottom:10px">
         <b>💾 Guardado</b>

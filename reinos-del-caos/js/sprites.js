@@ -18,59 +18,185 @@ const Sprites = (() => {
     return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`;
   };
 
+  /** Mezcla dos colores hex (k = 0 → a, k = 1 → b). */
+  const mix = (a, b, k) => {
+    const A = parseInt(a.slice(1), 16), B = parseInt(b.slice(1), 16);
+    const ch = sh => Math.round(((A >> sh) & 255) * (1 - k) + ((B >> sh) & 255) * k);
+    return '#' + [16, 8, 0].map(sh => ch(sh).toString(16).padStart(2, '0')).join('');
+  };
+
   /* ---------- Guerrero del jugador ----------
-     o: { face, walk, swing (0..1 o -1), heavy, weaponColor, armorColor, flash } */
+     Diseño: caballero de acero oscuro con ribetes dorados, bufanda y capa
+     azul marino rasgada con cruz dorada, cinturón de cuero y espada larga
+     con guarda dorada y gema azul en el pomo.
+     o: { face, walk, swing (0..1 o -1), heavy, time, weaponColor,
+          armorColor, flash, helmet }                                   */
+  const KP = {
+    navy: '#1e3a5f', navyD: '#132741', navyL: '#2c5282',
+    steel: '#545c6a', steelD: '#262b34', steelL: '#aab3c2',
+    gold: '#c9a050', goldD: '#8a6a2c',
+    leather: '#5a3a28', leatherL: '#7a5238', leatherD: '#3a2418',
+    cloth: '#1c1c22', skin: '#e6bf9a', skinD: '#c49572', hair: '#2a1c14', hairL: '#45301f',
+    gem: '#3b82f6',
+  };
+
   function knight(c, x, y, s, o) {
-    shadow(c, x, y, 16 * s);
+    const t = o.time || 0;
+    const idle = !o.walk && o.swing < 0;
+    const bob = idle ? Math.sin(t * 2.2) * 0.6 : Math.abs(Math.sin(o.walk)) * -1;
+    // Al recibir daño todo se tiñe de rojo
+    const F = col => (o.flash ? mix(col, '#ff3b3b', 0.6) : col);
+    const steelBase = o.armorColor ? mix(KP.steel, o.armorColor, 0.18) : KP.steel;
+    const steel = F(steelBase), steelD = F(mix(steelBase, '#000000', 0.5)), steelL = F(mix(steelBase, '#ffffff', 0.38));
+    const gold = F(KP.gold);
+    const legA = Math.sin(o.walk) * 0.55;
+
+    shadow(c, x, y, 17 * s);
     c.save();
     c.translate(x, y);
     c.scale(o.face * s, s);
-    const F = col => (o.flash ? '#ffffff' : col);
-    const armor = o.armorColor || '#8b6b4a';
-    const legA = Math.sin(o.walk) * 0.5;
+
+    // Capa (detrás de todo)
+    const wave = Math.sin(t * 3 + o.walk * 0.5) * 1.6 + (o.walk ? 3 : 0) + (o.swing >= 0 ? 4 : 0);
+    c.fillStyle = F(KP.navyD);
+    c.beginPath();
+    c.moveTo(1, -40 + bob);
+    c.quadraticCurveTo(-10 - wave * 0.5, -30, -15 - wave, -5);
+    const jag = [[-15 - wave, -5], [-13 - wave, -1], [-11 - wave * 0.8, -4], [-9 - wave * 0.6, 0], [-7 - wave * 0.4, -3], [-5 - wave * 0.2, 0], [-3, -4]];
+    jag.forEach(([px, py]) => c.lineTo(px, py));
+    c.quadraticCurveTo(-4, -22, -2, -38 + bob);
+    c.closePath(); c.fill();
+    c.fillStyle = F(KP.navy);
+    c.beginPath();
+    c.moveTo(-1, -39 + bob);
+    c.quadraticCurveTo(-8 - wave * 0.4, -28, -12 - wave * 0.8, -6);
+    c.lineTo(-9 - wave * 0.6, -2); c.lineTo(-7 - wave * 0.4, -5); c.lineTo(-5, -2);
+    c.quadraticCurveTo(-4, -20, -1, -39 + bob);
+    c.fill();
+    // Cruz dorada de la capa
+    c.strokeStyle = gold; c.lineWidth = 0.9;
+    const cx = -7.5 - wave * 0.4, cy = -21;
+    c.beginPath(); c.moveTo(cx, cy - 4); c.lineTo(cx, cy + 5); c.moveTo(cx - 2.6, cy - 1); c.lineTo(cx + 2.6, cy - 1); c.stroke();
+
     // Piernas
-    c.fillStyle = F('#3b3b4f');
-    c.save(); c.translate(-4, -16); c.rotate(legA); c.fillRect(-3, 0, 6, 16); c.restore();
-    c.save(); c.translate(4, -16); c.rotate(-legA); c.fillRect(-3, 0, 6, 16); c.restore();
-    // Capa
-    c.fillStyle = F('#9f1239');
-    c.beginPath(); c.moveTo(-6, -32); c.quadraticCurveTo(-18, -16 + Math.sin(o.walk * 0.5) * 2, -12, -6); c.lineTo(-4, -14); c.closePath(); c.fill();
-    // Escudo (brazo trasero)
-    c.fillStyle = F(shade(armor, -30));
-    c.beginPath(); c.ellipse(-9, -22, 6, 9, 0, 0, Math.PI * 2); c.fill();
-    c.fillStyle = F('#facc15'); c.fillRect(-10, -24, 2, 5);
-    // Cuerpo
-    c.fillStyle = F(armor);
-    rrect(c, -9, -33, 18, 19, 4); c.fill();
-    c.fillStyle = F(shade(armor, 35)); c.fillRect(-7, -31, 6, 8);
-    c.fillStyle = F('#422006'); c.fillRect(-9, -17, 18, 3);
-    // Cabeza / casco
-    c.fillStyle = F('#cbd5e1');
-    c.beginPath(); c.arc(0, -39, 8, 0, Math.PI * 2); c.fill();
-    c.fillStyle = F('#94a3b8'); c.fillRect(-8, -40, 16, 3);
-    c.fillStyle = F('#0f172a'); c.fillRect(1, -40, 7, 2);
-    c.fillStyle = F('#ef4444');
-    c.beginPath(); c.moveTo(-2, -47); c.quadraticCurveTo(-12, -52, -14, -42); c.quadraticCurveTo(-8, -46, -2, -44); c.fill();
-    // Brazo con espada
-    let ang;
-    if (o.swing >= 0) {
-      const t = 1 - Math.pow(1 - o.swing, 3);
-      ang = -2.3 + t * 3.9;
-    } else ang = 0.5 + Math.sin(o.walk * 0.5) * 0.05;
+    const leg = (px, ang, back) => {
+      const D = col => (back ? mix(col, '#000000', 0.3) : col);
+      c.save(); c.translate(px, -22); c.rotate(ang);
+      c.fillStyle = D(F(KP.cloth)); c.fillRect(-3.2, 0, 6.4, 11.5);
+      c.fillStyle = D(steel); rrect(c, -3.3, 12, 6.6, 7.5, 1.5); c.fill();
+      c.fillStyle = D(steelL); c.beginPath(); c.ellipse(0.6, 11.5, 3.8, 2.8, 0, 0, Math.PI * 2); c.fill();
+      c.fillStyle = D(gold); c.fillRect(-3.3, 15.5, 6.6, 0.8);
+      c.fillStyle = D(F(KP.leatherD)); rrect(c, -3.6, 19, 9, 4, 1.5); c.fill();
+      c.restore();
+    };
+    leg(-3, -legA, true);
+    leg(3, legA, false);
+
     c.save();
-    c.translate(5, -28);
+    c.translate(0, bob);
+    // Brazo trasero
+    c.save(); c.translate(-3, -37); c.rotate(0.25 - legA * 0.4);
+    c.fillStyle = steelD; rrect(c, -2.4, 0, 4.8, 12, 2); c.fill();
+    c.fillStyle = F(KP.leatherD); rrect(c, -2.6, 11, 5.2, 4.5, 1.5); c.fill();
+    c.restore();
+    // Faldón azul y cinturón
+    c.fillStyle = F(KP.navy);
+    c.beginPath(); c.moveTo(-7, -25); c.lineTo(7, -25); c.lineTo(8.5, -13); c.lineTo(3, -12); c.lineTo(1, -16); c.lineTo(-1, -12); c.lineTo(-8, -13); c.closePath(); c.fill();
+    c.strokeStyle = gold; c.lineWidth = 0.7;
+    c.beginPath(); c.moveTo(8.5, -13); c.lineTo(3, -12); c.moveTo(-1, -12); c.lineTo(-8, -13); c.stroke();
+    c.fillStyle = F(KP.leather); c.fillRect(-7.5, -27, 15, 3);
+    c.fillStyle = gold; c.fillRect(1.5, -27.3, 3, 3.6);
+    c.fillStyle = F(KP.leatherL); rrect(c, -6.5, -25.5, 4, 5, 1); c.fill();
+    c.fillStyle = F(KP.leatherD); rrect(c, 5, -25, 3, 4, 1); c.fill();
+    // Peto
+    const g = c.createLinearGradient(-7, -41, 7, -27);
+    g.addColorStop(0, steelL); g.addColorStop(0.55, steel); g.addColorStop(1, steelD);
+    c.fillStyle = g;
+    c.beginPath(); c.moveTo(-7, -41); c.lineTo(7, -41); c.lineTo(8.2, -32); c.lineTo(6.5, -27); c.lineTo(-6.5, -27); c.lineTo(-8, -32); c.closePath(); c.fill();
+    c.strokeStyle = gold; c.lineWidth = 0.8; c.stroke();
+    c.strokeStyle = steelD; c.lineWidth = 0.6;
+    c.beginPath(); c.moveTo(-6, -30); c.lineTo(6.8, -30); c.stroke();
+    // Emblema dorado del peto
+    c.fillStyle = gold;
+    c.beginPath(); c.moveTo(2.5, -38.5); c.lineTo(3.4, -35.2); c.lineTo(6, -34.5); c.lineTo(3.4, -33.8); c.lineTo(2.5, -31); c.lineTo(1.6, -33.8); c.lineTo(-1, -34.5); c.lineTo(1.6, -35.2); c.closePath(); c.fill();
+
+    // Bufanda / capucha azul
+    c.fillStyle = F(KP.navyL);
+    c.beginPath(); c.ellipse(0.5, -41.5, 7, 3.4, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = F(KP.navy);
+    c.beginPath(); c.moveTo(-5, -43); c.quadraticCurveTo(-9, -40, -8, -34); c.lineTo(-5.5, -36); c.quadraticCurveTo(-5, -40, -2, -42); c.fill();
+
+    // Cabeza
+    if (o.helmet) {
+      const hg = c.createLinearGradient(-5, -56, 7, -44);
+      hg.addColorStop(0, steelL); hg.addColorStop(1, steelD);
+      c.fillStyle = hg;
+      c.beginPath(); c.moveTo(-5, -44); c.lineTo(-5.5, -51); c.quadraticCurveTo(-4, -57, 1.5, -57); c.quadraticCurveTo(7, -57, 7.5, -51); c.lineTo(7, -44); c.closePath(); c.fill();
+      c.strokeStyle = gold; c.lineWidth = 0.8; c.stroke();
+      c.fillStyle = '#05070c'; c.fillRect(1.5, -50.5, 6, 1.5);
+      c.strokeStyle = gold; c.lineWidth = 0.9;
+      c.beginPath(); c.moveTo(5.5, -56); c.lineTo(5.5, -46); c.moveTo(3, -52.5); c.lineTo(7.5, -52.5); c.stroke();
+    } else {
+      c.fillStyle = F(KP.skin);
+      c.beginPath(); c.arc(1.2, -47.5, 5.2, 0, Math.PI * 2); c.fill();
+      c.beginPath(); c.moveTo(3.5, -44.5); c.lineTo(6.6, -46); c.lineTo(6.2, -48.5); c.closePath(); c.fill();
+      c.fillStyle = F(KP.skinD);
+      c.beginPath(); c.ellipse(-1.2, -47.3, 1.2, 1.7, 0, 0, Math.PI * 2); c.fill();
+      c.fillStyle = '#1a120c'; c.fillRect(4, -48.8, 1.5, 1.1);
+      c.fillStyle = F(KP.hair); c.fillRect(3.4, -50.4, 3, 0.8);
+      // Pelo oscuro y despeinado
+      c.fillStyle = F(KP.hair);
+      c.beginPath();
+      [[-5.8, -44.5], [-7.2, -49.5], [-5, -49], [-6, -53.5], [-2, -52.5], [-1, -56.5], [2, -53.8], [5.5, -56], [5.5, -52], [8.2, -51.5], [6.6, -49.6], [4.6, -51], [2.4, -50], [0.6, -50.8], [-0.6, -48], [-2.4, -45]]
+        .forEach(([px, py], i) => (i ? c.lineTo(px, py) : c.moveTo(px, py)));
+      c.closePath(); c.fill();
+      c.strokeStyle = F(KP.hairL); c.lineWidth = 0.6;
+      c.beginPath(); c.moveTo(-3, -50); c.lineTo(0, -54); c.moveTo(1.5, -51.5); c.lineTo(4.5, -54); c.stroke();
+    }
+
+    // Hombrera delantera de placas
+    for (let k = 2; k >= 0; k--) {
+      c.fillStyle = k === 0 ? steelL : k === 1 ? steel : steelD;
+      c.beginPath(); c.ellipse(2.5, -38.5 + k * 2.6, 6.4 - k * 0.5, 3.8, -0.15, Math.PI * 0.95, Math.PI * 2.05); c.closePath(); c.fill();
+      c.strokeStyle = gold; c.lineWidth = 0.6; c.stroke();
+    }
+
+    // Brazo con la espada
+    let ang;
+    if (o.swing >= 0) ang = -2.4 + (1 - Math.pow(1 - o.swing, 3)) * 3.9;
+    else ang = 0.8 + (idle ? Math.sin(t * 2.2) * 0.03 : Math.sin(o.walk) * 0.08);
+    c.save();
+    c.translate(3, -36);
     if (o.swing >= 0) {
-      // Estela del golpe
-      c.strokeStyle = o.heavy ? 'rgba(255,214,90,.75)' : 'rgba(255,255,255,.6)';
-      c.lineWidth = o.heavy ? 7 : 4;
-      c.beginPath(); c.arc(0, 0, 30, -2.3, ang, false); c.stroke();
+      // Estela azul del corte
+      c.save();
+      c.shadowColor = '#60a5fa'; c.shadowBlur = o.heavy ? 14 : 8;
+      c.strokeStyle = o.heavy ? 'rgba(125,211,252,.9)' : 'rgba(147,197,253,.7)';
+      c.lineWidth = o.heavy ? 9 : 5;
+      c.beginPath(); c.arc(0, 0, 42, -2.4, ang, false); c.stroke();
+      c.strokeStyle = 'rgba(255,255,255,.85)'; c.lineWidth = o.heavy ? 3 : 1.6;
+      c.beginPath(); c.arc(0, 0, 44, Math.max(-2.4, ang - 1.2), ang, false); c.stroke();
+      c.restore();
     }
     c.rotate(ang);
-    c.fillStyle = F(armor); c.fillRect(-2, -3, 10, 6);
-    c.fillStyle = F('#facc15'); c.fillRect(8, -6, 3, 12);
-    c.fillStyle = F(o.weaponColor || '#cbd5e1');
-    c.beginPath(); c.moveTo(11, -2.5); c.lineTo(36, -2); c.lineTo(41, 0); c.lineTo(36, 2); c.lineTo(11, 2.5); c.closePath(); c.fill();
-    c.fillStyle = 'rgba(255,255,255,.5)'; c.fillRect(12, -1, 22, 1);
+    c.fillStyle = steel; rrect(c, -1.8, -2.8, 11, 5.6, 2.2); c.fill();
+    c.fillStyle = gold; c.beginPath(); c.arc(5, 0, 1.2, 0, Math.PI * 2); c.fill();
+    c.fillStyle = steelD; rrect(c, 9.5, -3.2, 5.5, 6.4, 1.8); c.fill();
+    // Espada: pomo con gema, empuñadura, guarda dorada y hoja larga
+    c.fillStyle = gold; c.beginPath(); c.arc(8.4, 0, 2.2, 0, Math.PI * 2); c.fill();
+    c.fillStyle = F(KP.gem); c.beginPath(); c.arc(8.4, 0, 1.3, 0, Math.PI * 2); c.fill();
+    c.fillStyle = F(KP.leather); c.fillRect(14.5, -1.3, 3.5, 2.6);
+    c.fillStyle = gold;
+    c.beginPath(); c.moveTo(18, -6.5); c.lineTo(19.8, -5.5); c.lineTo(19.8, 5.5); c.lineTo(18, 6.5); c.lineTo(17.4, 0); c.closePath(); c.fill();
+    c.fillRect(19.8, -1.2, 2.2, 2.4);
+    const blade = F(o.weaponColor || '#d6dbe4');
+    c.fillStyle = blade;
+    c.beginPath(); c.moveTo(21.5, -1.9); c.lineTo(50, -1.4); c.lineTo(54, 0); c.lineTo(50, 1.4); c.lineTo(21.5, 1.9); c.closePath(); c.fill();
+    c.fillStyle = 'rgba(255,255,255,.55)'; c.fillRect(22, -1.5, 27, 0.7);
+    c.fillStyle = 'rgba(0,0,0,.25)'; c.fillRect(22, 0.2, 25, 0.6);
+    c.fillStyle = gold; c.fillRect(22, -0.3, 9, 0.6);
+    c.restore();
+
     c.restore();
     c.restore();
   }

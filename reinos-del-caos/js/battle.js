@@ -38,7 +38,7 @@ const Battle = (() => {
       W = Math.round(clamp(box.width, 360, 540));
       H = Math.round(W / aspect);
       if (H < 300) { H = 300; W = Math.round(H * aspect); }
-      H = Math.min(H, Math.round(W * 1.4));
+      H = Math.min(H, Math.round(W * 1.25));
     }
     G = H - 58;
     cv.width = W * dpr; cv.height = H * dpr;
@@ -195,7 +195,8 @@ const Battle = (() => {
     if (p.invuln > 0 || st.ended || p.hp <= 0) return;
     const dmg = Math.max(1, Math.round(amount * rand(0.9, 1.1) * 100 / (100 + p.def)));
     p.hp = Math.max(0, p.hp - dmg);
-    p.flash = 0.15; p.invuln = 0.3;
+    p.flash = 0.18; p.invuln = 0.3;
+    burst(p.x + p.face * 6, p.y - 32, '#ef4444', 10, 130);
     addFloat(p.x, p.y - 58, `-${dmg}`, '#f87171', 17);
     st.shake = Math.max(st.shake, 5);
     st.hurtFlash = 0.3;
@@ -693,8 +694,8 @@ const Battle = (() => {
       c.globalAlpha = 0.7;
     }
     if (!(p.invuln > 0 && Math.floor(st.time * 30) % 2 === 0)) {
-      Sprites.knight(c, p.x, p.y, 1.05, { face: p.face, walk: p.walk, swing: p.swing, heavy: p.heavy,
-        weaponColor: ITEMS[S.equip.weapon].color, armorColor: ITEMS[S.equip.armor].color, flash: p.flash > 0 });
+      Sprites.knight(c, p.x, p.y, 1.02, { face: p.face, walk: p.walk, swing: p.swing, heavy: p.heavy, time: st.time,
+        weaponColor: ITEMS[S.equip.weapon].color, armorColor: ITEMS[S.equip.armor].color, flash: p.flash > 0, helmet: S.settings.helmet });
     }
     if (p.hp <= 0) { c.restore(); c.globalAlpha = 1; }
 
