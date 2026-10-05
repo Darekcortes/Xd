@@ -210,6 +210,11 @@
       <button class="btn" id="daily-btn">🎁 Regalo diario</button>
       <button class="btn ghost" id="rescue-btn">🆘 Préstamo de rescate</button>
     </div>
+    <form class="row" id="promo-form">
+      <label for="promo-input" class="hint" style="margin:0">Código:</label>
+      <input id="promo-input" autocomplete="off" placeholder="Escribe un código" style="padding:10px 12px;border-radius:10px;border:0;background:var(--panel);color:var(--text);font-weight:700;font-size:1rem;width:180px">
+      <button class="btn" type="submit">Canjear</button>
+    </form>
     <div class="grid-cards" id="shop"></div>
   </section>
 
@@ -626,6 +631,16 @@
   $('rescue-btn').onclick = () => {
     if (S.coins >= 20) return;
     S.coins += 150; S.streak = 0; toast('🆘 El casino te presta 150 🪙. ¡Suerte!'); hud(); updateDaily();
+  };
+
+  const PROMOS = { MASDINERO: 10000, SUERTE: 1000, MILLONARIO: 100000 };
+  $('promo-form').onsubmit = e => {
+    e.preventDefault();
+    const code = $('promo-input').value.trim().toUpperCase();
+    const amt = PROMOS[code];
+    if (!amt) return toast('Código no válido. Revisa que esté bien escrito.');
+    S.coins += amt; $('promo-input').value = '';
+    toast(`🎉 Código ${code}: +${fmt(amt)} 🪙`); coinRain(40); hud(); updateDaily();
   };
 
   // ---------- Logros ----------
