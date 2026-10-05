@@ -16,6 +16,7 @@
     --good: #4ade80;
     --bad: #f87171;
     --accent: #c084fc;
+    color-scheme: dark;
   }
   * { box-sizing: border-box; }
   body {
@@ -26,7 +27,7 @@
     user-select: none;
   }
   header {
-    position: sticky; top: 0; z-index: 10;
+    position: sticky; top: env(safe-area-inset-top, 0px); z-index: 10;
     display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between;
     padding: 10px 16px; background: rgba(18, 8, 31, .92); backdrop-filter: blur(6px);
     border-bottom: 1px solid #ffffff14;
@@ -654,8 +655,13 @@
   function renderAch() {
     $('ach').innerHTML = ACH.map(a => `<div class="card ${S.ach[a.id] ? 'done' : 'lockedach'}"><h3>${S.ach[a.id] ? '🏆' : '🔒'} ${a.name}</h3><p>${a.desc}</p><small>+${fmt(a.r)} 🪙</small></div>`).join('');
   }
+  let resetArmed = false;
   $('reset-btn').onclick = () => {
-    if (!confirm('¿Seguro? Perderás todo tu progreso.')) return;
+    if (!resetArmed) {
+      resetArmed = true; $('reset-btn').textContent = '¿Seguro? Toca otra vez para borrar todo';
+      setTimeout(() => { resetArmed = false; $('reset-btn').textContent = 'Reiniciar partida'; }, 4000);
+      return;
+    }
     S = structuredClone(defaults); save(); location.reload();
   };
 
