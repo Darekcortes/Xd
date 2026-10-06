@@ -121,6 +121,7 @@ const UI = (() => {
         <div class="menu-head">
           <div class="power-chip"><span class="rank-tag" style="color:${RANKS[Game.rank()].color}">${RANKS[Game.rank()].name}</span> 💥 <b>${fmt(P.power)}</b></div>
           <div class="head-btns">
+            <button class="icon-btn" data-act="fullscreen" aria-label="Pantalla completa">⛶</button>
             <button class="icon-btn" data-act="go" data-to="missions" aria-label="Misiones diarias">📜${claimable ? `<span class="badge">${claimable}</span>` : ''}</button>
             <button class="icon-btn" data-act="go" data-to="settings" aria-label="Ajustes">⚙️</button>
           </div>
@@ -382,11 +383,34 @@ const UI = (() => {
 
   /* ---------- Modo horizontal ---------- */
   let portraitOk = false, pausedByHint = false;
+  const canFullscreen = () => !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+  const isFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+  /** Explica cómo jugar a pantalla completa cuando el navegador no lo permite (p. ej. dentro de otra app). */
+  function fullscreenHelp() {
+    openModal(`
+      <h2>⛶ Pantalla completa</h2>
+      <p class="sub">Aquí el navegador no deja poner el juego en pantalla completa (estás viéndolo dentro de otra app).</p>
+      <div class="info-rows">
+        <div class="info-row"><span>1.</span><b>Descarga el archivo <i>reinos-del-caos.html</i></b></div>
+        <div class="info-row"><span>2.</span><b>Ábrelo con Chrome (o tu navegador)</b></div>
+        <div class="info-row"><span>3.</span><b>Toca ⛶ o JUGAR: se pondrá en pantalla completa y horizontal</b></div>
+      </div>
+      <p class="hint" style="margin-top:10px">Truco: en Chrome, menú ⋮ → «Añadir a pantalla de inicio» para abrirlo como una app.</p>
+      <div class="modal-actions"><button class="btn" data-act="close">Entendido</button></div>`);
+  }
+  function toggleFullscreen() {
+    if (!canFullscreen()) { fullscreenHelp(); return; }
+    if (isFullscreen()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+    goLandscape();
+  }
+
   /** Pide pantalla completa en horizontal (solo funciona tras un toque y si el navegador lo permite). */
   function goLandscape() {
     try {
       const el = document.documentElement;
-      const p = el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : null;
+      if (isFullscreen()) return;
+      const req = el.requestFullscreen || el.webkitRequestFullscreen;
+      const p = req ? req.call(el, { navigationUI: 'hide' }) : null;
       const lock = () => { try { const r = screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape'); if (r && r.catch) r.catch(() => {}); } catch (e) {} };
       if (p && p.then) p.then(lock).catch(() => {}); else lock();
     } catch (e) { /* no disponible */ }
@@ -986,7 +1010,8 @@ const UI = (() => {
     const s = S();
     $('scr-settings').innerHTML = `${head('⚙️ Ajustes')}
       <div class="card setting"><div><b>🔊 Sonido</b><div class="item-meta">Efectos de sonido del juego</div></div><button class="switch ${s.settings.sound ? 'on' : ''}" data-act="toggle" data-key="sound" aria-label="Sonido"></button></div>
-      <div class="card setting"><div><b>📱 Combate en horizontal</b><div class="item-meta">Pantalla completa y pide girar el teléfono al combatir</div></div><button class="switch ${s.settings.landscape ? 'on' : ''}" data-act="toggle" data-key="landscape" aria-label="Combate en horizontal"></button></div>
+      <div class="card setting"><div><b>⛶ Pantalla completa</b><div class="item-meta">${canFullscreen() ? 'Activa o desactiva la pantalla completa' : 'No disponible aquí: abre el archivo descargado en Chrome'}</div></div><button class="btn small ghost" data-act="fullscreen">${isFullscreen() ? 'Salir' : 'Activar'}</button></div>
+      <div class="card setting"><div><b>📱 Horizontal y pantalla completa</b><div class="item-meta">Pantalla completa al tocar y pide girar el teléfono al combatir</div></div><button class="switch ${s.settings.landscape ? 'on' : ''}" data-act="toggle" data-key="landscape" aria-label="Combate en horizontal"></button></div>
       <div class="card setting"><div><b>⛑️ Casco</b><div class="item-meta">Muestra el yelmo del caballero</div></div><button class="switch ${s.settings.helmet ? 'on' : ''}" data-act="toggle" data-key="helmet" aria-label="Casco"></button></div>
       <div class="card setting"><div><b>📳 Vibración</b><div class="item-meta">Vibra al recibir daño (si tu teléfono lo permite)</div></div><button class="switch ${s.settings.vibrate ? 'on' : ''}" data-act="toggle" data-key="vibrate" aria-label="Vibración"></button></div>
       <div class="card" style="margin-bottom:10px">
@@ -1041,6 +1066,7 @@ const UI = (() => {
     },
     claim: d => claimMission(d.i),
     'portrait-ok': () => { portraitOk = true; checkOrientation(); },
+    fullscreen: () => toggleFullscreen(),
     'skill-up': d => {
       const s = S(), lvl = s.skills[d.id] || 0;
       if (!lvl || lvl >= MAX_SKILL_LEVEL) return;
@@ -1158,6 +1184,11 @@ const UI = (() => {
     });
     window.addEventListener('keyup', e => { if (KEYS[e.key]) Battle.setInput(KEYS[e.key], false); });
     window.addEventListener('blur', () => { ['left', 'right', 'up', 'down', 'attack'].forEach(k => Battle.setInput(k, false)); resetStick(); });
+    // Pantalla completa automática al primer toque (si el navegador lo permite)
+    document.addEventListener('pointerdown', function first() {
+      document.removeEventListener('pointerdown', first, true);
+      if (S().settings.landscape && canFullscreen() && matchMedia('(pointer: coarse)').matches) goLandscape();
+    }, true);
     window.addEventListener('resize', checkOrientation);
     if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener('change', checkOrientation);
     document.addEventListener('visibilitychange', () => {

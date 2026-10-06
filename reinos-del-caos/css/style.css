@@ -512,3 +512,40 @@ small.up { color: #86efac; }
 @media (orientation: landscape) and (max-height: 380px) {
   .menu-ui .goals { display: none; }
 }
+
+/* Ventanas muy bajas (p. ej. el juego dentro de otra app en horizontal) */
+@media (orientation: landscape) and (max-height: 330px) {
+  #topbar { padding: 3px 10px; gap: 4px; }
+  .tb-stat { padding: 2px 7px; font-size: .78rem; }
+  .tb-level { font-size: .75rem; min-width: 44px; }
+  .xpbar { width: 44px; height: 4px; }
+  #scr-menu.active { height: calc(100dvh - 32px - env(safe-area-inset-top, 0px)); }
+  .menu-ui { row-gap: 4px; padding: 6px 12px; grid-template-rows: auto 1fr auto auto auto auto; }
+  .menu-ui .logo { display: none; }
+  .menu-head .icon-btn { width: 34px; height: 34px; font-size: 1rem; }
+  .power-chip { font-size: .85rem; padding: 2px 9px; }
+  .world-name { font-size: .8rem; }
+  .pip { width: 22px; height: 22px; font-size: .7rem; border-width: 1.5px; }
+  .pip.boss { width: 24px; height: 24px; }
+  .btn-play { min-height: 42px; }
+  .play-main { font-size: 1.05rem; }
+  .btn-play small { font-size: .72rem; }
+  .dock { gap: 2px; }
+  .dock-btn .medal { width: 34px; font-size: 1rem; border-width: 1.5px; }
+  .dock-btn .lbl { font-size: .6rem; }
+  .dock-btn .badge { min-width: 18px; height: 18px; font-size: .7rem; right: calc(50% - 24px); }
+  .screen { padding: 10px 12px; }
+  .screen-head { margin-bottom: 8px; }
+  .back { min-width: 40px; height: 40px; }
+  .controls { --sk: 38px; --atk: 60px; --stick: 92px; }
+  .stick-zone { min-height: 100px; max-width: 160px; }
+  .actions { grid-template-columns: repeat(5, var(--sk)) var(--atk); grid-template-rows: var(--atk); grid-template-areas: "f h r p d a"; align-items: end; align-self: flex-end; gap: 6px; }
+  .controls { align-items: flex-end; }
+  .ctl { opacity: .8; }
+  .ctl.skill, .ctl.potion, .ctl.dodge { font-size: 1.15rem; }
+  .ctl.attack { font-size: 2.1rem; }
+  .b-top .icon-btn { width: 34px; height: 34px; flex-basis: 34px; }
+  .b-hp { top: 44px; width: 150px; }
+  .bar.hp { height: 14px; }
+  .boss-bar { top: 40px; }
+}
