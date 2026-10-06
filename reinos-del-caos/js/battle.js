@@ -293,10 +293,12 @@ const Battle = (() => {
     burst(p.x, p.y - 4, '#d6d3d1', 8, 60, -20);
   }
 
-  function hurtPlayer(amount) {
+  function hurtPlayer(amount, fromBoss) {
     const p = st.p;
     if (p.invuln > 0 || st.ended || p.hp <= 0) return false;
-    const dmg = Math.max(1, Math.round(amount * rand(0.9, 1.1) * 100 / (100 + p.def)));
+    // Ningún golpe quita demasiada vida de una vez (los de jefe aún menos)
+    const cap = p.maxHp * (fromBoss ? BALANCE.bossHitCap : BALANCE.hitCap);
+    const dmg = Math.max(1, Math.round(Math.min(cap, amount * rand(0.9, 1.1) * 100 / (100 + p.def))));
     p.hp = Math.max(0, p.hp - dmg);
     p.flash = 0.18; p.invuln = 0.45;
     burst(p.x + p.face * 6, p.y - 32, '#ef4444', 10, 130);
@@ -323,15 +325,19 @@ const Battle = (() => {
       let vx = p.face, vy = 0;
       if (near) { const d = Math.hypot(near.x - p.x, near.y - p.y) || 1; vx = (near.x - p.x) / d; vy = (near.y - p.y) / d; p.face = Math.sign(vx) || p.face; }
       st.projs.push({ x: p.x + p.face * 18, y: p.y, vx: vx * 340, vy: vy * 340, hostile: false, kind: 'bigfire',
-                      dmg: p.dmg * skillMult('fuego'), life: 1.3, explode: 70, burn: 3 });
+                      dmg: p.dmg * skillMult('fuego'), life: 1.3, explode: SKILLS.fuego.radius, burn: SKILLS.fuego.burn });
       Sfx.play('fire');
     } else if (id === 'hielo') {
       st.rings.push({ x: p.x, y: p.y, r: 10, max: 190, t: 0.6, life: 0.6, color: '#bae6fd' });
       const freeze = SKILLS.hielo.freeze + 0.3 * (skillLevel('hielo') - 1);
       for (const e of st.enemies) {
         if (e.dead || gdist(e.x, e.y, p.x, p.y) > 200) continue;
-        damageEnemy(e, p.dmg * skillMult('hielo'), { color: '#bae6fd' });
-        if (!e.dead) e.frozen = e.boss ? 1.4 : freeze;
+        // Los enemigos de hielo resisten: menos daño y solo se ralentizan
+        const resist = e.def.resist === 'hielo';
+        damageEnemy(e, p.dmg * skillMult('hielo') * (resist ? 0.5 : 1), { color: '#bae6fd' });
+        if (e.dead) continue;
+        if (resist) { e.slowT = 3 + 0.3 * (skillLevel('hielo') - 1); addFloat(e.x, e.y - e.size - 22, 'Ralentizado', '#bae6fd', 12); }
+        else e.frozen = e.boss ? 1.4 : freeze;
         burst(e.x, e.y - e.size / 2, '#e0f2fe', 10, 120);
       }
       Sfx.play('ice');
@@ -440,13 +446,14 @@ const Battle = (() => {
       e.burn -= dt; e.burnTick -= dt;
       if (e.burnTick <= 0) {
         e.burnTick = 0.5;
-        damageEnemy(e, st.p.dmg * 0.25 * skillMult('fuego'), { color: '#fb923c', silent: true });
+        damageEnemy(e, st.p.dmg * 0.12 * skillMult('fuego'), { color: '#fb923c', silent: true });
         burst(e.x, e.y - e.size * 0.6, '#fb923c', 4, 40, -60);
         if (e.dead) return;
       }
     }
     let slow = 1;
     if (e.frozen > 0) { e.frozen -= dt; if (!e.boss) return; slow = 0.4; }
+    if (e.slowT > 0) { e.slowT -= dt; slow *= 0.5; if (Math.random() < dt * 6) st.parts.push({ x: e.x + rand(-10, 10), y: e.y - rand(5, e.size), vx: 0, vy: -10, life: 0.5, max: 0.5, color: '#bae6fd', size: 2, grav: 0 }); }
     const p = st.p;
     const dx = p.x - e.x, dy = p.y - e.y;
     const onScreen = e.x > 6 && e.x < W - 6;
@@ -469,7 +476,7 @@ const Battle = (() => {
       if (d > 4) { e.x += ddx / d * sp * dt; e.y += ddy / d * sp * dt; }
       e.walk += dt * 22;
       if (st.parts.length < 400) st.parts.push({ x: e.x - e.face * e.size * 0.3, y: e.y - 3, vx: -e.face * 40, vy: -20, life: 0.3, max: 0.3, color: '#d6d3d1', size: 3, grav: 0 });
-      if (!e.dashHit && gdist(e.x, e.y, p.x, p.y) < e.size * 0.45 + 10) { if (hurtPlayer(e.atk * 1.3)) e.dashHit = true; }
+      if (!e.dashHit && gdist(e.x, e.y, p.x, p.y) < e.size * 0.45 + 10) { if (hurtPlayer(e.atk * 1.3, e.boss)) e.dashHit = true; }
       if (e.stateT <= 0 || d < 6) { e.state = 'move'; e.recover = 0.6; e.specialCd = rand(2.8, 4.2); }
       clampEnemy(e);
       return;
@@ -486,7 +493,7 @@ const Battle = (() => {
       e.windup -= dt * slow;
       if (e.windup <= 0) {
         if (e.def.ai === 'ranged') shoot(e, e.def.proj, Math.atan2(dy, dx));
-        else if (Math.abs(dx) <= e.range + 18 && Math.abs(dy) < DEPTH + 6) hurtPlayer(e.atk);
+        else if (Math.abs(dx) <= e.range + 18 && Math.abs(dy) < DEPTH + 6) hurtPlayer(e.atk, e.boss);
         e.recover = 0.3; e.atkT = e.def.atkCd * rand(0.9, 1.15);
       }
       return;
@@ -575,7 +582,7 @@ const Battle = (() => {
     const sp = speed || (kind === 'arrow' ? 230 : 175);
     st.projs.push({
       x: e.x + Math.cos(ang) * e.size * 0.35, y: e.y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp * 0.8,
-      hostile: true, kind: kind || 'darkorb', dmg: e.atk, life: 3.2, h: e.size * 0.55,
+      hostile: true, kind: kind || 'darkorb', dmg: e.atk * (e.boss ? 0.7 : 1), life: 3.2, h: e.size * 0.55, boss: e.boss,
     });
   }
 
@@ -604,6 +611,7 @@ const Battle = (() => {
 
   function startAction(e, type) {
     const p = st.p;
+    const zonesBefore = st.zones.length;
     const [kind, arg] = type.split(':');
     e.action = { kind, arg, t: 0, fx: e.x, fy: e.y, tx: p.x, ty: p.y, shots: 0 };
     e.face = Math.sign(p.x - e.x) || e.face;
@@ -637,6 +645,7 @@ const Battle = (() => {
       }
       case 'summon': showBanner('', '¡Invoca refuerzos!', '#fca5a5', 1.2); break;
     }
+    for (let i = zonesBefore; i < st.zones.length; i++) st.zones[i].boss = true;
   }
 
   function runAction(e, dt) {
@@ -694,7 +703,7 @@ const Battle = (() => {
         if (z.t <= 0) {
           z.boom = 0.45;
           const nx = (p.x - z.x) / z.r, ny = (p.y - z.y) / (z.r * 0.5);
-          if (nx * nx + ny * ny < 1.15) hurtPlayer(z.dmg);
+          if (nx * nx + ny * ny < 1.15) hurtPlayer(z.dmg, z.boss);
           const col = FX_COLORS[z.fx] || '#fde68a';
           burst(z.x, z.y - 4, col, 16, 150, -120);
           Sfx.play(z.fx === 'ice' ? 'ice' : 'boom');
@@ -869,7 +878,7 @@ const Battle = (() => {
       pr.x += pr.vx * dt; pr.y += pr.vy * dt; pr.life -= dt;
       if ((pr.kind === 'bigfire' || pr.kind === 'fireball') && st.parts.length < 450) st.parts.push({ x: pr.x, y: pr.y - (pr.h || 24), vx: rand(-20, 20), vy: rand(-40, 0), life: 0.3, max: 0.3, color: '#fb923c', size: rand(2, 5), grav: 0 });
       if (pr.hostile) {
-        if (gdist(pr.x, pr.y, p.x, p.y) < 14) { if (hurtPlayer(pr.dmg)) { pr.life = 0; burst(pr.x, pr.y - 24, '#fca5a5', 6, 80); } }
+        if (gdist(pr.x, pr.y, p.x, p.y) < 14) { if (hurtPlayer(pr.dmg, pr.boss)) { pr.life = 0; burst(pr.x, pr.y - 24, '#fca5a5', 6, 80); } }
       } else {
         for (const e of st.enemies) {
           if (e.dead) continue;
@@ -895,8 +904,10 @@ const Battle = (() => {
     Sfx.play('boom');
     for (const e of st.enemies) {
       if (e.dead || gdist(e.x, e.y, pr.x, pr.y) > pr.explode + e.size * 0.3) continue;
-      damageEnemy(e, pr.dmg, { color: '#fdba74', knock: 20 });
-      if (!e.dead) e.burn = pr.burn;
+      const resist = e.def.resist === 'fuego';
+      damageEnemy(e, pr.dmg * (resist ? 0.5 : 1), { color: '#fdba74', knock: 20 });
+      if (!e.dead && !resist) e.burn = pr.burn;
+      if (resist && !e.dead) addFloat(e.x, e.y - e.size - 22, 'Resiste', '#fdba74', 12);
     }
     for (const prop of st.props) if (!prop.dead && gdist(prop.x, prop.y, pr.x, pr.y) < pr.explode) breakProp(prop);
   }

@@ -26,6 +26,12 @@ En computadora también funciona con teclado: WASD o flechas, Espacio/J atacar, 
   con consejos en pantalla). El primer jefe es duro pero justo y desde el mundo 2 la dificultad sube.
 - **Primera mejora rápida**: la etapa 1 regala la Espada oxidada, la 2 la Armadura básica y la 3 la habilidad de fuego.
 - **Habilidades**: 🔥 fuego al ganar la etapa 3, ❄️ hielo al vencer al Rey Lobo y ⚡ rayo al vencer a la Reina Escorpión.
+  Se mejoran hasta el nivel 5 en 👤 Héroe con monedas y gemas (+20 % daño y -5 % recarga por nivel).
+- **Resistencias**: los enemigos de hielo solo se ralentizan con ❄️ y reciben la mitad de daño; los de fuego
+  reciben la mitad de daño de 🔥 y no se queman.
+- **Jefes**: ningún golpe de jefe quita más del 22 % de tu vida (35 % para el resto de enemigos).
+- **Horizontal**: al entrar en combate el juego pide pantalla completa en horizontal y, si el teléfono está
+  vertical, pide girarlo (se puede jugar en vertical igualmente o desactivarlo en Ajustes).
 - **Tickets de ruleta 🎟️**: cada etapa da un fragmento 🧩 (3 = 1 ticket); también salen de jefes, élites,
   combos, rachas, misiones y cofres. Un ticket gira cualquier ruleta desbloqueada.
 - **Combo**: sube al derrotar enemigos seguidos y se pierde tras 4 s sin derrotar a nadie. Da +3 % de daño por nivel

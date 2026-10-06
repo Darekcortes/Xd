@@ -19,7 +19,7 @@ const Game = (() => {
       equip: { weapon: 'espada_madera', armor: 'ropa_viajero' },
       skills: {},                // { habilidad: nivel }
       bossKills: {},
-      settings: { sound: true, vibrate: true, helmet: false },
+      settings: { sound: true, vibrate: true, helmet: false, landscape: true },
       stats: { kills: 0, spins: 0, crafted: 0, deaths: 0, elites: 0, bestCombo: 0 },
       tickets: 1, ticketShards: 0,   // 🎟️ tickets de ruleta y fragmentos
       streak: 0, bestStreak: 0,      // racha de victorias seguidas

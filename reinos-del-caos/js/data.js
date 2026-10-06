@@ -117,12 +117,14 @@ const RECIPES = [
    cd: segundos de recarga · mult: multiplicador del daño del jugador
    El efecto de cada una está en battle.js → castSkill()            */
 const SKILLS = {
-  fuego: { name: 'Ataque de fuego',  icon: '🔥', cd: 8,  mult: 3.0, desc: 'Lanza una bola de fuego que explota y quema a los enemigos cercanos.' },
-  hielo: { name: 'Ataque de hielo',  icon: '❄️', cd: 12, mult: 1.6, freeze: 2.5, desc: 'Onda helada que daña y congela a todos los enemigos.' },
+  fuego: { name: 'Ataque de fuego',  icon: '🔥', cd: 9,  mult: 1.8, radius: 52, burn: 2.5, desc: 'Lanza una bola de fuego que explota y quema a los enemigos cercanos.' },
+  hielo: { name: 'Ataque de hielo',  icon: '❄️', cd: 12, mult: 1.6, freeze: 2.5, desc: 'Onda helada que daña y congela a los enemigos cercanos. A los de hielo solo los ralentiza.' },
   rayo:  { name: 'Ataque eléctrico', icon: '⚡', cd: 10, mult: 2.4, targets: 5, desc: 'Rayos que caen sobre los 5 enemigos más cercanos.' },
 };
 const SKILL_ORDER = ['fuego', 'hielo', 'rayo'];
 const MAX_SKILL_LEVEL = 5;
+/** Coste de mejorar una habilidad del nivel lvl al siguiente. Cada nivel: +20 % daño, -5 % recarga. */
+const SKILL_UPGRADE = lvl => ({ coins: 150 * lvl * lvl, gems: 2 * lvl });
 
 /* ---------- Enemigos ----------
    hp/atk: multiplicadores sobre la base de la etapa
@@ -135,21 +137,21 @@ const ENEMIES = {
   // Bosque
   slime:   { icon: '🟢', name: 'Slime',   hp: 0.8, atk: 0.7, speed: 34, range: 20, size: 26, ai: 'melee',   atkCd: 1.5, split: true, sprite: { shape: 'slime', color: '#4ade80' } },
   lobo:    { icon: '🐺', name: 'Lobo',    hp: 0.9, atk: 1.0, speed: 62, range: 24, size: 36, ai: 'charger', atkCd: 1.1, sprite: { shape: 'wolf', color: '#78716c', eye: '#fde047' } },
-  bandido: { icon: '🥷', name: 'Bandido', hp: 1.1, atk: 1.1, speed: 48, range: 26, size: 40, ai: 'melee',   atkCd: 1.2, sprite: { shape: 'humanoid', body: '#7c2d12', skin: '#e0b48a', head: 'hood', hood: '#3f3f46', weapon: 'dagger' } },
+  bandido: { icon: '🥷', name: 'Bandido', hp: 1.1, atk: 1.1, speed: 48, range: 26, size: 40, ai: 'melee',   atkCd: 1.2, sprite: { shape: 'humanoid', body: '#7c2d12', skin: '#e0b48a', head: 'hood', hood: '#3f3f46', mask: '#991b1b', weapon: 'dagger' } },
   // Desierto
   escorpion:        { icon: '🦂', name: 'Escorpión',            hp: 1.0, atk: 1.1, speed: 50, range: 26, size: 36, ai: 'melee',  atkCd: 1.1, sprite: { shape: 'scorpion', color: '#b45309', sting: '#84cc16' } },
   momia:            { icon: '🧟', name: 'Momia',                hp: 1.6, atk: 0.9, speed: 26, range: 24, size: 42, ai: 'melee',  atkCd: 1.4, sprite: { shape: 'humanoid', body: '#d6cfb4', skin: '#d6cfb4', head: 'wrap', eye: '#facc15' } },
   bandido_desierto: { icon: '🏹', name: 'Arquero del desierto', hp: 0.9, atk: 1.2, speed: 42, range: 170, size: 40, ai: 'ranged', atkCd: 2.0, proj: 'arrow', sprite: { shape: 'humanoid', body: '#c2410c', skin: '#c08457', head: 'turban', hood: '#fde68a', weapon: 'bow' } },
   // Hielo
-  lobo_hielo:         { icon: '🐺', name: 'Lobo de hielo',      hp: 1.0, atk: 1.1, speed: 66, range: 24, size: 38, ai: 'charger', atkCd: 1.0, sprite: { shape: 'wolf', color: '#cbd5e1', eye: '#38bdf8', aura: '#7dd3fc' } },
-  golem_hielo:        { icon: '🗿', name: 'Gólem de hielo',     hp: 2.2, atk: 1.3, speed: 22, range: 30, size: 46, ai: 'tank',    atkCd: 1.8, sprite: { shape: 'golem', color: '#93c5fd', glow: '#e0f2fe' } },
-  guerrero_congelado: { icon: '🥶', name: 'Guerrero congelado', hp: 1.3, atk: 1.2, speed: 40, range: 28, size: 42, ai: 'melee',   atkCd: 1.2, sprite: { shape: 'humanoid', body: '#3b82f6', skin: '#bfdbfe', head: 'helmet', weapon: 'sword', eye: '#e0f2fe' } },
+  lobo_hielo:         { icon: '🐺', name: 'Lobo de hielo',      hp: 1.0, atk: 1.1, speed: 66, range: 24, size: 38, ai: 'charger', atkCd: 1.0, resist: 'hielo', sprite: { shape: 'wolf', color: '#cbd5e1', eye: '#38bdf8', aura: '#7dd3fc' } },
+  golem_hielo:        { icon: '🗿', name: 'Gólem de hielo',     hp: 2.2, atk: 1.3, speed: 22, range: 30, size: 46, ai: 'tank',    atkCd: 1.8, resist: 'hielo', sprite: { shape: 'golem', color: '#93c5fd', glow: '#e0f2fe' } },
+  guerrero_congelado: { icon: '🥶', name: 'Guerrero congelado', hp: 1.3, atk: 1.2, speed: 40, range: 28, size: 42, ai: 'melee',   atkCd: 1.2, resist: 'hielo', sprite: { shape: 'humanoid', body: '#3b82f6', skin: '#bfdbfe', head: 'helmet', weapon: 'sword', eye: '#e0f2fe', icicles: true } },
   // Volcán
-  demonio:        { icon: '👹', name: 'Demonio',           hp: 1.2, atk: 1.3, speed: 50, range: 26, size: 40, ai: 'melee',  atkCd: 1.1, sprite: { shape: 'humanoid', body: '#450a0a', skin: '#dc2626', head: 'horns', weapon: 'claw', wings: true, eye: '#fde047' } },
-  criatura_fuego: { icon: '🔥', name: 'Criatura de fuego', hp: 0.9, atk: 1.2, speed: 50, range: 150, size: 32, ai: 'ranged', atkCd: 2.2, proj: 'fireball', sprite: { shape: 'flame', color: '#f97316' } },
-  golem_lava:     { icon: '🪨', name: 'Gólem de lava',     hp: 2.3, atk: 1.4, speed: 22, range: 30, size: 48, ai: 'tank',   atkCd: 1.8, sprite: { shape: 'golem', color: '#57190f', glow: '#fb923c' } },
+  demonio:        { icon: '👹', name: 'Demonio',           hp: 1.2, atk: 1.3, speed: 50, range: 26, size: 40, ai: 'melee',  atkCd: 1.1, resist: 'fuego', sprite: { shape: 'humanoid', body: '#450a0a', skin: '#dc2626', head: 'horns', weapon: 'claw', wings: true, tail: true, eye: '#fde047' } },
+  criatura_fuego: { icon: '🔥', name: 'Criatura de fuego', hp: 0.9, atk: 1.2, speed: 50, range: 150, size: 32, ai: 'ranged', atkCd: 2.2, proj: 'fireball', resist: 'fuego', sprite: { shape: 'flame', color: '#f97316' } },
+  golem_lava:     { icon: '🪨', name: 'Gólem de lava',     hp: 2.3, atk: 1.4, speed: 22, range: 30, size: 48, ai: 'tank',   atkCd: 1.8, resist: 'fuego', sprite: { shape: 'golem', color: '#57190f', glow: '#fb923c' } },
   // Reino Oscuro
-  caballero_oscuro: { icon: '🛡️', name: 'Caballero oscuro', hp: 1.6, atk: 1.3, speed: 40, range: 28, size: 44, ai: 'melee',  atkCd: 1.2, sprite: { shape: 'humanoid', body: '#1f2937', skin: '#374151', head: 'helmet', weapon: 'sword', eye: '#ef4444' } },
+  caballero_oscuro: { icon: '🛡️', name: 'Caballero oscuro', hp: 1.6, atk: 1.3, speed: 40, range: 28, size: 44, ai: 'melee',  atkCd: 1.2, sprite: { shape: 'humanoid', body: '#1f2937', skin: '#374151', head: 'helmet', weapon: 'sword', eye: '#ef4444', cape: '#450a0a', spikes: true } },
   mago_oscuro:      { icon: '🧙', name: 'Mago oscuro',      hp: 0.9, atk: 1.5, speed: 38, range: 180, size: 42, ai: 'ranged', atkCd: 2.1, proj: 'darkorb', sprite: { shape: 'humanoid', body: '#4c1d95', skin: '#a78bfa', head: 'wizard', hood: '#2e1065', weapon: 'staff', eye: '#f0abfc' } },
   criatura_maldita: { icon: '👻', name: 'Criatura maldita', hp: 1.0, atk: 1.2, speed: 58, range: 24, size: 38, ai: 'melee',  atkCd: 1.0, float: true, sprite: { shape: 'ghost', color: '#9333ea', eye: '#f0abfc' } },
 
@@ -171,17 +173,17 @@ const ENEMIES = {
   },
   golem_hielo_boss: {
     icon: '🗿', name: 'Gólem de Hielo', boss: true, hp: 26, atk: 1.8, speed: 28, range: 56, size: 96, ai: 'melee', atkCd: 1.6,
-    sprite: { shape: 'golem', color: '#bae6fd', glow: '#ffffff', crystals: true, crown: true }, proj: 'ice', zoneFx: 'ice',
+    resist: 'hielo', sprite: { shape: 'golem', color: '#bae6fd', glow: '#ffffff', crystals: true, crown: true }, proj: 'ice', zoneFx: 'ice',
     attacks: ['zones', 'slam', 'leap', 'summon:lobo_hielo', 'spin'], specialCd: 3.8,
   },
   dragon: {
     icon: '🐉', name: 'Dragón Volcánico', boss: true, hp: 30, atk: 1.9, speed: 46, range: 64, size: 110, ai: 'melee', atkCd: 1.4,
-    sprite: { shape: 'dragon', color: '#b91c1c', belly: '#fbbf24' }, proj: 'fireball', zoneFx: 'meteor',
+    resist: 'fuego', sprite: { shape: 'dragon', color: '#b91c1c', belly: '#fbbf24' }, proj: 'fireball', zoneFx: 'meteor',
     attacks: ['breath', 'zones', 'charge', 'lob', 'volley'], specialCd: 3.6,
   },
   caballero_maldito: {
     icon: '💀', name: 'Caballero Maldito', boss: true, hp: 34, atk: 2.0, speed: 52, range: 54, size: 96, ai: 'melee', atkCd: 1.2,
-    sprite: { shape: 'humanoid', body: '#111827', skin: '#1f2937', head: 'crown', weapon: 'sword', eye: '#a855f7', aura: '#7e22ce' }, proj: 'darkorb', zoneFx: 'dark',
+    sprite: { shape: 'humanoid', body: '#111827', skin: '#1f2937', head: 'crown', weapon: 'sword', eye: '#a855f7', aura: '#7e22ce', cape: '#3b0764', spikes: true }, proj: 'darkorb', zoneFx: 'dark',
     attacks: ['charge', 'spin', 'zones', 'summon:criatura_maldita', 'leap', 'volley'], specialCd: 3.4,
   },
 };
@@ -319,13 +321,13 @@ const WORLDS = [
 
 /* ---------- Balance ---------- */
 const BALANCE = {
-  hpBase: 30, hpGrowth: 1.145,       // vida enemiga por etapa
+  hpBase: 30, hpGrowth: 1.15,        // vida enemiga por etapa
   atkBase: 6, atkGrowth: 1.145,      // daño enemigo por etapa
   xpBase: 6, xpGrowth: 1.14,
   coinBase: 3, coinGrowth: 1.13,
   powerBase: 85, powerGrowth: 1.145, // poder recomendado
-  enemyDmgBase: 1.9, enemyDmgStep: 0.1,  // multiplicador extra de daño enemigo (crece por etapa)
-  bossDmg: 1.4, bossHp: 1.3,
+  enemyDmgBase: 2.05, enemyDmgStep: 0.1, // multiplicador extra de daño enemigo (crece por etapa)
+  bossDmg: 0.85, bossHp: 1.35, bossHitCap: 0.22, hitCap: 0.35, // los jefes no quitan más del 22 % de la vida por golpe
   attackRate: 1.8, hitDamage: 0.7,  // golpes por segundo (x velocidad) y daño de cada golpe
   levelHp: 10, levelDmg: 2, levelDef: 1, pointsPerLevel: 2,
   pointHp: 8, pointDmg: 1.5, pointDef: 1, pointSpd: 0.03,
@@ -335,11 +337,11 @@ const BALANCE = {
    Las primeras etapas enseñan a jugar: menos vida y daño enemigo y
    menos enemigos. A partir de la etapa 5 se usa el escalado normal. */
 const EARLY_STAGES = {
-  1: { hp: 0.45, atk: 0.3,  count: 4, alive: 2 },   // casi un tutorial
-  2: { hp: 0.6,  atk: 0.45, count: 5, alive: 2 },
-  3: { hp: 0.75, atk: 0.62, count: 6, alive: 3 },
-  4: { hp: 0.88, atk: 0.8,  count: 7, alive: 3 },
-  5: { hp: 0.85, atk: 0.85 },                        // primer jefe: duro pero justo
+  1: { hp: 0.55, atk: 0.4,  count: 5, alive: 2 },   // casi un tutorial
+  2: { hp: 0.72, atk: 0.58, count: 6, alive: 3 },
+  3: { hp: 0.86, atk: 0.75, count: 7, alive: 3 },
+  4: { hp: 0.96, atk: 0.9,  count: 8, alive: 3 },
+  5: { hp: 0.9,  atk: 0.95 },                        // primer jefe: duro pero justo
 };
 
 /* ---------- Recompensas de primera victoria ----------
@@ -432,7 +434,7 @@ function stageInfo(stage) {
     xp: Math.round(BALANCE.xpBase * Math.pow(BALANCE.xpGrowth, s)),
     coins: Math.round(BALANCE.coinBase * Math.pow(BALANCE.coinGrowth, s)),
     power,
-    enemyCount: ease.count || Math.min(18, 6 + Math.floor(stage * 0.6)),
+    enemyCount: ease.count || Math.min(20, 7 + Math.floor(stage * 0.6)),
     maxAlive: ease.alive || Math.min(4, 2 + Math.floor(stage / 6)),
     eliteChance: stage < 2 ? 0 : Math.min(0.1, 0.05 + stage * 0.002),
   };

@@ -27,7 +27,7 @@ const UI = (() => {
 
   /* ---------- Navegación ---------- */
   function show(id) {
-    if (current === 'battle' && id !== 'battle') Battle.stop();
+    if (current === 'battle' && id !== 'battle') { Battle.stop(); $('rotate-hint').hidden = true; pausedByHint = false; }
     current = id;
     document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === 'scr-' + id));
     $('topbar').hidden = id === 'battle';
@@ -156,17 +156,24 @@ const UI = (() => {
     const cv = $('menu-scene');
     if (!cv) return;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    let W = 0, H = 0, HY = 0, bg = null, feet = 0, scale = 3;
+    let W = 0, H = 0, HY = 0, bg = null, feet = 0, scale = 3, knightX = 0;
     const sizeUp = () => {
       const r = cv.getBoundingClientRect();
       W = Math.max(1, Math.round(r.width)); H = Math.max(1, Math.round(r.height));
       cv.width = W * dpr; cv.height = H * dpr;
-      const ui = document.querySelector('.world-strip');
-      const bottomUi = ui ? H - (ui.getBoundingClientRect().top - r.top) : 240;
-      feet = H - bottomUi - 6;
-      const logo = document.querySelector('.logo');
-      const top = logo ? logo.getBoundingClientRect().bottom - r.top : 140;
-      scale = Math.max(1.6, Math.min(3.4, (feet - top) / 66));
+      if (W > H * 1.15) {
+        // Horizontal: el caballero ocupa la mitad izquierda y los botones la derecha
+        knightX = W * 0.27; feet = H - 24;
+        scale = Math.max(1.6, Math.min(3.6, (H - 90) / 66));
+      } else {
+        const ui = document.querySelector('.world-strip');
+        const bottomUi = ui ? H - (ui.getBoundingClientRect().top - r.top) : 240;
+        feet = H - bottomUi - 6;
+        const logo = document.querySelector('.logo');
+        const top = logo ? logo.getBoundingClientRect().bottom - r.top : 140;
+        scale = Math.max(1.6, Math.min(3.4, (feet - top) / 66));
+        knightX = W / 2;
+      }
       HY = Math.round(feet - 26 * scale);
       bg = Sprites.background(world.theme, W, H, HY, dpr);
     };
@@ -188,7 +195,7 @@ const UI = (() => {
       // Jefe del mundo, enorme y en penumbra al fondo
       c.save();
       c.globalAlpha = 0.32;
-      fake.x = W * 0.8 + Math.sin(time * 0.4) * 6; fake.y = HY + 8; fake.size = boss.size * Math.min(1.8, scale * 0.55);
+      fake.x = (W > H * 1.15 ? W * 0.5 : W * 0.8) + Math.sin(time * 0.4) * 6; fake.y = HY + 8; fake.size = boss.size * Math.min(1.8, scale * 0.55);
       fake.walk = time * 2;
       Sprites.enemy(c, fake, time);
       c.restore();
@@ -196,10 +203,10 @@ const UI = (() => {
       fog.addColorStop(0, 'rgba(15,12,29,0)'); fog.addColorStop(1, 'rgba(15,12,29,.35)');
       c.fillStyle = fog; c.fillRect(0, HY - 120, W, 150);
       // Luz bajo el héroe
-      const glow = c.createRadialGradient(W / 2, feet, 4, W / 2, feet, 60 * scale);
+      const glow = c.createRadialGradient(knightX, feet, 4, knightX, feet, 60 * scale);
       glow.addColorStop(0, 'rgba(232,181,74,.35)'); glow.addColorStop(1, 'rgba(232,181,74,0)');
       c.fillStyle = glow; c.fillRect(0, feet - 60 * scale, W, 120 * scale);
-      Sprites.knight(c, W / 2 - 6 * scale, feet, scale, { face: 1, walk: 0, swing: -1, heavy: false, time,
+      Sprites.knight(c, knightX - 6 * scale, feet, scale, { face: 1, walk: 0, swing: -1, heavy: false, time,
         weaponColor: ITEMS[s.equip.weapon].color, armorColor: ITEMS[s.equip.armor].color, flash: false, helmet: s.settings.helmet, rank: Game.rank() });
       // Partículas del ambiente
       for (const m of motes) {
@@ -223,6 +230,7 @@ const UI = (() => {
     if (claim) out.push({ text: '📜 ¡Misión lista!', to: 'missions', ready: true });
     if (s.points) out.push({ text: `👤 ${s.points} puntos`, to: 'char', ready: true });
     if (s.tickets) out.push({ text: `🎟️ ${s.tickets} tirada${s.tickets > 1 ? 's' : ''}`, to: 'wheel', ready: true });
+    if (SKILL_ORDER.some(id => s.skills[id] && s.skills[id] < MAX_SKILL_LEVEL && s.coins >= SKILL_UPGRADE(s.skills[id]).coins && s.gems >= SKILL_UPGRADE(s.skills[id]).gems)) out.push({ text: '✨ Mejora una habilidad', to: 'char', ready: true });
     // Forja: la receta más cercana
     const hw = Game.highestWorld();
     let best = null;
@@ -366,8 +374,36 @@ const UI = (() => {
   /* ---------- Combate ---------- */
   function enterStage(stage) {
     closeModal();
+    if (S().settings.landscape) goLandscape();
     show('battle');
     Battle.start(stage, onBattleEnd);
+    checkOrientation();
+  }
+
+  /* ---------- Modo horizontal ---------- */
+  let portraitOk = false, pausedByHint = false;
+  /** Pide pantalla completa en horizontal (solo funciona tras un toque y si el navegador lo permite). */
+  function goLandscape() {
+    try {
+      const el = document.documentElement;
+      const p = el.requestFullscreen ? el.requestFullscreen({ navigationUI: 'hide' }) : null;
+      const lock = () => { try { const r = screen.orientation && screen.orientation.lock && screen.orientation.lock('landscape'); if (r && r.catch) r.catch(() => {}); } catch (e) {} };
+      if (p && p.then) p.then(lock).catch(() => {}); else lock();
+    } catch (e) { /* no disponible */ }
+  }
+  const isPortrait = () => window.innerHeight > window.innerWidth;
+  /** En combate, si el teléfono está vertical, pausa y pide girarlo. */
+  function checkOrientation() {
+    const hint = $('rotate-hint');
+    const want = current === 'battle' && Battle.active && S().settings.landscape && !portraitOk && isPortrait() && matchMedia('(pointer: coarse)').matches;
+    if (want && hint.hidden) {
+      hint.hidden = false;
+      if (!Battle.paused) { Battle.pause(); pausedByHint = true; }
+    } else if (!want && !hint.hidden) {
+      hint.hidden = true;
+      if (pausedByHint && $('modal').hidden) Battle.resume();
+      pausedByHint = false;
+    }
   }
 
   function onBattleEnd(r) {
@@ -877,11 +913,22 @@ const UI = (() => {
     const skills = SKILL_ORDER.map(id => {
       const sk = SKILLS[id], lvl = s.skills[id] || 0;
       const how = WORLDS.find(wd => wd.bossSkill === id);
-      return `<div class="card skill-card ${lvl ? '' : 'locked'}">
+      const firstStage = Object.keys(FIRST_CLEAR).find(st => FIRST_CLEAR[st].some(p => p.skill === id));
+      const unlockText = firstStage ? `Se desbloquea al completar la etapa ${firstStage}.` : `Se desbloquea al vencer a ${how ? ENEMIES[how.boss].name : 'un jefe'} o en la ruleta.`;
+      const dmgAt = l => (sk.mult * (1 + 0.2 * (l - 1))).toFixed(1);
+      const cdAt = l => (sk.cd * (1 - 0.05 * (l - 1))).toFixed(1);
+      let up = '';
+      if (lvl && lvl < MAX_SKILL_LEVEL) {
+        const c = SKILL_UPGRADE(lvl), can = s.coins >= c.coins && s.gems >= c.gems;
+        up = `<div class="stat-line"><span class="pill up">💥 x${dmgAt(lvl)} → x${dmgAt(lvl + 1)}</span><span class="pill up">⏱️ ${cdAt(lvl)} → ${cdAt(lvl + 1)} s</span></div>
+          <div class="stat-line">${costPills({}, c.coins, c.gems)}</div>
+          <button class="btn small" data-act="skill-up" data-id="${id}" ${can ? '' : 'disabled'}>⬆️ Mejorar a nivel ${lvl + 1}</button>`;
+      } else if (lvl) up = '<div class="item-meta">⭐ Nivel máximo</div>';
+      return `<div class="card skill-card ${lvl ? '' : 'locked'}" id="skill-${id}">
         <div class="big">${lvl ? sk.icon : '🔒'}</div>
-        <div><b>${sk.name}</b> ${lvl ? `<span class="stars">${'★'.repeat(lvl)}${'☆'.repeat(MAX_SKILL_LEVEL - lvl)}</span>` : ''}
+        <div class="skill-body"><b>${sk.name}</b> ${lvl ? `<span class="stars">${'★'.repeat(lvl)}${'☆'.repeat(MAX_SKILL_LEVEL - lvl)}</span>` : ''}
         <p>${sk.desc}</p>
-        <p>${lvl ? `Recarga ${Battle.skillCd(id).toFixed(1)} s · daño x${(sk.mult * (1 + 0.2 * (lvl - 1))).toFixed(1)}` : `Se desbloquea al vencer a ${how ? ENEMIES[how.boss].name : 'un jefe'} o en la ruleta.`}</p></div>
+        <p>${lvl ? `Recarga ${cdAt(lvl)} s · daño x${dmgAt(lvl)}` : unlockText}</p>${up}</div>
       </div>`;
     }).join('');
     $('scr-char').innerHTML = `${head('👤 Personaje')}
@@ -939,6 +986,7 @@ const UI = (() => {
     const s = S();
     $('scr-settings').innerHTML = `${head('⚙️ Ajustes')}
       <div class="card setting"><div><b>🔊 Sonido</b><div class="item-meta">Efectos de sonido del juego</div></div><button class="switch ${s.settings.sound ? 'on' : ''}" data-act="toggle" data-key="sound" aria-label="Sonido"></button></div>
+      <div class="card setting"><div><b>📱 Combate en horizontal</b><div class="item-meta">Pantalla completa y pide girar el teléfono al combatir</div></div><button class="switch ${s.settings.landscape ? 'on' : ''}" data-act="toggle" data-key="landscape" aria-label="Combate en horizontal"></button></div>
       <div class="card setting"><div><b>⛑️ Casco</b><div class="item-meta">Muestra el yelmo del caballero</div></div><button class="switch ${s.settings.helmet ? 'on' : ''}" data-act="toggle" data-key="helmet" aria-label="Casco"></button></div>
       <div class="card setting"><div><b>📳 Vibración</b><div class="item-meta">Vibra al recibir daño (si tu teléfono lo permite)</div></div><button class="switch ${s.settings.vibrate ? 'on' : ''}" data-act="toggle" data-key="vibrate" aria-label="Vibración"></button></div>
       <div class="card" style="margin-bottom:10px">
@@ -992,6 +1040,18 @@ const UI = (() => {
       Sfx.play('forge'); toast(`Equipaste ${it.name}`);
     },
     claim: d => claimMission(d.i),
+    'portrait-ok': () => { portraitOk = true; checkOrientation(); },
+    'skill-up': d => {
+      const s = S(), lvl = s.skills[d.id] || 0;
+      if (!lvl || lvl >= MAX_SKILL_LEVEL) return;
+      const c = SKILL_UPGRADE(lvl);
+      if (!Game.payCost({}, c.coins, c.gems)) { toast('Te faltan monedas o gemas', true); return; }
+      s.skills[d.id] = lvl + 1;
+      Game.save(); Sfx.play('legendary'); vibrate(50); confetti(30, ['#7dd3fc', '#fde047', '#ffffff']);
+      toast(`${SKILLS[d.id].icon} ${SKILLS[d.id].name} sube a nivel ${lvl + 1}`);
+      RENDER.char(); refreshTop();
+      const card = $('skill-' + d.id); if (card) card.classList.add('forge-flash');
+    },
     'buy-potion': d => {
       const pd = POTIONS[d.id];
       if (S().coins < pd.price) return;
@@ -1098,6 +1158,8 @@ const UI = (() => {
     });
     window.addEventListener('keyup', e => { if (KEYS[e.key]) Battle.setInput(KEYS[e.key], false); });
     window.addEventListener('blur', () => { ['left', 'right', 'up', 'down', 'attack'].forEach(k => Battle.setInput(k, false)); resetStick(); });
+    window.addEventListener('resize', checkOrientation);
+    if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener('change', checkOrientation);
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && current === 'battle' && Battle.active && !Battle.paused && $('modal').hidden) openPause();
     });
