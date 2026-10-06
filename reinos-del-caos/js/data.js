@@ -282,21 +282,21 @@ const STAGES_PER_WORLD = 5;
 const WORLDS = [
   {
     id: 1, name: 'Bosque', icon: '🌲', theme: 'bosque', wheel: 'madera',
-    enemies: ['slime', 'lobo', 'bandido'], boss: 'rey_lobo', bossDrop: 'colmillo_rey', bossSkill: 'fuego',
+    enemies: ['slime', 'lobo', 'bandido'], boss: 'rey_lobo', bossDrop: 'colmillo_rey', bossSkill: 'hielo',
     drops: { madera: 34, piedra: 28, hierro: 22, cristal: 2 },
     chestItems: ['espada_oxidada', 'armadura_basica', 'espada_hierro'],
     stageNames: ['Claro del bosque', 'Sendero de los lobos', 'Campamento bandido', 'Bosque profundo', 'Guarida del Rey Lobo'],
   },
   {
     id: 2, name: 'Desierto', icon: '🏜️', theme: 'desierto', wheel: 'hierro',
-    enemies: ['escorpion', 'momia', 'bandido_desierto'], boss: 'reina_escorpion', bossDrop: 'aguijon_reina', bossSkill: 'hielo',
+    enemies: ['escorpion', 'momia', 'bandido_desierto'], boss: 'reina_escorpion', bossDrop: 'aguijon_reina', bossSkill: 'rayo',
     drops: { hierro: 30, cristal: 20, oro: 14, esencia: 7, piedra: 12 },
     chestItems: ['espada_hierro', 'armadura_cuero', 'espada_acero'],
     stageNames: ['Dunas ardientes', 'Oasis perdido', 'Tumbas olvidadas', 'Templo de arena', 'Nido de la Reina'],
   },
   {
     id: 3, name: 'Montañas de Hielo', icon: '🏔️', theme: 'hielo', wheel: 'hielo',
-    enemies: ['lobo_hielo', 'golem_hielo', 'guerrero_congelado'], boss: 'golem_hielo_boss', bossDrop: 'nucleo_hielo', bossSkill: 'rayo',
+    enemies: ['lobo_hielo', 'golem_hielo', 'guerrero_congelado'], boss: 'golem_hielo_boss', bossDrop: 'nucleo_hielo', bossSkill: null,
     drops: { cristal_hielo: 30, hierro: 24, esencia_hielo: 11, oro: 12, cristal: 6 },
     chestItems: ['armadura_reforzada', 'cimitarra', 'armadura_congelada'],
     stageNames: ['Paso nevado', 'Lago congelado', 'Cumbre helada', 'Fortaleza de escarcha', 'Corazón del glaciar'],
@@ -331,6 +331,83 @@ const BALANCE = {
   pointHp: 8, pointDmg: 1.5, pointDef: 1, pointSpd: 0.03,
 };
 
+/* ---------- Inicio suave ----------
+   Las primeras etapas enseñan a jugar: menos vida y daño enemigo y
+   menos enemigos. A partir de la etapa 5 se usa el escalado normal. */
+const EARLY_STAGES = {
+  1: { hp: 0.45, atk: 0.3,  count: 4, alive: 2 },   // casi un tutorial
+  2: { hp: 0.6,  atk: 0.45, count: 5, alive: 2 },
+  3: { hp: 0.75, atk: 0.62, count: 6, alive: 3 },
+  4: { hp: 0.88, atk: 0.8,  count: 7, alive: 3 },
+  5: { hp: 0.85, atk: 0.85 },                        // primer jefe: duro pero justo
+};
+
+/* ---------- Recompensas de primera victoria ----------
+   Se dan una sola vez, además del cofre. Aquí está la primera mejora
+   temprana (espada oxidada al ganar la etapa 1). */
+const FIRST_CLEAR = {
+  1: [{ item: 'espada_oxidada' }],
+  2: [{ item: 'armadura_basica' }, { potion: 'pocion', qty: 2 }],
+  3: [{ skill: 'fuego' }, { tickets: 1 }],
+  4: [{ mat: 'hierro', qty: 18 }, { mat: 'piedra', qty: 10 }],
+  6: [{ potion: 'pocion_grande', qty: 1 }],
+  8: [{ mat: 'cristal', qty: 6 }],
+  11: [{ tickets: 1 }],
+  16: [{ tickets: 1 }],
+  21: [{ tickets: 2 }],
+};
+
+/* ---------- Tickets de ruleta ----------
+   🎟️ sirven para girar cualquier ruleta desbloqueada. Cada etapa
+   completada da un fragmento; con TICKET_SHARDS se forma un ticket. */
+const TICKET_SHARDS = 3;
+
+/* ---------- Combo de derrotas ----------
+   Sube al derrotar enemigos seguidos y se pierde si pasan COMBO_WINDOW
+   segundos sin derrotar a nadie. Cada nivel de combo suma daño. */
+const COMBO_WINDOW = 4;
+const COMBO_DMG_PER = 0.03, COMBO_DMG_MAX = 0.3;
+const COMBO_REWARDS = {
+  5:  { label: 'oro', coins: 4 },                    // coins = x monedas de la etapa
+  10: { label: 'materiales', coins: 6, mats: 2 },
+  15: { label: 'fragmento de ticket', shards: 1 },
+  20: { label: '¡ticket y gemas!', tickets: 1, gems: 2 },
+  30: { label: '¡botín legendario!', tickets: 1, gems: 4, mats: 4 },
+};
+
+/* ---------- Racha de victorias ----------
+   Cada victoria seguida suma; perder o abandonar la reinicia. */
+const STREAK = { bonusPer: 0.05, bonusMax: 0.5, ticketAt: [3, 5, 10, 15, 20] };
+
+/* ---------- Rangos del caballero (evolución visual) ---------- */
+const RANKS = [
+  { level: 1,  name: 'Novato',         color: '#a8a29e' },
+  { level: 5,  name: 'Guerrero',       color: '#4ade80' },
+  { level: 10, name: 'Caballero',      color: '#60a5fa' },
+  { level: 17, name: 'Veterano',       color: '#c084fc' },
+  { level: 25, name: 'Legendario',     color: '#fb923c' },
+  { level: 34, name: 'Señor del Caos', color: '#f43f5e' },
+];
+function rankOf(level) {
+  let r = 0;
+  RANKS.forEach((k, i) => { if (level >= k.level) r = i; });
+  return r;
+}
+
+/* ---------- Misiones diarias ----------
+   Cada día se eligen 3. goal puede depender del mundo alcanzado.
+   ev: evento que las hace avanzar (kill, stage, coins, rare, combo, elite). */
+const MISSIONS = [
+  { id: 'kill',   ev: 'kill',   text: n => `Derrota ${n} enemigos`,            goal: w => 15 + w * 5,  reward: w => ({ coins: 60 * w }) },
+  { id: 'stage',  ev: 'stage',  text: n => `Completa ${n} etapas`,             goal: () => 3,          reward: () => ({ tickets: 1 }) },
+  { id: 'coins',  ev: 'coins',  text: n => `Consigue ${n} monedas en combate`, goal: w => 150 * w * w + 150, reward: () => ({ gems: 3 }) },
+  { id: 'rare',   ev: 'rare',   text: n => `Consigue ${n} materiales raros o mejores`, goal: () => 2, reward: w => ({ gems: 2 + w }) },
+  { id: 'combo',  ev: 'combo',  text: n => `Haz un combo de x${n}`,            goal: w => (w === 1 ? 6 : 10),          reward: () => ({ tickets: 1 }) },
+  { id: 'elite',  ev: 'elite',  text: n => `Derrota ${n} enemigo${n > 1 ? 's' : ''} élite`, goal: () => 1, reward: w => ({ chest: true, coins: 40 * w }) },
+  { id: 'streak', ev: 'streak', text: n => `Consigue una racha de x${n}`,      goal: () => 3,          reward: () => ({ gems: 3 }) },
+];
+const MISSIONS_PER_DAY = 3;
+
 /* ---------- Funciones de consulta ---------- */
 const MAX_STAGE = WORLDS.length * STAGES_PER_WORLD;
 
@@ -343,16 +420,21 @@ function stageIndexInWorld(stage) { return (stage - 1) % STAGES_PER_WORLD; }
 function stageInfo(stage) {
   const world = worldOfStage(stage);
   const s = stage - 1;
+  const ease = EARLY_STAGES[stage] || {};
+  const power = Math.round(BALANCE.powerBase * Math.pow(BALANCE.powerGrowth, s) * (ease.atk ? 0.5 + ease.atk * 0.5 : 1));
   return {
     stage, world, boss: isBossStage(stage),
     name: world.stageNames[stageIndexInWorld(stage)] || `Etapa ${stage}`,
-    hp: BALANCE.hpBase * Math.pow(BALANCE.hpGrowth, s),
-    atk: BALANCE.atkBase * Math.pow(BALANCE.atkGrowth, s),
+    hp: BALANCE.hpBase * Math.pow(BALANCE.hpGrowth, s) * (ease.hp || 1),
+    atk: BALANCE.atkBase * Math.pow(BALANCE.atkGrowth, s) * (ease.atk || 1),
+    // Multiplicador extra de daño que crece por etapa (suavizado al inicio por ease.atk)
+    dmgMult: BALANCE.enemyDmgBase + BALANCE.enemyDmgStep * s,
     xp: Math.round(BALANCE.xpBase * Math.pow(BALANCE.xpGrowth, s)),
     coins: Math.round(BALANCE.coinBase * Math.pow(BALANCE.coinGrowth, s)),
-    power: Math.round(BALANCE.powerBase * Math.pow(BALANCE.powerGrowth, s)),
-    enemyCount: Math.min(18, 6 + Math.floor(stage * 0.6)),
-    maxAlive: Math.min(4, 2 + Math.floor(stage / 6)),
+    power,
+    enemyCount: ease.count || Math.min(18, 6 + Math.floor(stage * 0.6)),
+    maxAlive: ease.alive || Math.min(4, 2 + Math.floor(stage / 6)),
+    eliteChance: stage < 2 ? 0 : Math.min(0.1, 0.05 + stage * 0.002),
   };
 }
 

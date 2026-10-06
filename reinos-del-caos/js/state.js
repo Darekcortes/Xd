@@ -20,7 +20,11 @@ const Game = (() => {
       skills: {},                // { habilidad: nivel }
       bossKills: {},
       settings: { sound: true, vibrate: true, helmet: false },
-      stats: { kills: 0, spins: 0, crafted: 0, deaths: 0 },
+      stats: { kills: 0, spins: 0, crafted: 0, deaths: 0, elites: 0, bestCombo: 0 },
+      tickets: 1, ticketShards: 0,   // 🎟️ tickets de ruleta y fragmentos
+      streak: 0, bestStreak: 0,      // racha de victorias seguidas
+      daily: null,                   // misiones del día
+      rank: 0,                       // último rango del caballero celebrado
     };
   }
 
@@ -47,6 +51,7 @@ const Game = (() => {
           S.equip.armor = 'ropa_viajero';
         }
         S.unlocked = Math.min(Math.max(1, S.unlocked), MAX_STAGE);
+        if (data.rank === undefined) S.rank = rankOf(S.level);   // no celebrar rangos ya alcanzados
       }
     } catch (e) { S = newState(); }
     Sfx.setEnabled(S.settings.sound);
@@ -130,6 +135,9 @@ const Game = (() => {
     if (prize.mat) { addMat(prize.mat, prize.qty); return `${MATERIALS[prize.mat].icon} ${MATERIALS[prize.mat].name} x${prize.qty}`; }
     if (prize.potion) { S.potions[prize.potion] = (S.potions[prize.potion] || 0) + prize.qty; return `${POTIONS[prize.potion].icon} ${POTIONS[prize.potion].name} x${prize.qty}`; }
     if (prize.gems) { S.gems += prize.gems; return `💎 ${prize.gems} cristales`; }
+    if (prize.tickets) { S.tickets += prize.tickets; return `🎟️ ${prize.tickets} ticket${prize.tickets > 1 ? 's' : ''} de ruleta`; }
+    if (prize.shards) { const t = addShards(prize.shards); return `🧩 ${prize.shards} fragmento${prize.shards > 1 ? 's' : ''} de ticket${t ? ` (¡+${t} 🎟️!)` : ''}`; }
+    if (prize.chest) { return rollChest(Math.max(1, S.unlocked - 1), false).map(grant).join(' · '); }
     if (prize.coins) { S.coins += prize.coins; return `💰 ${prize.coins} monedas`; }
     if (prize.item) { const r = giveItem(prize.item); return `${ITEMS[prize.item].icon} ${ITEMS[prize.item].name} (${r.text})`; }
     if (prize.skill) { const r = giveSkill(prize.skill); return `${SKILLS[prize.skill].icon} ${SKILLS[prize.skill].name} (${r.text})`; }
@@ -142,11 +150,56 @@ const Game = (() => {
     if (p.mat) return { icon: MATERIALS[p.mat].icon, name: `x${p.qty}`, full: `${MATERIALS[p.mat].name} x${p.qty}` };
     if (p.potion) return { icon: POTIONS[p.potion].icon, name: `x${p.qty}`, full: `${POTIONS[p.potion].name} x${p.qty}` };
     if (p.gems) return { icon: '💎', name: `x${p.gems}`, full: `${p.gems} cristales` };
+    if (p.tickets) return { icon: '🎟️', name: `x${p.tickets}`, full: `${p.tickets} ticket${p.tickets > 1 ? 's' : ''}` };
     if (p.coins) return { icon: '💰', name: `x${p.coins}`, full: `${p.coins} monedas` };
     if (p.item) return { icon: ITEMS[p.item].icon, name: ITEMS[p.item].name.split(' ').slice(-1)[0], full: ITEMS[p.item].name };
     if (p.skill) return { icon: SKILLS[p.skill].icon, name: 'Habilidad', full: SKILLS[p.skill].name };
     return { icon: '?', name: '', full: '' };
   }
+
+  /* ---------- Tickets de ruleta ---------- */
+  /** Suma fragmentos; cada TICKET_SHARDS forman un ticket. Devuelve los tickets creados. */
+  function addShards(n) {
+    S.ticketShards += n;
+    let made = 0;
+    while (S.ticketShards >= TICKET_SHARDS) { S.ticketShards -= TICKET_SHARDS; S.tickets++; made++; }
+    return made;
+  }
+
+  /* ---------- Racha ---------- */
+  const streakBonus = () => Math.min(STREAK.bonusMax, S.streak * STREAK.bonusPer);
+
+  /* ---------- Misiones diarias ---------- */
+  const today = () => { const d = new Date(); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
+  /** Crea las misiones del día (las mismas durante todo el día). */
+  function ensureDaily() {
+    const day = today();
+    if (S.daily && S.daily.day === day) return S.daily;
+    const w = highestWorld();
+    let seed = [...day].reduce((a, ch) => a * 31 + ch.charCodeAt(0), 7) >>> 0;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 4294967296);
+    const pool = MISSIONS.slice();
+    const list = [];
+    while (list.length < MISSIONS_PER_DAY && pool.length) {
+      const m = pool.splice(Math.floor(rnd() * pool.length), 1)[0];
+      list.push({ id: m.id, goal: m.goal(w), progress: 0, claimed: false, reward: m.reward(w) });
+    }
+    S.daily = { day, missions: list, bonusClaimed: false };
+    save();
+    return S.daily;
+  }
+  /** Avanza las misiones con un evento. Para combo y racha cuenta el máximo. Devuelve las recién completadas. */
+  function track(ev, amount) {
+    const d = ensureDaily(), done = [];
+    for (const m of d.missions) {
+      const def = MISSIONS.find(x => x.id === m.id);
+      if (!def || def.ev !== ev || m.progress >= m.goal) continue;
+      m.progress = (ev === 'combo' || ev === 'streak') ? Math.max(m.progress, amount) : m.progress + amount;
+      if (m.progress >= m.goal) { m.progress = m.goal; done.push(m); }
+    }
+    return done;
+  }
+  const missionText = m => MISSIONS.find(x => x.id === m.id).text(m.goal);
 
   /* ---------- Experiencia ---------- */
   function addXp(amount) {
@@ -166,6 +219,8 @@ const Game = (() => {
     const first = !S.cleared[stage];
     S.cleared[stage] = (S.cleared[stage] || 0) + 1;
     if (stage === S.unlocked && S.unlocked < MAX_STAGE) S.unlocked++;
+    S.streak++;
+    S.bestStreak = Math.max(S.bestStreak, S.streak);
     return first;
   }
   const highestWorld = () => worldOfStage(S.unlocked).id;
@@ -186,9 +241,10 @@ const Game = (() => {
     } else if (roll < itemChance + 0.27) {
       rewards.push({ gems: 1 + Math.floor(Math.random() * 2) + (isBoss ? 3 : 0) });
     }
+    if (Math.random() < 0.15 + (isBoss ? 0.5 : 0)) rewards.push({ shards: 1 });
     const matRolls = isBoss ? 4 : 2;
     for (let i = 0; i < matRolls; i++) rewards.push({ mat: weightedPick(world.drops), qty: 2 + Math.floor(Math.random() * (3 + depth)) });
-    rewards.push({ coins: Math.round(info.coins * (isBoss ? 12 : 3)) });
+    rewards.push({ coins: Math.round(info.coins * (isBoss ? 12 : 3) * (1 + streakBonus())) });
     return rewards;
   }
 
@@ -196,5 +252,7 @@ const Game = (() => {
     get S() { return S; },
     load, save, reset, stats, itemStats, matCount, addMat, hasCost, payCost,
     giveItem, giveSkill, grant, prizeLabel, addXp, completeStage, highestWorld, rollChest,
+    addShards, streakBonus, ensureDaily, track, missionText,
+    rank: () => rankOf(S.level),
   };
 })();

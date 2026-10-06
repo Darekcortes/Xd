@@ -87,12 +87,29 @@ const Sprites = (() => {
     const F = col => (o.flash ? mix(col, '#ff3b3b', 0.6) : col);
     const steelBase = o.armorColor ? mix(KP.steel, o.armorColor, 0.18) : KP.steel;
     const steel = F(steelBase), steelD = F(mix(steelBase, '#000000', 0.5)), steelL = F(mix(steelBase, '#ffffff', 0.38));
-    const gold = F(KP.gold);
+    // Rango del caballero: los ribetes dorados, emblemas, brillo y aura aparecen al subir de rango
+    const rank = o.rank || 0;
+    const gold = F(rank >= 1 ? KP.gold : '#9aa3b2');
     const legA = Math.sin(o.walk) * 0.55;
 
     const rest = 0.8 + (idle ? Math.sin(t * 2.2) * 0.03 : Math.sin(o.walk) * 0.08);
     const pose = swingPose(o, rest);
 
+    if (rank >= 4) {
+      // Aura dorada (Legendario) o roja del caos (Señor del Caos)
+      const auraCol = rank >= 5 ? '244,63,94' : '251,191,36';
+      const pulse = 0.22 + Math.sin(t * 4) * 0.08;
+      const ag = c.createRadialGradient(x, y - 26 * s, 4 * s, x, y - 26 * s, 34 * s);
+      ag.addColorStop(0, `rgba(${auraCol},${pulse})`); ag.addColorStop(1, `rgba(${auraCol},0)`);
+      c.fillStyle = ag; c.beginPath(); c.ellipse(x, y - 26 * s, 30 * s, 36 * s, 0, 0, Math.PI * 2); c.fill();
+      c.fillStyle = `rgba(${auraCol},.9)`;
+      for (let i = 0; i < 5; i++) {
+        const ph = (t * 0.7 + i / 5) % 1;
+        c.globalAlpha = 1 - ph;
+        c.beginPath(); c.arc(x + Math.sin(i * 2.3 + t) * 14 * s, y - ph * 52 * s, 1.3 * s, 0, Math.PI * 2); c.fill();
+      }
+      c.globalAlpha = 1;
+    }
     shadow(c, x, y, 17 * s);
     c.save();
     c.translate(x, y);
@@ -116,8 +133,8 @@ const Sprites = (() => {
     c.lineTo(-9 - wave * 0.6, -2); c.lineTo(-7 - wave * 0.4, -5); c.lineTo(-5, -2);
     c.quadraticCurveTo(-4, -20, -1, -39 + bob);
     c.fill();
-    // Cruz dorada de la capa
-    c.strokeStyle = gold; c.lineWidth = 0.9;
+    // Cruz dorada de la capa (desde el rango Caballero)
+    c.strokeStyle = rank >= 2 ? gold : 'rgba(0,0,0,0)'; c.lineWidth = 0.9;
     const cx = -7.5 - wave * 0.4, cy = -21;
     c.beginPath(); c.moveTo(cx, cy - 4); c.lineTo(cx, cy + 5); c.moveTo(cx - 2.6, cy - 1); c.lineTo(cx + 2.6, cy - 1); c.stroke();
 
@@ -159,8 +176,8 @@ const Sprites = (() => {
     c.strokeStyle = gold; c.lineWidth = 0.8; c.stroke();
     c.strokeStyle = steelD; c.lineWidth = 0.6;
     c.beginPath(); c.moveTo(-6, -30); c.lineTo(6.8, -30); c.stroke();
-    // Emblema dorado del peto
-    c.fillStyle = gold;
+    // Emblema dorado del peto (desde el rango Guerrero)
+    c.fillStyle = rank >= 1 ? gold : steelD;
     c.beginPath(); c.moveTo(2.5, -38.5); c.lineTo(3.4, -35.2); c.lineTo(6, -34.5); c.lineTo(3.4, -33.8); c.lineTo(2.5, -31); c.lineTo(1.6, -33.8); c.lineTo(-1, -34.5); c.lineTo(1.6, -35.2); c.closePath(); c.fill();
 
     // Bufanda / capucha azul
@@ -185,7 +202,8 @@ const Sprites = (() => {
       c.beginPath(); c.moveTo(3.5, -44.5); c.lineTo(6.6, -46); c.lineTo(6.2, -48.5); c.closePath(); c.fill();
       c.fillStyle = F(KP.skinD);
       c.beginPath(); c.ellipse(-1.2, -47.3, 1.2, 1.7, 0, 0, Math.PI * 2); c.fill();
-      c.fillStyle = '#1a120c'; c.fillRect(4, -48.8, 1.5, 1.1);
+      c.fillStyle = rank >= 5 ? '#f43f5e' : '#1a120c'; c.fillRect(4, -48.8, 1.5, 1.1);
+      if (rank >= 5) { c.fillStyle = 'rgba(244,63,94,.45)'; c.beginPath(); c.arc(4.8, -48.3, 2.4, 0, Math.PI * 2); c.fill(); }
       c.fillStyle = F(KP.hair); c.fillRect(3.4, -50.4, 3, 0.8);
       // Pelo oscuro y despeinado
       c.fillStyle = F(KP.hair);
@@ -243,8 +261,10 @@ const Sprites = (() => {
     c.beginPath(); c.moveTo(18, -6.5); c.lineTo(19.8, -5.5); c.lineTo(19.8, 5.5); c.lineTo(18, 6.5); c.lineTo(17.4, 0); c.closePath(); c.fill();
     c.fillRect(19.8, -1.2, 2.2, 2.4);
     const blade = F(o.weaponColor || '#d6dbe4');
+    if (rank >= 3) { c.shadowColor = rank >= 5 ? '#f43f5e' : rank >= 4 ? '#fbbf24' : '#93c5fd'; c.shadowBlur = 8; }
     c.fillStyle = blade;
     c.beginPath(); c.moveTo(21.5, -1.9); c.lineTo(50, -1.4); c.lineTo(54, 0); c.lineTo(50, 1.4); c.lineTo(21.5, 1.9); c.closePath(); c.fill();
+    c.shadowBlur = 0;
     c.fillStyle = 'rgba(255,255,255,.55)'; c.fillRect(22, -1.5, 27, 0.7);
     c.fillStyle = 'rgba(0,0,0,.25)'; c.fillRect(22, 0.2, 25, 0.6);
     c.fillStyle = gold; c.fillRect(22, -0.3, 9, 0.6);

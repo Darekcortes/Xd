@@ -20,6 +20,24 @@ Abre `index.html` y juega: no necesita servidor ni instalación (los scripts se 
 
 En computadora también funciona con teclado: WASD o flechas, Espacio/J atacar, Shift/K rodar, 1-2-3, Q y Esc.
 
+## Progresión y recompensas
+
+- **Inicio suave**: las etapas 1 a 4 tienen enemigos más débiles y menos numerosos (la 1 es casi un tutorial,
+  con consejos en pantalla). El primer jefe es duro pero justo y desde el mundo 2 la dificultad sube.
+- **Primera mejora rápida**: la etapa 1 regala la Espada oxidada, la 2 la Armadura básica y la 3 la habilidad de fuego.
+- **Habilidades**: 🔥 fuego al ganar la etapa 3, ❄️ hielo al vencer al Rey Lobo y ⚡ rayo al vencer a la Reina Escorpión.
+- **Tickets de ruleta 🎟️**: cada etapa da un fragmento 🧩 (3 = 1 ticket); también salen de jefes, élites,
+  combos, rachas, misiones y cofres. Un ticket gira cualquier ruleta desbloqueada.
+- **Combo**: sube al derrotar enemigos seguidos y se pierde tras 4 s sin derrotar a nadie. Da +3 % de daño por nivel
+  (máximo +30 %) y premios en x5, x10, x15, x20 y x30.
+- **Élites**: 5-10 % de los enemigos (desde la etapa 2) tienen aura dorada, más vida y daño, y sueltan mejor botín.
+- **Racha de victorias**: cada victoria seguida da +5 % de oro y XP (máximo +50 %) y tickets en x3, x5, x10, x15 y x20.
+  Perder o abandonar la reinicia.
+- **Misiones diarias**: 3 misiones al día y un cofre extra por completarlas todas.
+- **Rangos del caballero**: Novato → Guerrero → Caballero → Veterano → Legendario → Señor del Caos.
+  Cada rango cambia su aspecto (ribetes dorados, cruz en la capa, espada brillante, aura).
+- **Metas en el menú**: el menú muestra lo que te falta para tu próxima meta (nivel, forja, ticket, jefe, misión).
+
 ## Contenido
 
 | Mundo | Etapas | Enemigos | Jefe (etapa) | Ruleta |
@@ -63,6 +81,8 @@ Casi todo se añade editando `js/data.js`:
 - **Nueva ruleta**: entrada en `WHEELS` con sus probabilidades (`odds`) y premios.
 - **Nueva habilidad**: entrada en `SKILLS` y su efecto en `castSkill()` de `js/battle.js`
   (más su botón en `index.html`).
-- **Dificultad**: ajusta `BALANCE` (crecimiento de vida/daño enemigo, XP, monedas, poder recomendado).
+- **Dificultad**: ajusta `BALANCE` (crecimiento de vida/daño enemigo, XP, monedas, poder recomendado)
+  y `EARLY_STAGES` (suavizado de las primeras etapas).
+- **Recompensas**: `FIRST_CLEAR` (premios de primera victoria), `COMBO_REWARDS`, `STREAK`, `MISSIONS` y `RANKS`.
 
 El progreso se guarda automáticamente en el navegador (`localStorage`). En **Ajustes** hay un botón para reiniciarlo.

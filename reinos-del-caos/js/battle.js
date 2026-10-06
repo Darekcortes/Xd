@@ -87,9 +87,10 @@ const Battle = (() => {
       enemies: [], projs: [], zones: [], parts: [], floats: [], drops: [], bolts: [], rings: [], ambient: [],
       props: [], ghosts: [], lines: [],
       waves, waveIdx: -1, queue: [], waveT: 0.6, total, killed: 0, spawnT: 0,
-      maxAlive: info.boss ? 3 : info.maxAlive + 1,
-      loot: { mats: {}, coins: 0, xp: 0 }, cds: {}, potionT: 0,
-      combo: 0, comboT: 0, maxCombo: 0, comboPop: 0, elites: 0,
+      maxAlive: info.boss ? 3 : info.maxAlive + (stage > 4 ? 1 : 0),
+      loot: { mats: {}, coins: 0, xp: 0, tickets: 0, gems: 0, shards: 0 }, cds: {}, potionT: 0,
+      tips: stage === 1 && !Game.S.cleared[1] ? TUTORIAL.slice() : [], tipT: 1.2,
+      combo: 0, comboT: 0, maxCombo: 0, comboPop: 0, elites: 0, kills: 0, comboMsgs: [],
       shake: 0, hurtFlash: 0, whiteFlash: 0, slowT: 0, hitStop: 0,
       ended: false, endT: 0, victory: false, boss: null, bossDefeated: false, specialDrop: null, banner: null,
     };
@@ -120,6 +121,15 @@ const Battle = (() => {
     }
   }
 
+  // Consejos que aparecen la primera vez que se juega la etapa 1
+  const TUTORIAL = [
+    { t: 1.2, text: '👈 Arrastra el joystick para moverte' },
+    { t: 5.5, text: '⚔️ Mantén pulsado el botón dorado para atacar' },
+    { t: 10, text: '💨 Rueda para esquivar: no recibes daño mientras ruedas' },
+    { t: 15, text: '🔥 Derrota enemigos seguidos para subir el COMBO' },
+    { t: 20, text: '📦 Rompe cajas: esconden oro y corazones' },
+  ];
+
   /* ---------- Bucle principal ---------- */
   function loop(t) {
     raf = requestAnimationFrame(loop);
@@ -137,6 +147,7 @@ const Battle = (() => {
 
   function update(dt) {
     st.time += dt;
+    if (st.tips.length && st.time >= st.tips[0].t && !st.ended) showBanner('', st.tips.shift().text, '#ffffff', 3.6);
     updatePlayer(dt);
     updateWaves(dt);
     for (const e of st.enemies) updateEnemy(e, dt);
@@ -292,7 +303,6 @@ const Battle = (() => {
     addFloat(p.x, p.y - 64, `-${dmg}`, '#f87171', 17);
     st.shake = Math.max(st.shake, 6);
     st.hurtFlash = 0.3;
-    st.combo = 0;
     Sfx.play('hurt');
     UI.vibrate(35);
     return true;
@@ -398,16 +408,16 @@ const Battle = (() => {
 
   function makeEnemy(id, side, opts = {}) {
     const d = ENEMIES[id], I = st.info;
-    const elite = !d.boss && !opts.mini && st.stage >= 2 && Math.random() < 0.08 + st.stage * 0.004;
-    const B = BALANCE, dmgMult = (B.enemyDmgBase + B.enemyDmgStep * (st.stage - 1)) * (d.boss ? B.bossDmg : 1);
-    let hp = Math.round(I.hp * d.hp * (elite ? 2.6 : 1) * (opts.mini ? 0.35 : 1) * (d.boss ? B.bossHp : 1));
+    const elite = !d.boss && !opts.mini && Math.random() < I.eliteChance;
+    const B = BALANCE, dmgMult = I.dmgMult * (d.boss ? B.bossDmg : 1);
+    let hp = Math.round(I.hp * d.hp * (elite ? 2.2 : 1) * (opts.mini ? 0.35 : 1) * (d.boss ? B.bossHp : 1));
     const size = d.size * (elite ? 1.2 : 1) * (opts.mini ? 0.6 : 1);
     return {
       id, def: d, boss: !!d.boss, elite, mini: !!opts.mini,
       x: opts.x != null ? opts.x : (side > 0 ? W + 30 : -30),
       y: opts.y != null ? opts.y : rand(fieldTop() + 8, fieldBot() - 4),
       z: 0, kx: 0, ky: 0,
-      hp, maxHp: hp, atk: I.atk * d.atk * dmgMult * (elite ? 1.3 : 1), speed: d.speed * rand(0.9, 1.1) * (opts.mini ? 1.3 : 1),
+      hp, maxHp: hp, atk: I.atk * d.atk * dmgMult * (elite ? 1.2 : 1), speed: d.speed * rand(0.9, 1.1) * (opts.mini ? 1.3 : 1),
       range: d.range, size, face: side > 0 ? -1 : 1, walk: Math.random() * 6, seed: Math.random() * 10,
       atkT: rand(0.6, 1.3), windup: 0, windupMax: 1, recover: 0, flash: 0, frozen: 0, burn: 0, burnTick: 0,
       state: 'move', stateT: 0, specialCd: rand(2, 4), dashHit: false, tx: 0, ty: 0,
@@ -701,7 +711,7 @@ const Battle = (() => {
   /* ---------- Daño a enemigos y muerte ---------- */
   function damageEnemy(e, base, o = {}) {
     if (e.dead) return;
-    const comboBonus = 1 + Math.min(0.3, st.combo * 0.01);
+    const comboBonus = 1 + Math.min(COMBO_DMG_MAX, st.combo * COMBO_DMG_PER);
     let dmg = base * rand(0.9, 1.1) * comboBonus, crit = false;
     if (o.canCrit && Math.random() < st.p.crit) { dmg *= 2; crit = true; }
     dmg = Math.max(1, Math.round(dmg));
@@ -711,7 +721,6 @@ const Battle = (() => {
       e.kx = (e.x - st.p.x) / d * o.knock * 8; e.ky = (e.y - st.p.y) / d * o.knock * 3;
       if (e.windup > 0 && o.knock > 20) e.windup = 0;   // los golpes fuertes interrumpen
     }
-    st.combo++; st.comboT = 2; st.comboPop = 0.15; st.maxCombo = Math.max(st.maxCombo, st.combo);
     addFloat(e.x + rand(-8, 8), e.y - e.size - 6 - (e.z || 0), crit ? `${dmg}!` : `${dmg}`, crit ? '#fde047' : (o.color || '#ffffff'), crit ? 22 : 15);
     burst(e.x, e.y - e.size * 0.5 - (e.z || 0), crit ? '#fde047' : (o.color || '#ffffff'), crit ? 14 : 7, 150);
     if (!o.silent) Sfx.play(crit ? 'crit' : 'hit');
@@ -719,20 +728,41 @@ const Battle = (() => {
     if (e.hp <= 0) killEnemy(e);
   }
 
-  function rollMaterial() {
+  function rollMaterial(rare) {
     const depth = stageIndexInWorld(st.stage);
     const w = {};
     for (const id in st.world.drops) {
       const rIdx = RARITY_ORDER.indexOf(MATERIALS[id].rarity);
-      w[id] = st.world.drops[id] * (1 + depth * 0.15 * rIdx);
+      w[id] = st.world.drops[id] * (1 + depth * 0.15 * rIdx) * (rare ? 1 + rIdx * 1.5 : 1);
     }
     return weightedPick(w);
+  }
+
+  /* ---------- Combo de derrotas ---------- */
+  function addCombo() {
+    st.combo++;
+    st.comboT = COMBO_WINDOW;
+    st.comboPop = 0.18;
+    st.maxCombo = Math.max(st.maxCombo, st.combo);
+    const r = COMBO_REWARDS[st.combo];
+    if (!r) return;
+    const p = st.p;
+    if (r.coins) st.loot.coins += Math.round(st.info.coins * r.coins);
+    if (r.mats) for (let i = 0; i < r.mats; i++) { const m = rollMaterial(true); st.loot.mats[m] = (st.loot.mats[m] || 0) + 1; }
+    if (r.shards) st.loot.shards += r.shards;
+    if (r.tickets) st.loot.tickets += r.tickets;
+    if (r.gems) st.loot.gems += r.gems;
+    showBanner('', `🔥 ¡COMBO x${st.combo}! + ${r.label}`, '#fde047', 1.4);
+    burst(p.x, p.y - 40, '#fde047', 18, 160, -80);
+    Sfx.play(st.combo >= 20 ? 'legendary' : 'levelup');
   }
 
   function killEnemy(e) {
     e.dead = true; e.deathT = 0.45; e.hp = 0; e.action = null; e.z = 0; e.state = 'move';
     if (!e.mini) st.killed++;
+    st.kills++;
     Game.S.stats.kills++;
+    addCombo();
     const mult = e.boss ? 6 : e.elite ? 3 : e.mini ? 0.3 : 1;
     st.loot.xp += Math.round(st.info.xp * e.def.hp * mult);
     burst(e.x, e.y - e.size * 0.5, '#ffffff', 18, 170);
@@ -741,7 +771,16 @@ const Battle = (() => {
     const n = e.boss ? 10 : e.elite ? 4 : e.mini ? (Math.random() < 0.3 ? 1 : 0) : (Math.random() < 0.7 ? 1 : 2);
     for (let i = 0; i < n; i++) spawnDrop(e.x, e.y, { mat: rollMaterial(), qty: e.boss ? 2 : 1 });
     if (!e.boss && Math.random() < (e.elite ? 0.6 : 0.07)) spawnDrop(e.x, e.y, { heart: true });
-    if (e.elite) { st.elites++; addFloat(e.x, e.y - e.size - 24, '¡ÉLITE!', '#facc15', 16); }
+    if (e.elite) {
+      st.elites++;
+      // Los élites siempre sueltan algo bueno
+      spawnDrop(e.x, e.y, { mat: rollMaterial(true), qty: 2 });
+      if (Math.random() < 0.25) { st.loot.shards++; addFloat(e.x, e.y - e.size - 40, '+1 🧩 fragmento', '#c4b5fd', 13); }
+      if (Math.random() < 0.25) { st.loot.gems++; addFloat(e.x, e.y - e.size - 54, '+1 💎', '#7dd3fc', 13); }
+      showBanner('', '⭐ ¡Élite derrotado!', '#facc15', 1.1);
+      burst(e.x, e.y - e.size * 0.5, '#facc15', 22, 190);
+      Sfx.play('legendary');
+    }
     // Los slimes se dividen en dos pequeños
     if (e.def.split && !e.mini) {
       for (const s of [-1, 1]) st.enemies.push(makeEnemy(e.id, 1, { mini: true, x: e.x + s * 12, y: clamp(e.y + s * 8, fieldTop(), fieldBot()) }));
@@ -1002,7 +1041,7 @@ const Battle = (() => {
     const S = Game.S;
     c.globalAlpha = alpha;
     Sprites.knight(c, x, y, 1.0, { face, walk: 0, swing: -1, heavy: false, time: st.time,
-      weaponColor: ITEMS[S.equip.weapon].color, armorColor: ITEMS[S.equip.armor].color, flash: false, helmet: S.settings.helmet });
+      weaponColor: ITEMS[S.equip.weapon].color, armorColor: ITEMS[S.equip.armor].color, flash: false, helmet: S.settings.helmet, rank: Game.rank() });
     c.globalAlpha = 1;
   }
 
@@ -1015,7 +1054,7 @@ const Battle = (() => {
     // Parpadea (semitransparente) mientras es invulnerable tras recibir daño
     if (p.invuln > 0 && p.dodgeT <= 0 && p.hp > 0 && Math.floor(st.time * 20) % 2 === 0) c.globalAlpha = 0.45;
     Sprites.knight(c, p.x, p.y, 1.0, { face: p.face, walk: p.walk, swing: p.swing, heavy: p.heavy, style: p.style, time: st.time,
-      weaponColor: ITEMS[S.equip.weapon].color, armorColor: ITEMS[S.equip.armor].color, flash: p.flash > 0, helmet: S.settings.helmet });
+      weaponColor: ITEMS[S.equip.weapon].color, armorColor: ITEMS[S.equip.armor].color, flash: p.flash > 0, helmet: S.settings.helmet, rank: Game.rank() });
     c.globalAlpha = 1;
     if (p.hp <= 0) { c.restore(); c.globalAlpha = 1; }
   }
@@ -1114,19 +1153,31 @@ const Battle = (() => {
   }
 
   function drawCombo(c) {
-    if (st.combo < 3) return;
-    const pop = st.comboPop > 0 ? 1 + st.comboPop * 2 : 1;
-    const fade = Math.min(1, st.comboT / 0.5);
+    if (st.combo < 2) return;
+    const pop = st.comboPop > 0 ? 1 + st.comboPop * 2.2 : 1;
+    const fade = Math.min(1, st.comboT / 0.4);
+    const col = st.combo >= 20 ? '#f43f5e' : st.combo >= 10 ? '#fb923c' : st.combo >= 5 ? '#fde047' : '#fef3c7';
     c.save();
     c.globalAlpha = fade;
-    c.translate(W - 14, HY + 16); c.scale(pop, pop);
+    c.translate(W - 16, HY + 20);
+    c.save(); c.scale(pop, pop);
     c.textAlign = 'right'; c.textBaseline = 'middle';
-    c.font = '900 26px "Cinzel", Georgia, serif';
+    c.font = '900 30px "Cinzel", Georgia, serif';
     c.lineWidth = 5; c.strokeStyle = '#1a0b00';
-    const col = st.combo >= 30 ? '#f43f5e' : st.combo >= 15 ? '#fb923c' : '#fde047';
-    c.strokeText(`${st.combo}`, 0, 0); c.fillStyle = col; c.fillText(`${st.combo}`, 0, 0);
+    c.strokeText(`x${st.combo}`, 0, 0); c.fillStyle = col; c.fillText(`x${st.combo}`, 0, 0);
     c.font = '800 11px system-ui, sans-serif'; c.lineWidth = 3;
-    c.strokeText('COMBO', 0, 18); c.fillStyle = '#fff'; c.fillText('COMBO', 0, 18);
+    c.strokeText('COMBO', 0, 20); c.fillStyle = '#fff'; c.fillText('COMBO', 0, 20);
+    c.restore();
+    // Barra del tiempo que queda para mantener el combo
+    const w = 58, k = Math.max(0, st.comboT / COMBO_WINDOW);
+    c.fillStyle = '#0009'; c.fillRect(-w, 30, w, 5);
+    c.fillStyle = col; c.fillRect(-w, 30, w * k, 5);
+    // Próximo premio de combo
+    const next = Object.keys(COMBO_REWARDS).map(Number).find(n => n > st.combo);
+    if (next) {
+      c.textAlign = 'right'; c.font = '700 10px system-ui, sans-serif'; c.lineWidth = 3; c.strokeStyle = '#1a0b00';
+      c.strokeText(`🎁 x${next}`, 0, 44); c.fillStyle = '#fde68a'; c.fillText(`🎁 x${next}`, 0, 44);
+    }
     c.restore();
   }
 
@@ -1148,8 +1199,11 @@ const Battle = (() => {
     }
     if (b.sub) {
       c.font = '700 15px system-ui, sans-serif';
-      c.lineWidth = 4; c.strokeStyle = '#1a0b00'; c.strokeText(b.sub, W / 2, y0 + (b.text ? 34 : 0));
-      c.fillStyle = '#fff'; c.fillText(b.sub, W / 2, y0 + (b.text ? 34 : 0));
+      const fit = Math.min(1, (W * 0.94) / c.measureText(b.sub).width);
+      c.save(); c.translate(W / 2, y0 + (b.text ? 34 : 0)); c.scale(fit, fit);
+      c.lineWidth = 4; c.strokeStyle = '#1a0b00'; c.strokeText(b.sub, 0, 0);
+      c.fillStyle = b.text ? '#fff' : (b.color || '#fff'); c.fillText(b.sub, 0, 0);
+      c.restore();
     }
     c.globalAlpha = 1;
   }
@@ -1201,7 +1255,7 @@ const Battle = (() => {
   function finish() {
     const result = {
       victory: st.victory, abandoned: !!st.abandoned, stage: st.stage, boss: st.info.boss, loot: st.loot,
-      specialDrop: st.specialDrop, killed: st.killed, maxCombo: st.maxCombo, elites: st.elites,
+      specialDrop: st.specialDrop, killed: st.killed, kills: st.kills, maxCombo: st.maxCombo, elites: st.elites,
     };
     stop();
     if (onEnd) onEnd(result);
