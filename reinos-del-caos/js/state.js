@@ -25,42 +25,56 @@ const Game = (() => {
       streak: 0, bestStreak: 0,      // racha de victorias seguidas
       daily: null,                   // misiones del día
       rank: 0,                       // último rango del caballero celebrado
+      username: '',                  // nombre que elige el jugador
+      savedAt: 0,                    // momento del último guardado (para elegir la copia más nueva)
     };
   }
 
   let S = newState();
 
+  /** Aplica datos guardados (del navegador, de la cuenta o de un código) sobre un estado nuevo. */
+  function applyData(data) {
+    const defaults = newState();
+    S = Object.assign(newState(), data);
+    // Fusiona sub-objetos para que partidas antiguas reciban campos nuevos
+    for (const k of ['alloc', 'potions', 'settings', 'stats', 'equip']) S[k] = Object.assign({}, defaults[k], data[k] || {});
+    if (!data.items) S.items = defaults.items;
+    // Limpia referencias a objetos que ya no existan
+    for (const id of Object.keys(S.items)) if (!ITEMS[id]) delete S.items[id];
+    if (!S.items[S.equip.weapon]) {
+      S.items.espada_madera = S.items.espada_madera || { lvl: 1 };
+      S.equip.weapon = 'espada_madera';
+    }
+    if (!S.items[S.equip.armor]) {
+      S.items.ropa_viajero = S.items.ropa_viajero || { lvl: 1 };
+      S.equip.armor = 'ropa_viajero';
+    }
+    S.unlocked = Math.min(Math.max(1, S.unlocked), MAX_STAGE);
+    if (data.rank === undefined) S.rank = rankOf(S.level);   // no celebrar rangos ya alcanzados
+    S.username = typeof S.username === 'string' ? S.username.slice(0, 16) : '';
+    Sfx.setEnabled(S.settings.sound);
+  }
+
   function load() {
     try {
       const raw = localStorage.getItem(SAVE_KEY);
-      if (raw) {
-        const data = JSON.parse(raw);
-        const defaults = newState();
-        S = Object.assign(newState(), data);
-        // Fusiona sub-objetos para que partidas antiguas reciban campos nuevos
-        for (const k of ['alloc', 'potions', 'settings', 'stats', 'equip']) S[k] = Object.assign({}, defaults[k], data[k] || {});
-        if (!data.items) S.items = defaults.items;
-        // Limpia referencias a objetos que ya no existan
-        for (const id of Object.keys(S.items)) if (!ITEMS[id]) delete S.items[id];
-        if (!S.items[S.equip.weapon]) {
-          S.items.espada_madera = S.items.espada_madera || { lvl: 1 };
-          S.equip.weapon = 'espada_madera';
-        }
-        if (!S.items[S.equip.armor]) {
-          S.items.ropa_viajero = S.items.ropa_viajero || { lvl: 1 };
-          S.equip.armor = 'ropa_viajero';
-        }
-        S.unlocked = Math.min(Math.max(1, S.unlocked), MAX_STAGE);
-        if (data.rank === undefined) S.rank = rankOf(S.level);   // no celebrar rangos ya alcanzados
-      }
+      if (raw) applyData(JSON.parse(raw));
     } catch (e) { S = newState(); }
     Sfx.setEnabled(S.settings.sound);
     return S;
   }
 
+  /** ¿Es una partida recién empezada (sin progreso que perder)? */
+  const isFresh = st => !st || (!(st.cleared && Object.keys(st.cleared).length) && (st.level || 1) <= 1 && !(st.stats && st.stats.kills));
+
   let saveTimer = null;
-  function writeSave() {
+  function writeLocal() {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { /* almacenamiento no disponible */ }
+  }
+  function writeSave() {
+    S.savedAt = Date.now();
+    writeLocal();
+    scheduleCloud();
   }
   /** Guarda el progreso. Agrupa varias llamadas seguidas salvo que now sea true. */
   function save(now) {
@@ -68,8 +82,90 @@ const Game = (() => {
     if (now) writeSave(); else saveTimer = setTimeout(writeSave, 150);
   }
   function reset() {
+    const name = S.username;
     S = newState();
+    S.username = name;         // la cuenta conserva su nombre
     save(true);
+  }
+
+  /* ---------- Guardado en la cuenta (Claude) ----------
+     Si el juego se abre dentro de Claude con una sesión iniciada, el progreso
+     se guarda también en el espacio privado de la cuenta del jugador
+     (data/users/<id>/save), que nadie más puede leer. Fuera de Claude
+     (archivo descargado) se guarda solo en el navegador. */
+  const Cloud = { status: 'local', ref: null, ready: false, timer: null, writing: false, again: false, lastSync: 0 };
+
+  async function connectCloud(onChange) {
+    try {
+      if (!window.claude || typeof window.claude.use !== 'function') return;
+      const [db, user] = await Promise.all([window.claude.use('db'), window.claude.use('user')]);
+      if (!db || !user) return;
+      const uid = await user.id();
+      if (!uid) return;
+      Cloud.ref = db.doc('data/users/' + uid + '/save');
+      Cloud.status = 'connecting'; onChange();
+      let snap;
+      try { snap = await Cloud.ref.get(); }
+      catch (e) { await new Promise(r => setTimeout(r, 800 + Math.random() * 800)); snap = await Cloud.ref.get(); }
+      const body = snap.exists ? snap.data() : null;
+      let remote = null;
+      try { remote = body && body.state ? JSON.parse(body.state) : null; } catch (e) { remote = null; }
+      Cloud.ready = true;
+      Cloud.status = 'cloud';
+      // Se queda la copia más nueva; una partida recién empezada nunca pisa la de la cuenta
+      if (remote && (isFresh(S) || (remote.savedAt || 0) > (S.savedAt || 0))) {
+        applyData(remote);
+        writeLocal();
+        Cloud.lastSync = remote.savedAt || Date.now();
+        onChange(true);
+      } else {
+        onChange(false);
+        if (!remote || (S.savedAt || 0) > (remote.savedAt || 0)) cloudWrite();
+      }
+    } catch (e) {
+      Cloud.status = 'local'; Cloud.ready = false; onChange(false);
+    }
+  }
+
+  function scheduleCloud() {
+    if (!Cloud.ready) return;
+    clearTimeout(Cloud.timer);
+    Cloud.timer = setTimeout(cloudWrite, 2500);
+  }
+
+  async function cloudWrite() {
+    if (!Cloud.ready || !Cloud.ref) return;
+    if (Cloud.writing) { Cloud.again = true; return; }   // una escritura a la vez
+    Cloud.writing = true;
+    try {
+      await Cloud.ref.set({ v: 1, savedAt: S.savedAt || Date.now(), username: S.username || '', state: JSON.stringify(S) });
+      Cloud.lastSync = Date.now();
+      Cloud.status = 'cloud';
+    } catch (e) {
+      // invalid_argument = esta cuenta no puede guardar aquí; revoked = acceso retirado
+      if (e && (e.code === 'invalid_argument' || e.code === 'revoked' || e.code === 'not_granted')) { Cloud.ready = false; Cloud.status = 'denied'; }
+      else Cloud.status = 'error';
+    }
+    Cloud.writing = false;
+    if (Cloud.again) { Cloud.again = false; cloudWrite(); }
+  }
+
+  /* ---------- Código de guardado (para mover la partida a mano) ---------- */
+  function exportCode() {
+    const json = JSON.stringify(S);
+    return 'RDC1:' + btoa(unescape(encodeURIComponent(json)));
+  }
+  function importCode(code) {
+    const txt = String(code || '').trim();
+    if (!txt.startsWith('RDC1:')) return false;
+    try {
+      const data = JSON.parse(decodeURIComponent(escape(atob(txt.slice(5)))));
+      if (!data || typeof data !== 'object' || !data.items) return false;
+      applyData(data);
+      save(true);
+      if (Cloud.ready) cloudWrite();
+      return true;
+    } catch (e) { return false; }
   }
 
   /* ---------- Estadísticas derivadas ---------- */
@@ -253,6 +349,7 @@ const Game = (() => {
     load, save, reset, stats, itemStats, matCount, addMat, hasCost, payCost,
     giveItem, giveSkill, grant, prizeLabel, addXp, completeStage, highestWorld, rollChest,
     addShards, streakBonus, ensureDaily, track, missionText,
+    connectCloud, cloudWrite, exportCode, importCode, get cloud() { return Cloud; },
     rank: () => rankOf(S.level),
   };
 })();

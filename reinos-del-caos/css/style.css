@@ -549,3 +549,38 @@ small.up { color: #86efac; }
   .bar.hp { height: 14px; }
   .boss-bar { top: 40px; }
 }
+
+/* ---------- Cuenta ---------- */
+button.power-chip { cursor: pointer; color: inherit; font: inherit; }
+.uname { font-weight: 800; color: #fff; margin-right: 4px; max-width: 9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: inline-block; vertical-align: bottom; }
+.cloud-ico { margin-left: 4px; font-size: .9em; }
+.name-form input, .code-box {
+  width: 100%; min-height: 48px; padding: 10px 14px; border-radius: 12px; border: 1px solid var(--line);
+  background: #0f0c1d; color: var(--ink); font: inherit; font-size: 1.05rem;
+}
+.name-form input:focus, .code-box:focus { outline: 2px solid var(--gold); }
+.code-box { font-family: ui-monospace, Menlo, monospace; font-size: .75rem; resize: vertical; word-break: break-all; -webkit-user-select: text; user-select: text; }
+.name-form .hint { min-height: 1.2em; color: #fca5a5; margin: 6px 0 0; }
+.card.account { margin-bottom: 10px; }
+
+/* ---------- Botones de combate más pequeños ---------- */
+.controls { --sk: clamp(40px, 11vw, 50px); --atk: clamp(68px, 19vw, 86px); --stick: clamp(100px, 28vw, 128px); }
+.ctl.skill, .ctl.potion, .ctl.dodge { font-size: 1.25rem; }
+.ctl.attack { font-size: 2.3rem; }
+@media (orientation: landscape) and (max-height: 520px) {
+  .controls { --sk: 42px; --atk: 70px; --stick: 104px; }
+  .stick-zone { min-height: 120px; max-width: 180px; }
+  .actions { grid-template-columns: repeat(5, var(--sk)) var(--atk); grid-template-rows: var(--atk); grid-template-areas: "f h r p d a"; align-items: end; align-self: flex-end; gap: 6px; }
+  .controls { align-items: flex-end; }
+  .ctl { opacity: .72; }
+  .ctl:active, .ctl.pressed { opacity: 1; }
+  .ctl.skill, .ctl.potion, .ctl.dodge { font-size: 1.1rem; }
+  .ctl.attack { font-size: 2rem; }
+}
+@media (orientation: landscape) and (max-height: 330px) {
+  .controls { --sk: 34px; --atk: 54px; --stick: 84px; }
+  .stick-zone { min-height: 92px; max-width: 150px; }
+  .ctl.skill, .ctl.potion, .ctl.dodge { font-size: .95rem; }
+  .ctl.attack { font-size: 1.7rem; }
+  .ctl .cdtext, .ctl.potion b { font-size: .75rem; }
+}

@@ -119,7 +119,7 @@ const UI = (() => {
       <canvas id="menu-scene" aria-hidden="true"></canvas>
       <div class="menu-ui">
         <div class="menu-head">
-          <div class="power-chip"><span class="rank-tag" style="color:${RANKS[Game.rank()].color}">${RANKS[Game.rank()].name}</span> 💥 <b>${fmt(P.power)}</b></div>
+          <button class="power-chip" data-act="name" aria-label="Tu nombre de usuario">${s.username ? `<span class="uname">${esc(s.username)}</span>` : ''}<span class="rank-tag" style="color:${RANKS[Game.rank()].color}">${RANKS[Game.rank()].name}</span> 💥 <b>${fmt(P.power)}</b>${cloudIcon()}</button>
           <div class="head-btns">
             <button class="icon-btn" data-act="fullscreen" aria-label="Pantalla completa">⛶</button>
             <button class="icon-btn" data-act="go" data-to="missions" aria-label="Misiones diarias">📜${claimable ? `<span class="badge">${claimable}</span>` : ''}</button>
@@ -221,6 +221,66 @@ const UI = (() => {
       c.globalAlpha = 1;
       menuRaf = requestAnimationFrame(frame);
     })(t0);
+  }
+
+  /* ---------- Cuenta: nombre de usuario y guardado ---------- */
+  function cloudIcon() {
+    const st = Game.cloud.status;
+    return st === 'cloud' ? '<span class="cloud-ico" title="Guardado en tu cuenta">☁️</span>' : st === 'connecting' ? '<span class="cloud-ico" title="Conectando con tu cuenta">⏳</span>' : '';
+  }
+  function cloudText() {
+    const c = Game.cloud;
+    if (c.status === 'cloud') return `☁️ Tu progreso se guarda en tu cuenta de Claude${c.lastSync ? ` · último guardado ${new Date(c.lastSync).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}` : ''}. Si cambias de teléfono o borras el navegador, lo recuperas al abrir el juego aquí con tu cuenta.`;
+    if (c.status === 'connecting') return '⏳ Conectando con tu cuenta…';
+    if (c.status === 'denied') return '📱 Tu cuenta no tiene permiso para guardar en este juego (pide acceso de Colaborador al dueño). Se guarda en este dispositivo; usa el código de guardado para no perderlo.';
+    if (c.status === 'error') return '⚠️ No se pudo guardar en la cuenta ahora mismo; se reintentará. Mientras tanto está guardado en este dispositivo.';
+    return '📱 Se guarda solo en este dispositivo. Para guardarlo en tu cuenta, abre el juego en Claude con tu sesión iniciada, o usa el código de guardado.';
+  }
+  const NAME_RE = /^[\p{L}\p{N}_ .-]{3,16}$/u;
+  function askUsername(force) {
+    const s = S();
+    if (s.username && !force) return;
+    openModal(`
+      <h2>${s.username ? '✏️ Cambiar nombre' : '⚔️ ¿Cómo te llamas, guerrero?'}</h2>
+      <p class="sub">Tu nombre aparece en el menú y se guarda con tu progreso${Game.cloud.status === 'cloud' ? ' en tu cuenta' : ''}.</p>
+      <form id="name-form" class="name-form">
+        <input id="name-input" maxlength="16" autocomplete="nickname" placeholder="Tu nombre (3-16 letras)" value="${esc(s.username || '')}">
+        <div class="hint" id="name-err"></div>
+        <div class="modal-actions">
+          <button class="btn" type="submit">✅ Guardar nombre</button>
+          ${s.username ? '<button class="btn ghost" type="button" data-act="close">Cancelar</button>' : ''}
+        </div>
+      </form>`);
+    const input = $('name-input');
+    setTimeout(() => input && input.focus(), 50);
+    $('name-form').addEventListener('submit', e => {
+      e.preventDefault();
+      const v = input.value.trim().replace(/\s+/g, ' ');
+      if (!NAME_RE.test(v)) { $('name-err').textContent = 'Usa de 3 a 16 letras, números, espacios, puntos o guiones.'; return; }
+      S().username = v;
+      Game.save(true);
+      closeModal();
+      toast(`👋 ¡Bienvenido, ${v}!`);
+      if (RENDER[current]) RENDER[current]();
+    });
+  }
+  /** Se llama cuando cambia el estado de la cuenta (o llega una partida guardada en ella). */
+  function onCloud(loaded) {
+    if (loaded) toast('☁️ Progreso recuperado de tu cuenta');
+    if (current !== 'battle' && $('modal').hidden && RENDER[current]) RENDER[current]();
+    refreshTop();
+  }
+  function saveCodeModal() {
+    openModal(`
+      <h2>💾 Código de guardado</h2>
+      <p class="sub">Copia este código para pasar tu partida a otro dispositivo o al juego descargado. Pega uno para cargar esa partida (reemplaza la actual).</p>
+      <textarea id="code-box" class="code-box" rows="4" readonly>${Game.exportCode()}</textarea>
+      <div class="modal-actions">
+        <button class="btn" data-act="code-copy">📋 Copiar mi código</button>
+        <textarea id="code-in" class="code-box" rows="3" placeholder="Pega aquí un código RDC1:…"></textarea>
+        <button class="btn ghost" data-act="code-load">📥 Cargar código pegado</button>
+        <button class="btn ghost" data-act="close">Cerrar</button>
+      </div>`);
   }
 
   /* ---------- Metas cercanas ("me falta poco para...") ---------- */
@@ -1010,6 +1070,11 @@ const UI = (() => {
     const s = S();
     $('scr-settings').innerHTML = `${head('⚙️ Ajustes')}
       <div class="card setting"><div><b>🔊 Sonido</b><div class="item-meta">Efectos de sonido del juego</div></div><button class="switch ${s.settings.sound ? 'on' : ''}" data-act="toggle" data-key="sound" aria-label="Sonido"></button></div>
+      <div class="card account">
+        <div class="setting" style="padding:0;margin:0"><div><b>👤 ${s.username ? esc(s.username) : 'Sin nombre'}</b><div class="item-meta">Tu nombre de usuario</div></div><button class="btn small ghost" data-act="name">✏️ Cambiar</button></div>
+        <p class="hint" style="margin:10px 0 8px">${cloudText()}</p>
+        <button class="btn small ghost" data-act="save-code">💾 Código de guardado</button>
+      </div>
       <div class="card setting"><div><b>⛶ Pantalla completa</b><div class="item-meta">${canFullscreen() ? 'Activa o desactiva la pantalla completa' : 'No disponible aquí: abre el archivo descargado en Chrome'}</div></div><button class="btn small ghost" data-act="fullscreen">${isFullscreen() ? 'Salir' : 'Activar'}</button></div>
       <div class="card setting"><div><b>📱 Horizontal y pantalla completa</b><div class="item-meta">Pantalla completa al tocar y pide girar el teléfono al combatir</div></div><button class="switch ${s.settings.landscape ? 'on' : ''}" data-act="toggle" data-key="landscape" aria-label="Combate en horizontal"></button></div>
       <div class="card setting"><div><b>⛑️ Casco</b><div class="item-meta">Muestra el yelmo del caballero</div></div><button class="switch ${s.settings.helmet ? 'on' : ''}" data-act="toggle" data-key="helmet" aria-label="Casco"></button></div>
@@ -1067,6 +1132,18 @@ const UI = (() => {
     claim: d => claimMission(d.i),
     'portrait-ok': () => { portraitOk = true; checkOrientation(); },
     fullscreen: () => toggleFullscreen(),
+    name: () => askUsername(true),
+    'save-code': () => saveCodeModal(),
+    'code-copy': () => {
+      const box = $('code-box');
+      const done = () => toast('📋 Código copiado');
+      try { navigator.clipboard.writeText(box.value).then(done, () => { box.select(); toast('Selecciona y copia el código'); }); }
+      catch (e) { box.select(); toast('Selecciona y copia el código'); }
+    },
+    'code-load': () => {
+      if (Game.importCode($('code-in').value)) { closeModal(); toast('✅ Partida cargada'); show('menu'); }
+      else toast('Ese código no es válido', true);
+    },
     'skill-up': d => {
       const s = S(), lvl = s.skills[d.id] || 0;
       if (!lvl || lvl >= MAX_SKILL_LEVEL) return;
@@ -1196,5 +1273,5 @@ const UI = (() => {
     });
   }
 
-  return { show, toast, vibrate, refreshTop, bindEvents, get current() { return current; } };
+  return { show, toast, vibrate, refreshTop, bindEvents, askUsername, onCloud, get current() { return current; } };
 })();
