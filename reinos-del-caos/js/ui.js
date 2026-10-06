@@ -20,7 +20,6 @@ const UI = (() => {
     oscuro: 'linear-gradient(160deg, #6d28d9, #3b0764 60%, #0b0616)',
   };
   const worldBg = w => WORLD_BG[w.theme] || WORLD_BG.bosque;
-  const enemyIcon = id => ENEMIES[id].icon || ENEMIES[id].sprite.emoji || '👾';
   const rc = r => RARITIES[r].color;
   const stars = lvl => '★'.repeat(lvl) + '☆'.repeat(MAX_ITEM_LEVEL - lvl);
 
@@ -99,34 +98,113 @@ const UI = (() => {
 
   /* ---------- Menú principal ---------- */
   RENDER.menu = () => {
-    const s = S(), stage = s.unlocked, info = stageInfo(stage), P = Game.stats();
+    const s = S(), stage = s.unlocked, info = stageInfo(stage), P = Game.stats(), w = info.world;
     const allDone = s.cleared[MAX_STAGE];
-    const wheelReady = Object.values(WHEELS).some(w => w.world <= Game.highestWorld() && (Game.hasCost(w.cost) || s.gems >= w.gemCost));
+    const wheelReady = Object.values(WHEELS).some(wh => wh.world <= Game.highestWorld() && (Game.hasCost(wh.cost) || s.gems >= wh.gemCost));
     const craftReady = RECIPES.some(r => r.item && !s.items[r.item] && r.world <= Game.highestWorld() && Game.hasCost(r.cost, r.coins));
-    const btn = (act, to, ico, label, badge) =>
-      `<button class="menu-btn" data-act="${act}" data-to="${to}"><span class="ico">${ico}</span>${label}${badge ? `<span class="badge">${badge}</span>` : ''}</button>`;
+    const first = (w.id - 1) * STAGES_PER_WORLD + 1;
+    let pips = '';
+    for (let st = first; st < first + STAGES_PER_WORLD; st++) {
+      const cls = s.cleared[st] ? 'done' : st === stage ? 'current' : 'locked';
+      pips += `<span class="pip ${cls} ${isBossStage(st) ? 'boss' : ''}">${isBossStage(st) ? '👹' : st}</span>`;
+    }
+    const dock = (to, ico, label, badge) =>
+      `<button class="dock-btn" data-act="go" data-to="${to}"><span class="medal">${ico}</span><span class="lbl">${label}</span>${badge ? `<span class="badge">${badge}</span>` : ''}</button>`;
     $('scr-menu').innerHTML = `
-      <div class="menu-hero" style="--hero:${worldBg(info.world)}">
-        <canvas class="hero-knight" id="hero-knight" width="240" height="250" aria-label="Tu caballero"></canvas>
-        <h1>Reinos del Caos</h1>
-        <p class="tag">${info.world.icon} ${info.world.name} · Etapa ${stage}${info.boss ? ' 👹' : ''}</p>
-      </div>
-      <button class="btn btn-play" data-act="play">⚔️ JUGAR<small>${allDone ? 'Todos los reinos conquistados · repetir etapa ' + stage : `Etapa ${stage} · ${esc(info.name)}`}</small></button>
-      <div class="menu-grid">
-        ${btn('go', 'wheel', '🎰', 'RULETA', wheelReady ? '!' : '')}
-        ${btn('go', 'forge', '🔨', 'FORJA', craftReady ? '!' : '')}
-        ${btn('go', 'inv', '🎒', 'INVENTARIO')}
-        ${btn('go', 'map', '🗺️', 'MAPA')}
-        ${btn('go', 'char', '👤', 'PERSONAJE', s.points || '')}
-        ${btn('go', 'settings', '⚙️', 'AJUSTES')}
-      </div>
-      <div class="power-line">
-        <span class="pill">💥 Poder ${fmt(P.power)}</span>
-        <span class="pill">🧪 ${s.potions.pocion || 0} · ⚗️ ${s.potions.pocion_grande || 0}</span>
-        <span class="pill">☠️ ${fmt(s.stats.kills)} derrotados</span>
+      <canvas id="menu-scene" aria-hidden="true"></canvas>
+      <div class="menu-ui">
+        <div class="menu-head">
+          <div class="power-chip">💥 <b>${fmt(P.power)}</b><small>poder</small></div>
+          <button class="icon-btn" data-act="go" data-to="settings" aria-label="Ajustes">⚙️</button>
+        </div>
+        <div class="logo" aria-label="Reinos del Caos">
+          <span class="logo-a">Reinos</span><span class="logo-b">del</span><span class="logo-c">Caos</span>
+        </div>
+        <div class="menu-space"></div>
+        <div class="world-strip">
+          <div class="world-name">${w.icon} Mundo ${w.id} · ${w.name}</div>
+          <div class="pips">${pips}</div>
+        </div>
+        <button class="btn btn-play" data-act="play">
+          <span class="play-main">⚔️ JUGAR</span>
+          <small>${allDone ? 'Reinos conquistados · repetir etapa ' + stage : `Etapa ${stage} · ${esc(info.name)}${info.boss ? ' · ¡JEFE!' : ''}`}</small>
+        </button>
+        <nav class="dock">
+          ${dock('wheel', '🎰', 'Ruleta', wheelReady ? '!' : '')}
+          ${dock('forge', '🔨', 'Forja', craftReady ? '!' : '')}
+          ${dock('inv', '🎒', 'Mochila')}
+          ${dock('map', '🗺️', 'Mapa')}
+          ${dock('char', '👤', 'Héroe', s.points || '')}
+        </nav>
       </div>`;
-    animateKnight('hero-knight', 'menu', 85, 236, 3.5);
+    animateMenuScene(w);
   };
+
+  /** Escena animada del menú: paisaje del mundo, jefe al fondo y el caballero. */
+  let menuRaf = 0;
+  function animateMenuScene(world) {
+    cancelAnimationFrame(menuRaf);
+    const cv = $('menu-scene');
+    if (!cv) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    let W = 0, H = 0, HY = 0, bg = null, feet = 0, scale = 3;
+    const sizeUp = () => {
+      const r = cv.getBoundingClientRect();
+      W = Math.max(1, Math.round(r.width)); H = Math.max(1, Math.round(r.height));
+      cv.width = W * dpr; cv.height = H * dpr;
+      const ui = document.querySelector('.world-strip');
+      const bottomUi = ui ? H - (ui.getBoundingClientRect().top - r.top) : 240;
+      feet = H - bottomUi - 6;
+      const logo = document.querySelector('.logo');
+      const top = logo ? logo.getBoundingClientRect().bottom - r.top : 140;
+      scale = Math.max(1.6, Math.min(3.4, (feet - top) / 66));
+      HY = Math.round(feet - 26 * scale);
+      bg = Sprites.background(world.theme, W, H, HY, dpr);
+    };
+    sizeUp();
+    const boss = ENEMIES[world.boss];
+    const fake = { def: boss, x: 0, y: 0, size: boss.size, face: -1, walk: 0, flash: 0, windup: 0, windupMax: 1, recover: 0, seed: 1, frozen: 0, state: 'move' };
+    const motes = Array.from({ length: 34 }, () => ({ x: Math.random(), y: Math.random(), s: 0.5 + Math.random() * 1.5, ph: Math.random() * 6 }));
+    const theme = Sprites.THEMES[world.theme];
+    const moteCol = { leaf: '#bef264', snow: '#ffffff', sand: '#fde68a', ember: '#fb923c', mote: '#d8b4fe' }[theme.particle] || '#ffffff';
+    const s = S(), t0 = performance.now();
+    let lastW = W, lastH = H;
+    (function frame(t) {
+      if (!document.body.contains(cv) || current !== 'menu') return;
+      const r = cv.getBoundingClientRect();
+      if (Math.round(r.width) !== lastW || Math.round(r.height) !== lastH) { sizeUp(); lastW = W; lastH = H; }
+      const time = (t - t0) / 1000, c = cv.getContext('2d');
+      c.setTransform(dpr, 0, 0, dpr, 0, 0);
+      c.drawImage(bg, 0, 0, W, H);
+      // Jefe del mundo, enorme y en penumbra al fondo
+      c.save();
+      c.globalAlpha = 0.32;
+      fake.x = W * 0.8 + Math.sin(time * 0.4) * 6; fake.y = HY + 8; fake.size = boss.size * Math.min(1.8, scale * 0.55);
+      fake.walk = time * 2;
+      Sprites.enemy(c, fake, time);
+      c.restore();
+      const fog = c.createLinearGradient(0, HY - 120, 0, HY + 30);
+      fog.addColorStop(0, 'rgba(15,12,29,0)'); fog.addColorStop(1, 'rgba(15,12,29,.35)');
+      c.fillStyle = fog; c.fillRect(0, HY - 120, W, 150);
+      // Luz bajo el héroe
+      const glow = c.createRadialGradient(W / 2, feet, 4, W / 2, feet, 60 * scale);
+      glow.addColorStop(0, 'rgba(232,181,74,.35)'); glow.addColorStop(1, 'rgba(232,181,74,0)');
+      c.fillStyle = glow; c.fillRect(0, feet - 60 * scale, W, 120 * scale);
+      Sprites.knight(c, W / 2 - 6 * scale, feet, scale, { face: 1, walk: 0, swing: -1, heavy: false, time,
+        weaponColor: ITEMS[s.equip.weapon].color, armorColor: ITEMS[s.equip.armor].color, flash: false, helmet: s.settings.helmet });
+      // Partículas del ambiente
+      for (const m of motes) {
+        m.ph += 0.016;
+        const x = ((m.x + Math.sin(m.ph * 0.5) * 0.02 + (theme.particle === 'sand' ? time * 0.05 : 0)) % 1) * W;
+        const y = ((m.y + (theme.particle === 'ember' ? -time * 0.03 : time * 0.02) * m.s) % 1 + 1) % 1 * H;
+        c.globalAlpha = 0.35 + Math.sin(m.ph * 2) * 0.25;
+        c.fillStyle = moteCol;
+        c.beginPath(); c.arc(x, y, m.s * 1.4, 0, Math.PI * 2); c.fill();
+      }
+      c.globalAlpha = 1;
+      menuRaf = requestAnimationFrame(frame);
+    })(t0);
+  }
 
   /* ---------- Mapa ---------- */
   RENDER.map = () => {
@@ -163,14 +241,14 @@ const UI = (() => {
     if (stage > s.unlocked) { toast(`🔒 Completa la etapa ${stage - 1} para desbloquearla`, true); return; }
     const info = stageInfo(stage), P = Game.stats();
     const powerOk = P.power >= info.power * 0.85;
-    const enemies = info.world.enemies.map(enemyIcon).join(' ');
+    const foes = (info.boss ? [info.world.boss] : []).concat(info.world.enemies);
     const drops = Object.keys(info.world.drops).map(id => `<span title="${MATERIALS[id].name}">${MATERIALS[id].icon}</span>`).join('');
     openModal(`
       <h2>${info.boss ? '👹 ' : ''}Etapa ${stage}</h2>
       <p class="sub">${esc(info.name)} · ${info.world.icon} ${info.world.name}</p>
       <div class="info-rows">
-        <div class="info-row"><span>Enemigos</span><span class="icons">${enemies}</span></div>
-        ${info.boss ? `<div class="info-row"><span>Jefe</span><b style="color:#fca5a5">${enemyIcon(info.world.boss)} ${ENEMIES[info.world.boss].name}</b></div>` : `<div class="info-row"><span>Oleada</span><b>${info.enemyCount} enemigos</b></div>`}
+        <div class="foe-row">${foes.map(id => `<figure class="foe ${ENEMIES[id].boss ? 'boss' : ''}"><canvas data-foe="${id}" width="160" height="150"></canvas><figcaption>${ENEMIES[id].name}</figcaption></figure>`).join('')}</div>
+        ${info.boss ? `<div class="info-row"><span>Jefe</span><b style="color:#fca5a5">👹 ${ENEMIES[info.world.boss].name}</b></div>` : `<div class="info-row"><span>Enemigos</span><b>${info.enemyCount} en oleadas</b></div>`}
         <div class="info-row"><span>Poder recomendado</span><b style="color:${powerOk ? '#86efac' : '#fca5a5'}">💥 ${fmt(info.power)}</b></div>
         <div class="info-row"><span>Tu poder</span><b>💥 ${fmt(P.power)}</b></div>
         <div class="info-row"><span>Materiales</span><span class="icons">${drops}${info.boss ? MATERIALS[info.world.bossDrop].icon : ''}</span></div>
@@ -181,6 +259,18 @@ const UI = (() => {
         <button class="btn" data-act="enter" data-stage="${stage}">⚔️ Entrar</button>
         <button class="btn ghost" data-act="close">Cancelar</button>
       </div>`);
+    drawFoes();
+  }
+
+  /** Retratos de los enemigos dibujados con los mismos gráficos del combate. */
+  function drawFoes() {
+    document.querySelectorAll('canvas[data-foe]').forEach(cv => {
+      const def = ENEMIES[cv.dataset.foe], c = cv.getContext('2d');
+      const wide = def.sprite.shape === 'dragon' ? 0.55 : def.sprite.shape === 'wolf' ? 0.85 : 1;
+      const e = { def, x: 80, y: 138, size: 100 * wide, face: -1, walk: 0.6, flash: 0, windup: 0, windupMax: 1, recover: 0, seed: 2, frozen: 0, state: 'move' };
+      c.clearRect(0, 0, cv.width, cv.height);
+      Sprites.enemy(c, e, 0.4);
+    });
   }
 
   /* ---------- Combate ---------- */
@@ -250,6 +340,8 @@ const UI = (() => {
       ${title}
       <div class="info-rows">
         <div class="info-row"><span>Experiencia</span><b>⭐ +${fmt(o.xp)} XP</b></div>
+        ${r.maxCombo >= 5 ? `<div class="info-row"><span>Combo máximo</span><b style="color:var(--gold)">🔥 ${r.maxCombo} golpes</b></div>` : ''}
+        ${r.elites ? `<div class="info-row"><span>Élites derrotados</span><b style="color:#facc15">⭐ ${r.elites}</b></div>` : ''}
         ${o.gems ? `<div class="info-row"><span>${o.first ? 'Primera victoria' : 'Victoria contra jefe'}</span><b style="color:var(--gem)">💎 +${o.gems}</b></div>` : ''}
       </div>
       <div class="loot-grid">${lootChips(o.mats, o.coins)}</div>
@@ -681,8 +773,8 @@ const UI = (() => {
       </div>
       <div class="card">
         <b>🎮 Controles</b>
-        <p class="hint" style="margin:4px 0 0">Celular: ◀ ▶ para moverte, ⚔️ para atacar (mantén pulsado), 🔥❄️⚡ habilidades y 🧪 poción. Cada tercer golpe seguido es un golpe fuerte. Golpear los proyectiles los devuelve. Aléjate de las zonas rojas de los jefes.</p>
-        <p class="hint" style="margin:6px 0 0">Teclado: A/D o flechas, Espacio/J atacar, 1-2-3 habilidades, Q poción, Esc pausa.</p>
+        <p class="hint" style="margin:4px 0 0">Celular: arrastra el joystick para moverte en cualquier dirección, mantén ⚔️ para atacar, 💨 para rodar (eres invulnerable mientras ruedas), 🔥❄️⚡ habilidades y 🧪 poción. Cada tercer golpe seguido es un golpe fuerte y el combo aumenta tu daño. Golpear los proyectiles los devuelve. Sal de las zonas rojas antes de que exploten y rompe cajas y vasijas: esconden oro y corazones.</p>
+        <p class="hint" style="margin:6px 0 0">Teclado: WASD o flechas, Espacio/J atacar, Shift/K rodar, 1-2-3 habilidades, Q poción, Esc pausa.</p>
       </div>
       <button class="btn danger wide" style="margin-top:16px" data-act="reset">🗑️ Reiniciar progreso</button>`;
   };
@@ -772,13 +864,49 @@ const UI = (() => {
       btn.addEventListener('contextmenu', e => e.preventDefault());
     });
     $('b-potion').addEventListener('pointerdown', e => { e.preventDefault(); Battle.usePotion(); });
+    $('b-dodge').addEventListener('pointerdown', e => { e.preventDefault(); Battle.dodge(); });
     $('scr-battle').addEventListener('touchmove', e => e.preventDefault(), { passive: false });
 
+    // Joystick virtual: aparece donde tocas dentro de la zona izquierda
+    const zone = $('stick-zone'), base = $('stick-base'), knob = $('stick-knob');
+    let stickId = null, cx = 0, cy = 0;
+    const resetStick = () => {
+      stickId = null;
+      zone.classList.remove('active');
+      base.style.left = '50%'; base.style.top = '50%';
+      knob.style.transform = 'translate(-50%, -50%)';
+      Battle.setStick(0, 0, false);
+    };
+    const moveStick = e => {
+      const R = base.offsetWidth * 0.4;
+      let dx = e.clientX - cx, dy = e.clientY - cy;
+      const d = Math.hypot(dx, dy);
+      if (d > R) { dx = dx / d * R; dy = dy / d * R; }
+      knob.style.transform = `translate(calc(-50% + ${dx}px), calc(-50% + ${dy}px))`;
+      Battle.setStick(dx / R, dy / R, true);
+    };
+    zone.addEventListener('pointerdown', e => {
+      e.preventDefault(); Sfx.unlock();
+      if (stickId !== null) return;
+      stickId = e.pointerId;
+      try { zone.setPointerCapture(e.pointerId); } catch (err) {}
+      const r = zone.getBoundingClientRect(), half = base.offsetWidth / 2;
+      cx = Math.max(r.left + half, Math.min(r.right - half, e.clientX));
+      cy = Math.max(r.top + half, Math.min(r.bottom - half, e.clientY));
+      base.style.left = (cx - r.left) + 'px'; base.style.top = (cy - r.top) + 'px';
+      zone.classList.add('active');
+      moveStick(e);
+    });
+    zone.addEventListener('pointermove', e => { if (e.pointerId === stickId) moveStick(e); });
+    for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) zone.addEventListener(ev, e => { if (e.pointerId === stickId) resetStick(); });
+
     // Teclado (computadora)
-    const KEYS = { ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right', ' ': 'attack', j: 'attack', J: 'attack' };
+    const KEYS = { ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right',
+                   ArrowUp: 'up', w: 'up', W: 'up', ArrowDown: 'down', s: 'down', S: 'down', ' ': 'attack', j: 'attack', J: 'attack' };
     window.addEventListener('keydown', e => {
       if (current !== 'battle' || !$('modal').hidden) return;
       if (KEYS[e.key]) { e.preventDefault(); Battle.setInput(KEYS[e.key], true); }
+      else if (e.key === 'Shift' || e.key === 'k' || e.key === 'K') Battle.dodge();
       else if (e.key === '1') Battle.castSkill('fuego');
       else if (e.key === '2') Battle.castSkill('hielo');
       else if (e.key === '3') Battle.castSkill('rayo');
@@ -786,7 +914,7 @@ const UI = (() => {
       else if (e.key === 'Escape' || e.key === 'p') openPause();
     });
     window.addEventListener('keyup', e => { if (KEYS[e.key]) Battle.setInput(KEYS[e.key], false); });
-    window.addEventListener('blur', () => ['left', 'right', 'attack'].forEach(k => Battle.setInput(k, false)));
+    window.addEventListener('blur', () => { ['left', 'right', 'up', 'down', 'attack'].forEach(k => Battle.setInput(k, false)); resetStick(); });
     document.addEventListener('visibilitychange', () => {
       if (document.hidden && current === 'battle' && Battle.active && !Battle.paused && $('modal').hidden) openPause();
     });

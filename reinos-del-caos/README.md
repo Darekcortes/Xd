@@ -6,15 +6,19 @@ Abre `index.html` y juega: no necesita servidor ni instalación (los scripts se 
 ## Cómo se juega
 
 1. **Mapa** → elige una etapa desbloqueada y entra.
-2. **Combate** → muévete con ◀ ▶, mantén ⚔️ para atacar (cada tercer golpe seguido es fuerte),
-   usa 🔥 ❄️ ⚡ cuando estén cargadas y 🧪 para curarte. Golpear un proyectil lo devuelve.
-   Aléjate de las zonas rojas que marcan los jefes.
+2. **Combate** → arena en vista 3/4: arrastra el **joystick** para moverte en cualquier dirección,
+   mantén ⚔️ para atacar (cada tercer golpe seguido es fuerte), pulsa 💨 para **rodar** (eres invulnerable
+   mientras ruedas) y usa 🔥 ❄️ ⚡ cuando estén cargadas y 🧪 para curarte. Cada etapa tiene **oleadas**;
+   el **combo** sube tu daño, los enemigos **élite** (aura dorada) dan más botín, y las cajas, vasijas y
+   barriles se rompen y esconden oro, materiales y corazones. Golpear un proyectil lo devuelve.
+   Los lobos embisten (línea roja), los gólems golpean el suelo, los slimes se dividen y los arqueros
+   y magos disparan a distancia. Sal de las zonas rojas que marcan los jefes antes de que exploten.
 3. **Recompensas** → XP, monedas, materiales y un cofre al terminar la etapa.
 4. **Ruleta** → gasta materiales (o 💎) para girar. Cada mundo desbloquea una ruleta mejor.
 5. **Forja** → fabrica armas y armaduras y mejóralas hasta el nivel 5.
 6. **Personaje** → reparte los puntos que ganas al subir de nivel.
 
-En computadora también funciona con teclado: A/D o flechas, Espacio/J, 1-2-3, Q y Esc.
+En computadora también funciona con teclado: WASD o flechas, Espacio/J atacar, Shift/K rodar, 1-2-3, Q y Esc.
 
 ## Contenido
 
@@ -38,8 +42,10 @@ js/data.js        TODO el contenido: rarezas, materiales, objetos, recetas,
                   habilidades, enemigos, jefes, ruletas, mundos y balance
 js/audio.js       efectos de sonido sintetizados (Web Audio)
 js/state.js       estado del jugador, guardado en localStorage, estadísticas y recompensas
-js/sprites.js     dibujo en canvas de personajes, enemigos y escenarios
-js/battle.js      bucle de combate, IA de enemigos, ataques de jefes, habilidades y botín
+js/sprites.js     dibujo en canvas del caballero, criaturas (lobos, escorpiones,
+                  espectros, dragón, gólems...), botín y escenarios
+js/battle.js      arena con movimiento libre, oleadas, IA de enemigos, ataques de jefes,
+                  habilidades, esquiva, combos y botín
 js/ui.js          menú, mapa, ruleta, forja, inventario, personaje y ajustes
 js/main.js        arranque
 ```
@@ -50,8 +56,9 @@ Casi todo se añade editando `js/data.js`:
 
 - **Nuevo mundo**: añade un objeto a `WORLDS` (enemigos, jefe, materiales, ruleta, cofre).
   Sus 5 etapas se generan solas y el mapa lo muestra automáticamente.
-- **Nuevo enemigo o jefe**: entrada en `ENEMIES`. Los jefes combinan los ataques
-  `leap`, `slam`, `zones`, `lob`, `volley`, `breath` y `summon:<enemigo>`.
+- **Nuevo enemigo o jefe**: entrada en `ENEMIES` con su `sprite` (forma y colores) y su `ai`
+  (`melee`, `ranged`, `charger`, `tank`). Los jefes combinan los ataques
+  `leap`, `slam`, `zones`, `lob`, `volley`, `breath`, `charge`, `spin` y `summon:<enemigo>`.
 - **Nueva arma o armadura**: entrada en `ITEMS`; luego úsala en `RECIPES`, `WHEELS` o en `chestItems` de un mundo.
 - **Nueva ruleta**: entrada en `WHEELS` con sus probabilidades (`odds`) y premios.
 - **Nueva habilidad**: entrada en `SKILLS` y su efecto en `castSkill()` de `js/battle.js`

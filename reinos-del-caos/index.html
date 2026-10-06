@@ -54,17 +54,15 @@
         </div>
       </div>
       <div class="controls">
-        <div class="move">
-          <button class="ctl dir" data-hold="left" aria-label="Izquierda">◀</button>
-          <button class="ctl dir" data-hold="right" aria-label="Derecha">▶</button>
+        <div class="stick-zone" id="stick-zone" aria-label="Joystick: mueve al caballero">
+          <div class="stick-base" id="stick-base"><div class="stick-knob" id="stick-knob"></div></div>
         </div>
         <div class="actions">
-          <div class="skills">
-            <button class="ctl skill" data-skill="fuego" aria-label="Ataque de fuego"><span>🔥</span><b class="cdtext"></b></button>
-            <button class="ctl skill" data-skill="hielo" aria-label="Ataque de hielo"><span>❄️</span><b class="cdtext"></b></button>
-            <button class="ctl skill" data-skill="rayo" aria-label="Ataque eléctrico"><span>⚡</span><b class="cdtext"></b></button>
-            <button class="ctl potion" id="b-potion" aria-label="Usar poción"><span>🧪</span><b id="b-potion-count">0</b></button>
-          </div>
+          <button class="ctl skill" data-skill="fuego" aria-label="Ataque de fuego"><span>🔥</span><b class="cdtext"></b></button>
+          <button class="ctl skill" data-skill="hielo" aria-label="Ataque de hielo"><span>❄️</span><b class="cdtext"></b></button>
+          <button class="ctl skill" data-skill="rayo" aria-label="Ataque eléctrico"><span>⚡</span><b class="cdtext"></b></button>
+          <button class="ctl potion" id="b-potion" aria-label="Usar poción"><span>🧪</span><b id="b-potion-count">0</b></button>
+          <button class="ctl dodge" id="b-dodge" aria-label="Esquivar rodando"><span>💨</span><b class="cdtext"></b></button>
           <button class="ctl attack" data-hold="attack" aria-label="Atacar">⚔️</button>
         </div>
       </div>
