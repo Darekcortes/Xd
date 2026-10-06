@@ -42,6 +42,43 @@ const Sprites = (() => {
     gem: '#3b82f6',
   };
 
+  /** Pose del brazo de la espada según el tipo de golpe.
+      slash: tajo diagonal de arriba hacia abajo · thrust: estocada al frente ·
+      smash: golpe vertical desde encima de la cabeza (golpe fuerte).
+      Fases: preparación → corte rápido → recuperación.               */
+  const SWING_POSES = {
+    slash:  { up: -1.95, down: 1.1,  prep: 0.14, cut: 0.42, lean: 0.12 },
+    smash:  { up: -2.75, down: 1.4,  prep: 0.22, cut: 0.5,  lean: 0.2 },
+  };
+  const easeOut = k => 1 - Math.pow(1 - k, 3);
+  function swingPose(o, rest) {
+    const t = o.swing;
+    if (t < 0) return { ang: rest, ext: 0, lean: 0, trail: null };
+    const style = o.style || (o.heavy ? 'smash' : 'slash');
+    if (style === 'thrust') {
+      // Recoge el brazo y lo lanza recto al frente
+      const ang = 0.08;
+      let ext, lean;
+      if (t < 0.25) { const k = t / 0.25; ext = -5 * k; lean = -0.05 * k; }
+      else if (t < 0.55) { const k = easeOut((t - 0.25) / 0.3); ext = -5 + 15 * k; lean = 0.14 * k; }
+      else { const k = (t - 0.55) / 0.45; ext = 10 * (1 - k); lean = 0.14 * (1 - k); }
+      return { ang: t < 0.55 ? ang : ang + (rest - ang) * ((t - 0.55) / 0.45), ext, lean, trail: t > 0.3 && t < 0.8 ? { thrust: true, a: 1 - Math.abs(t - 0.55) / 0.3 } : null };
+    }
+    const P = SWING_POSES[style];
+    let ang, lean = 0, trail = null;
+    if (t < P.prep) { const k = t / P.prep; ang = rest + (P.up - rest) * easeOut(k); lean = -0.06 * k; }
+    else if (t < P.cut) {
+      const k = easeOut((t - P.prep) / (P.cut - P.prep));
+      ang = P.up + (P.down - P.up) * k; lean = P.lean * k;
+      trail = { from: P.up, to: ang, a: 1 };
+    } else {
+      const k = (t - P.cut) / (1 - P.cut);
+      ang = P.down + (rest - P.down) * k * k; lean = P.lean * (1 - k);
+      if (k < 0.5) trail = { from: P.up + (P.down - P.up) * k * 1.6, to: P.down, a: 1 - k * 2 };
+    }
+    return { ang, ext: 0, lean, trail };
+  }
+
   function knight(c, x, y, s, o) {
     const t = o.time || 0;
     const idle = !o.walk && o.swing < 0;
@@ -53,10 +90,14 @@ const Sprites = (() => {
     const gold = F(KP.gold);
     const legA = Math.sin(o.walk) * 0.55;
 
+    const rest = 0.8 + (idle ? Math.sin(t * 2.2) * 0.03 : Math.sin(o.walk) * 0.08);
+    const pose = swingPose(o, rest);
+
     shadow(c, x, y, 17 * s);
     c.save();
     c.translate(x, y);
     c.scale(o.face * s, s);
+    c.rotate(pose.lean);   // el cuerpo acompaña el golpe
 
     // Capa (detrás de todo)
     const wave = Math.sin(t * 3 + o.walk * 0.5) * 1.6 + (o.walk ? 3 : 0) + (o.swing >= 0 ? 4 : 0);
@@ -164,25 +205,35 @@ const Sprites = (() => {
     }
 
     // Brazo con la espada
-    let ang;
-    if (o.swing >= 0) ang = -2.4 + (1 - Math.pow(1 - o.swing, 3)) * 3.9;
-    else ang = 0.8 + (idle ? Math.sin(t * 2.2) * 0.03 : Math.sin(o.walk) * 0.08);
+    const ang = pose.ang;
     c.save();
     c.translate(3, -36);
-    if (o.swing >= 0) {
-      // Estela azul del corte
+    if (pose.trail) {
+      // Estela del corte: solo el tramo recorrido, de arriba hacia abajo
+      const tr = pose.trail, big = o.style === 'smash' || (!o.style && o.heavy);
       c.save();
-      c.shadowColor = '#60a5fa'; c.shadowBlur = o.heavy ? 14 : 8;
-      c.strokeStyle = o.heavy ? 'rgba(125,211,252,.9)' : 'rgba(147,197,253,.7)';
-      c.lineWidth = o.heavy ? 9 : 5;
-      c.beginPath(); c.arc(0, 0, 42, -2.4, ang, false); c.stroke();
-      c.strokeStyle = 'rgba(255,255,255,.85)'; c.lineWidth = o.heavy ? 3 : 1.6;
-      c.beginPath(); c.arc(0, 0, 44, Math.max(-2.4, ang - 1.2), ang, false); c.stroke();
+      c.globalAlpha = Math.max(0, tr.a);
+      c.shadowColor = '#60a5fa'; c.shadowBlur = big ? 16 : 10;
+      if (tr.thrust) {
+        c.rotate(ang);
+        const g = c.createLinearGradient(14, 0, 70, 0);
+        g.addColorStop(0, 'rgba(147,197,253,0)'); g.addColorStop(1, 'rgba(224,242,254,.95)');
+        c.fillStyle = g;
+        c.beginPath(); c.moveTo(14, -4); c.lineTo(66 + pose.ext, -1); c.lineTo(72 + pose.ext, 0); c.lineTo(66 + pose.ext, 1); c.lineTo(14, 4); c.closePath(); c.fill();
+      } else if (tr.to > tr.from) {
+        c.fillStyle = big ? 'rgba(125,211,252,.75)' : 'rgba(147,197,253,.6)';
+        c.beginPath(); c.arc(0, 0, 54, tr.from, tr.to, false); c.arc(0, 0, big ? 32 : 42, tr.to, tr.from, true); c.closePath(); c.fill();
+        c.strokeStyle = 'rgba(255,255,255,.95)'; c.lineWidth = big ? 3 : 2;
+        c.beginPath(); c.arc(0, 0, 54, Math.max(tr.from, tr.to - 1.1), tr.to, false); c.stroke();
+      }
       c.restore();
     }
     c.rotate(ang);
-    c.fillStyle = steel; rrect(c, -1.8, -2.8, 11, 5.6, 2.2); c.fill();
+    // En la estocada el brazo se estira; el puño y la espada avanzan con él
+    const ext = Math.max(-3, pose.ext);
+    c.fillStyle = steel; rrect(c, -1.8, -2.8, 11 + Math.max(0, ext), 5.6, 2.2); c.fill();
     c.fillStyle = gold; c.beginPath(); c.arc(5, 0, 1.2, 0, Math.PI * 2); c.fill();
+    c.translate(ext, 0);
     c.fillStyle = steelD; rrect(c, 9.5, -3.2, 5.5, 6.4, 1.8); c.fill();
     // Espada: pomo con gema, empuñadura, guarda dorada y hoja larga
     c.fillStyle = gold; c.beginPath(); c.arc(8.4, 0, 2.2, 0, Math.PI * 2); c.fill();

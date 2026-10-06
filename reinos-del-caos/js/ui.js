@@ -718,7 +718,7 @@ const UI = (() => {
           ${row('❤️', 'Vida', fmt(P.maxHp))}
           ${row('⚔️', 'Daño', fmt(P.dmg))}
           ${row('🛡️', 'Defensa', fmt(P.def))}
-          ${row('⚡', 'Velocidad', P.spd.toFixed(2) + '/s')}
+          ${row('⚡', 'Velocidad', (P.spd * BALANCE.attackRate).toFixed(2) + ' golpes/s')}
           ${row('🎯', 'Crítico', Math.round(P.crit * 100) + '%')}
           <div class="stat-row power"><span>💥</span><span class="lbl">Poder total</span><b>${fmt(P.power)}</b></div>
         </div>

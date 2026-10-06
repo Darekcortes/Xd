@@ -324,8 +324,9 @@ const BALANCE = {
   xpBase: 6, xpGrowth: 1.14,
   coinBase: 3, coinGrowth: 1.13,
   powerBase: 85, powerGrowth: 1.145, // poder recomendado
-  enemyDmgBase: 1.6, enemyDmgStep: 0.09, // multiplicador extra de daño enemigo (crece por etapa)
+  enemyDmgBase: 1.9, enemyDmgStep: 0.1,  // multiplicador extra de daño enemigo (crece por etapa)
   bossDmg: 1.4, bossHp: 1.3,
+  attackRate: 1.8, hitDamage: 0.7,  // golpes por segundo (x velocidad) y daño de cada golpe
   levelHp: 10, levelDmg: 2, levelDef: 1, pointsPerLevel: 2,
   pointHp: 8, pointDmg: 1.5, pointDef: 1, pointSpd: 0.03,
 };

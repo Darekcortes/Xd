@@ -182,7 +182,7 @@ const Battle = (() => {
   function updatePlayer(dt) {
     const p = st.p;
     p.atkT -= dt; p.flash -= dt; p.invuln -= dt; p.chainT -= dt; p.dodgeCd -= dt;
-    if (p.swing >= 0) { p.swing += dt / 0.24; if (p.swing >= 1) p.swing = -1; }
+    if (p.swing >= 0) { p.swing += dt / (p.swingDur || 0.22); if (p.swing >= 1) p.swing = -1; }
     if (st.ended || p.hp <= 0) { p.walk = 0; return; }
     const mv = moveInput();
     if (p.dodgeT > 0) {
@@ -212,30 +212,44 @@ const Battle = (() => {
     return best;
   }
 
+  // Combo de tres golpes: tajo descendente → estocada → golpe vertical fuerte
+  const COMBO = [
+    { style: 'slash',  dur: 0.2,  mult: 1,   reach: 0,  depth: 0,  knock: 5,  extra: 0 },
+    { style: 'thrust', dur: 0.2,  mult: 1.1, reach: 16, depth: -6, knock: 8,  extra: 0 },
+    { style: 'smash',  dur: 0.3,  mult: 1.9, reach: 8,  depth: 10, knock: 30, extra: 0.12 },
+  ];
+
   function attack() {
     const p = st.p;
-    p.atkT = 1 / p.spd;
-    p.chain = p.chainT > 0 ? p.chain + 1 : 1;
-    p.chainT = 1 / p.spd + 0.6;
-    const heavy = p.chain % 3 === 0;
+    p.chain = p.chainT > 0 ? (p.chain % 3) + 1 : 1;
+    const mv = COMBO[p.chain - 1];
+    p.atkT = 1 / (p.spd * BALANCE.attackRate) + mv.extra;
+    p.chainT = p.atkT + 0.45;
+    p.swingDur = mv.dur;
+    const heavy = mv.style === 'smash';
     const near = nearestEnemy(p.x, p.y, 150);
     if (near) {
       p.face = Math.sign(near.x - p.x) || p.face;
       // Se acerca un poco a la profundidad del enemigo para no fallar por poco
       p.y += clamp(near.y - p.y, -8, 8);
     }
-    p.x = clamp(p.x + p.face * (heavy ? 10 : 5), 16, W - 16);
-    p.swing = 0; p.heavy = heavy;
+    p.x = clamp(p.x + p.face * (mv.style === 'thrust' ? 9 : heavy ? 7 : 4), 16, W - 16);
+    p.swing = 0; p.heavy = heavy; p.style = mv.style;
     Sfx.play('swing');
-    const reach = REACH + (heavy ? 16 : 0);
+    const reach = REACH + mv.reach;
     let hit = 0;
     for (const e of st.enemies) {
       if (e.dead || (e.z || 0) > 25) continue;
       const dx = (e.x - p.x) * p.face;
-      if (dx > -16 && dx < reach + e.size * 0.35 && Math.abs(e.y - p.y) < DEPTH + e.size * 0.18) {
-        damageEnemy(e, p.dmg * (heavy ? 1.7 : 1), { knock: heavy ? 34 : 14, canCrit: true, combo: true });
+      if (dx > -16 && dx < reach + e.size * 0.35 && Math.abs(e.y - p.y) < DEPTH + mv.depth + e.size * 0.18) {
+        damageEnemy(e, p.dmg * BALANCE.hitDamage * mv.mult, { knock: mv.knock, canCrit: true, combo: true });
         hit++;
       }
+    }
+    if (heavy) {
+      // El golpe fuerte sacude el suelo
+      st.rings.push({ x: p.x + p.face * 30, y: p.y, r: 6, max: 46, t: 0.3, life: 0.3, color: '#e0f2fe' });
+      burst(p.x + p.face * 34, p.y - 2, '#d6d3d1', 10, 90, -60);
     }
     for (const pr of st.props) {
       if (pr.dead) continue;
@@ -252,8 +266,8 @@ const Battle = (() => {
         Sfx.play('deflect');
       }
     }
-    if (hit) st.hitStop = heavy ? 0.07 : 0.035;
-    if (heavy && hit) st.shake = Math.max(st.shake, 5);
+    if (hit) st.hitStop = heavy ? 0.07 : 0.03;
+    if (heavy) st.shake = Math.max(st.shake, hit ? 6 : 3);
   }
 
   function dodge() {
@@ -294,7 +308,7 @@ const Battle = (() => {
     const p = st.p;
     st.cds[id] = skillCd(id);
     const near = nearestEnemy(p.x, p.y, 400);
-    p.swing = 0; p.heavy = true;
+    p.swing = 0; p.heavy = true; p.style = 'smash'; p.swingDur = 0.3;
     if (id === 'fuego') {
       let vx = p.face, vy = 0;
       if (near) { const d = Math.hypot(near.x - p.x, near.y - p.y) || 1; vx = (near.x - p.x) / d; vy = (near.y - p.y) / d; p.face = Math.sign(vx) || p.face; }
@@ -1000,7 +1014,7 @@ const Battle = (() => {
     if (p.hp <= 0) { c.save(); c.translate(p.x, p.y); c.rotate(-Math.PI / 2 * p.face); c.translate(-p.x, -p.y); c.globalAlpha = 0.7; }
     // Parpadea (semitransparente) mientras es invulnerable tras recibir daño
     if (p.invuln > 0 && p.dodgeT <= 0 && p.hp > 0 && Math.floor(st.time * 20) % 2 === 0) c.globalAlpha = 0.45;
-    Sprites.knight(c, p.x, p.y, 1.0, { face: p.face, walk: p.walk, swing: p.swing, heavy: p.heavy, time: st.time,
+    Sprites.knight(c, p.x, p.y, 1.0, { face: p.face, walk: p.walk, swing: p.swing, heavy: p.heavy, style: p.style, time: st.time,
       weaponColor: ITEMS[S.equip.weapon].color, armorColor: ITEMS[S.equip.armor].color, flash: p.flash > 0, helmet: S.settings.helmet });
     c.globalAlpha = 1;
     if (p.hp <= 0) { c.restore(); c.globalAlpha = 1; }
