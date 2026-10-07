@@ -59,6 +59,14 @@ const Game = (() => {
     S.unlocked = Math.min(Math.max(1, S.unlocked), MAX_STAGE);
     if (data.rank === undefined) S.rank = rankOf(S.level);   // no celebrar rangos ya alcanzados
     S.username = typeof S.username === 'string' ? S.username.slice(0, 16) : '';
+    // Partidas antiguas: entrega las habilidades y equipo de primera victoria que se añadieron después
+    for (const st in FIRST_CLEAR) {
+      if (!S.cleared[st]) continue;
+      for (const p of FIRST_CLEAR[st]) {
+        if (p.skill && !S.skills[p.skill]) S.skills[p.skill] = 1;
+        if (p.item && ITEMS[p.item] && !S.items[p.item]) S.items[p.item] = { lvl: 1 };
+      }
+    }
     lastPrint = printOf();
     Sfx.setEnabled(S.settings.sound);
   }
