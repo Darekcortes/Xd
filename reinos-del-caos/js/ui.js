@@ -84,11 +84,13 @@ const UI = (() => {
     if (!S().settings.vibrate) return;
     try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) { /* no disponible */ }
   }
+  /** Icono dibujado de un objeto, poción o material (sin emojis repetidos). */
+  const ico = id => `<span class="gi-wrap">${Icons.html(id)}</span>`;
   const costPills = (cost, coins, gems) => {
     let h = '';
     for (const k in cost) {
       const have = Game.matCount(k), ok = have >= cost[k];
-      h += `<span class="pill ${ok ? 'ok' : 'no'}">${MATERIALS[k].icon} ${fmt(have)}/${cost[k]}</span>`;
+      h += `<span class="pill ${ok ? 'ok' : 'no'}">${ico(k)} ${fmt(have)}/${cost[k]}</span>`;
     }
     if (coins) h += `<span class="pill ${S().coins >= coins ? 'ok' : 'no'}">💰 ${fmt(coins)}</span>`;
     if (gems) h += `<span class="pill ${S().gems >= gems ? 'ok' : 'no'}">💎 ${gems}</span>`;
@@ -585,7 +587,7 @@ const UI = (() => {
     }
     if (best) {
       if (best.score === 0) out.push({ text: `🔨 ¡Forja lista!`, to: 'forge', ready: true });
-      else if (best.missMat) out.push({ text: `🔨 Faltan ${best.r.cost[best.missMat] - Game.matCount(best.missMat)} ${MATERIALS[best.missMat].icon}`, to: 'forge' });
+      else if (best.missMat) out.push({ text: `🔨 Faltan ${best.r.cost[best.missMat] - Game.matCount(best.missMat)} ${ico(best.missMat)}`, to: 'forge' });
     }
     const pct = Math.floor(s.xp / xpForLevel(s.level) * 100);
     out.push({ text: `⭐ Nivel ${s.level + 1}: ${pct}%`, to: 'char' });
@@ -685,7 +687,7 @@ const UI = (() => {
     const info = stageInfo(stage), P = Game.stats();
     const powerOk = P.power >= info.power * 0.85;
     const foes = (info.boss ? [info.world.boss] : []).concat(info.world.enemies);
-    const drops = Object.keys(info.world.drops).map(id => `<span title="${MATERIALS[id].name}">${MATERIALS[id].icon}</span>`).join('');
+    const drops = Object.keys(info.world.drops).map(id => `<span title="${MATERIALS[id].name}">${ico(id)}</span>`).join('');
     openModal(`
       <h2>${info.boss ? '👹 ' : ''}Etapa ${stage}</h2>
       <p class="sub">${esc(info.name)} · ${info.world.icon} ${info.world.name}</p>
@@ -694,7 +696,7 @@ const UI = (() => {
         ${info.boss ? `<div class="info-row"><span>Jefe</span><b style="color:#fca5a5">👹 ${ENEMIES[info.world.boss].name}</b></div>` : `<div class="info-row"><span>Enemigos</span><b>${info.enemyCount} en oleadas</b></div>`}
         <div class="info-row"><span>Poder recomendado</span><b style="color:${powerOk ? '#86efac' : '#fca5a5'}">💥 ${fmt(info.power)}</b></div>
         <div class="info-row"><span>Tu poder</span><b>💥 ${fmt(P.power)}</b></div>
-        <div class="info-row"><span>Materiales</span><span class="icons">${drops}${info.boss ? MATERIALS[info.world.bossDrop].icon : ''}</span></div>
+        <div class="info-row"><span>Materiales</span><span class="icons">${drops}${info.boss ? ico(info.world.bossDrop) : ''}</span></div>
         <div class="info-row"><span>Completada</span><b>${s.cleared[stage] ? `✅ ${s.cleared[stage]} ${s.cleared[stage] === 1 ? 'vez' : 'veces'}` : `No · primera vez: +${info.boss ? 5 : 1} 💎`}</b></div>
       </div>
       ${!powerOk ? '<p class="hint" style="text-align:center;margin-top:10px">⚠️ Tu poder es bajo. Mejora tu equipo en la forja o prueba suerte en la ruleta.</p>' : ''}
@@ -861,7 +863,7 @@ const UI = (() => {
       if (extra.shards) h += `<span class="loot" style="--rc:#c4b5fd">🧩 ${extra.shards}</span>`;
     }
     Object.keys(mats).sort((a, b) => RARITY_ORDER.indexOf(MATERIALS[b].rarity) - RARITY_ORDER.indexOf(MATERIALS[a].rarity)).forEach((id, i) => {
-      h += `<span class="loot" style="--rc:${rc(MATERIALS[id].rarity)};animation-delay:${i * 0.05}s" title="${MATERIALS[id].name}">${MATERIALS[id].icon} ${mats[id]}</span>`;
+      h += `<span class="loot" style="--rc:${rc(MATERIALS[id].rarity)};animation-delay:${i * 0.05}s" title="${MATERIALS[id].name}">${ico(id)} ${mats[id]}</span>`;
     });
     return h || '<span class="hint">Nada esta vez</span>';
   }
@@ -876,7 +878,7 @@ const UI = (() => {
   const equipCard = id => {
     const it = ITEMS[id], st = Game.itemStats(id);
     return `<div class="unlock-card item" style="--rc:${rc(it.rarity)}">
-      <div class="u-icon">${it.icon}</div>
+      <div class="u-icon">${ico(id)}</div>
       <div class="u-body"><div class="u-kicker">¡Nuevo equipo!</div><div class="u-name">${it.name}</div>
         <div class="u-desc">${RARITIES[it.rarity].icon} ${RARITIES[it.rarity].name} · ${it.type === 'weapon' ? `⚔️ ${st.dmg}` : `🛡️ ${st.def} · ❤️ +${st.hp}`}</div></div>
       ${isUpgrade(id) ? `<button class="btn small" data-act="equip-keep" data-id="${id}">Equipar</button>` : ''}
@@ -894,7 +896,7 @@ const UI = (() => {
     const streakLine = r.victory
       ? `<div class="streak-badge">🔥 Racha x${s.streak}${o.bonus ? ` · +${Math.round(o.bonus * 100)}% oro y XP` : ''}</div>`
       : (o.lostStreak ? `<div class="streak-badge lost">💔 Perdiste tu racha x${o.lostStreak}</div>` : '');
-    const special = r.victory && r.specialDrop ? `<div class="levelup">✨ Material especial: ${MATERIALS[r.specialDrop].icon} ${MATERIALS[r.specialDrop].name}</div>` : '';
+    const special = r.victory && r.specialDrop ? `<div class="levelup">✨ Material especial: ${ico(r.specialDrop)} ${MATERIALS[r.specialDrop].name}</div>` : '';
     const skillCards = o.newSkills.map(id => `
       <div class="unlock-card skill">
         <div class="u-icon spin">${SKILLS[id].icon}</div>
@@ -1043,7 +1045,14 @@ const UI = (() => {
       c.rotate(a0 + seg / 2);
       c.textAlign = 'center'; c.textBaseline = 'middle';
       c.font = '56px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
-      c.save(); c.translate(R * 0.6, 0); c.rotate(Math.PI / 2); c.fillText(lab.icon, 0, 0); c.restore();
+      const im = lab.id && Icons.image(lab.id);
+      c.save(); c.translate(R * 0.6, 0); c.rotate(Math.PI / 2);
+      if (im && im.complete && im.naturalWidth) c.drawImage(im, -40, -40, 80, 80);
+      else {
+        c.fillText(lab.icon, 0, 0);
+        if (im) im.onload = () => { if (current === 'wheel' && $('wheel-cv')) drawWheel(w); };
+      }
+      c.restore();
       c.font = '800 24px "Alegreya Sans", system-ui, sans-serif';
       c.fillStyle = '#fff'; c.strokeStyle = '#000'; c.lineWidth = 5;
       c.save(); c.translate(R * 0.83, 0); c.rotate(Math.PI / 2);
@@ -1105,11 +1114,11 @@ const UI = (() => {
     const lab = Game.prizeLabel(p), r = RARITIES[p.r], ri = RARITY_ORDER.indexOf(p.r);
     const shout = ['Común', 'Poco común', '¡Raro!', '¡ÉPICO!', '🎉 ¡LEGENDARIO!', '🔥 ¡¡MÍTICO!!'][ri];
     let name = lab.full;
-    if (p.item) name = `${ITEMS[p.item].icon} ${ITEMS[p.item].name}`;
+    if (p.item) name = ITEMS[p.item].name;
     openModal(`
       <div class="prize-reveal ${ri >= 4 ? 'legend' : ri >= 3 ? 'epic' : ''}" style="--rc:${r.color}">
         <div class="prize-rarity">${shout}</div>
-        <div class="prize-icon">${lab.icon}</div>
+        <div class="prize-icon">${lab.id ? ico(lab.id) : lab.icon}</div>
         <div class="prize-name">${esc(name)}</div>
         <div class="prize-detail">${esc(text)}</div>
       </div>
@@ -1137,7 +1146,7 @@ const UI = (() => {
         const locked = rec.world > hw, d = rec.potion ? POTIONS[rec.potion] : ITEMS[rec.item];
         const owned = rec.item && s.items[rec.item], ready = !locked && !owned && Game.hasCost(rec.cost, rec.coins);
         const tag = locked ? '<span class="ft-tag lock">🔒</span>' : owned ? '<span class="ft-tag own">✓</span>' : ready ? '<span class="ft-tag go">!</span>' : rec.potion ? `<span class="ft-tag qty">${s.potions[rec.potion] || 0}</span>` : '';
-        return `<button class="ftile ${view.forgeSel === i ? 'sel' : ''} ${locked ? 'locked' : ''} ${owned ? 'owned' : ''} ${ready ? 'ready' : ''}" style="--rc:${rc(d.rarity)}" data-act="forge-sel" data-i="${i}" aria-label="${esc(d.name)}"><span class="ft-ico">${d.icon}</span>${tag}</button>`;
+        return `<button class="ftile ${view.forgeSel === i ? 'sel' : ''} ${locked ? 'locked' : ''} ${owned ? 'owned' : ''} ${ready ? 'ready' : ''}" style="--rc:${rc(d.rarity)}" data-act="forge-sel" data-i="${i}" aria-label="${esc(d.name)}"><span class="ft-ico">${ico(rec.potion || rec.item)}</span>${tag}</button>`;
       }).join('');
       body = `<div class="forge-wrap">${forgeStage('craft', view.forgeSel)}<div class="forge-side"><div class="fside-title">📜 Recetas</div><div class="forge-grid">${tiles}</div></div></div>`;
     } else if (view.forgeTab === 'enchant') {
@@ -1156,7 +1165,7 @@ const UI = (() => {
           ${act}
         </div>`;
       }).join('');
-      body = `<div class="card enchant-now" style="--rc:${rc(w.rarity)}"><div class="item-head"><div class="item-icon">${w.icon}</div><div><div class="item-name">${w.name}</div>
+      body = `<div class="card enchant-now" style="--rc:${rc(w.rarity)}"><div class="item-head"><div class="item-icon">${ico(wid)}</div><div><div class="item-name">${w.name}</div>
         <div class="item-meta">${curE ? `Encantamiento: ${ENCHANTS[curE].icon} ${ENCHANTS[curE].name}` : 'Sin encantamiento'}</div></div></div></div>
         <p class="hint">Cada arma lleva un encantamiento a la vez. Los que compras para un arma se quedan guardados: puedes cambiar entre ellos gratis cuando quieras.</p>
         <div class="cards">${cards}</div>`;
@@ -1167,7 +1176,7 @@ const UI = (() => {
         const it = ITEMS[id], lvl = s.items[id].lvl, eq = s.equip.weapon === id || s.equip.armor === id;
         const max = lvl >= MAX_ITEM_LEVEL, c = max ? null : upgradeCost(id), ready = c && Game.hasCost(c.cost, c.coins);
         return `<button class="ftile ${view.upSel === id ? 'sel' : ''} ${ready ? 'ready' : ''}" style="--rc:${rc(it.rarity)}" data-act="up-sel" data-id="${id}" aria-label="${esc(it.name)}">
-          <span class="ft-ico">${it.icon}</span>${eq ? '<span class="ft-tag eq">E</span>' : ready ? '<span class="ft-tag go">!</span>' : ''}<span class="ft-stars">${'★'.repeat(lvl)}</span></button>`;
+          <span class="ft-ico">${ico(id)}</span>${eq ? '<span class="ft-tag eq">E</span>' : ready ? '<span class="ft-tag go">!</span>' : ''}<span class="ft-stars">${'★'.repeat(lvl)}</span></button>`;
       }).join('');
       body = `<div class="forge-wrap">${forgeStage('upgrade', view.upSel)}<div class="forge-side"><div class="fside-title">🎒 Tus objetos</div><div class="forge-grid">${tiles}</div></div></div>`;
     }
@@ -1207,18 +1216,18 @@ const UI = (() => {
     let h = '';
     for (const k in cost) {
       const have = Game.matCount(k), ok = have >= cost[k];
-      h += `<div class="mslot ${ok ? 'ok' : 'no'}" title="${esc(MATERIALS[k].name)}"><span class="ms-ico">${MATERIALS[k].icon}</span><span class="ms-n">${fmtShort(have)}/${cost[k]}</span></div>`;
+      h += `<div class="mslot ${ok ? 'ok' : 'no'}" title="${esc(MATERIALS[k].name)}"><span class="ms-ico">${ico(k)}</span><span class="ms-n">${fmtShort(have)}/${cost[k]}</span></div>`;
     }
     if (coins) h += `<div class="mslot ${S().coins >= coins ? 'ok' : 'no'}" title="Monedas"><span class="ms-ico">💰</span><span class="ms-n">${fmtShort(coins)}</span></div>`;
     return `<div class="mslots">${h}</div>`;
   }
   function forgeStage(mode, sel) {
     const s = S(), hw = Game.highestWorld();
-    let d, rar, sub, bars = '', foot = '', lvl = 0;
+    let d, rar, sub, bars = '', foot = '', lvl = 0, iconId;
     if (mode === 'craft') {
       const rec = RECIPES[sel];
       if (!rec) return '<div class="forge-stage"><p class="hint">No hay recetas.</p></div>';
-      d = rec.potion ? POTIONS[rec.potion] : ITEMS[rec.item]; rar = d.rarity;
+      d = rec.potion ? POTIONS[rec.potion] : ITEMS[rec.item]; rar = d.rarity; iconId = rec.potion || rec.item;
       const locked = rec.world > hw, owned = rec.item && s.items[rec.item];
       sub = rec.potion ? `Cura ${Math.round(d.heal * 100)}% de la vida · tienes ${s.potions[rec.potion] || 0}` : `${RARITIES[rar].name} · ${d.type === 'weapon' ? 'Arma' : 'Armadura'}`;
       if (!rec.potion) bars = itemBars(rec.item, 1);
@@ -1229,7 +1238,7 @@ const UI = (() => {
         foot = matSlots(rec.cost, rec.coins) + `<button class="btn btn-forge ${can ? 'glow' : ''}" data-act="craft" data-i="${sel}" ${can ? '' : 'aria-disabled="true"'}>${rec.potion ? '⚗️ PREPARAR' : '🔨 FORJAR'}</button>`;
       }
     } else {
-      const id = sel; d = ITEMS[id]; rar = d.rarity; lvl = s.items[id].lvl;
+      const id = sel; d = ITEMS[id]; rar = d.rarity; lvl = s.items[id].lvl; iconId = id;
       const eq = s.equip.weapon === id || s.equip.armor === id;
       sub = `${RARITIES[rar].name} · ${d.type === 'weapon' ? 'Arma' : 'Armadura'}${eq ? ' · <b class="eq-tag">Equipado</b>' : ''}`;
       if (lvl >= MAX_ITEM_LEVEL) { bars = itemBars(id, lvl); foot = '<div class="fs-note max">⭐ ¡Nivel máximo alcanzado!</div>'; }
@@ -1241,7 +1250,7 @@ const UI = (() => {
     }
     const stars = mode === 'upgrade' ? `<div class="fs-stars" id="fs-stars">${Array.from({ length: MAX_ITEM_LEVEL }, (_, i) => `<span class="${i < lvl ? 'on' : ''}">★</span>`).join('')}</div>` : '';
     return `<div class="forge-stage" style="--rc:${rc(rar)}">
-      <div class="fs-anvil"><canvas id="forge-cv" aria-hidden="true"></canvas><div class="fs-item" id="fs-item"><span>${d.icon}</span></div>${stars}</div>
+      <div class="fs-anvil"><canvas id="forge-cv" aria-hidden="true"></canvas><div class="fs-item" id="fs-item"><span>${ico(iconId)}</span></div>${stars}</div>
       <div class="fs-info">
         <div class="fs-name">${esc(d.name)}</div>
         <div class="fs-rar"><span class="rar-gem">${RARITIES[rar].icon}</span> ${sub}</div>
@@ -1392,7 +1401,7 @@ const UI = (() => {
       openModal(`
         <div class="prize-reveal ${RARITY_ORDER.indexOf(it.rarity) >= 3 ? 'epic' : ''}" style="--rc:${rc(it.rarity)}">
           <div class="prize-rarity">🔨 ¡Forjado!</div>
-          <div class="prize-icon">${it.icon}</div>
+          <div class="prize-icon">${ico(rec.item)}</div>
           <div class="prize-name">${it.name}</div>
           <div class="prize-detail">${RARITIES[it.rarity].icon} ${RARITIES[it.rarity].name}</div>
         </div>
@@ -1443,7 +1452,7 @@ const UI = (() => {
           ? `<span class="pill">⚔️ ${st.dmg}</span>${st.spd ? `<span class="pill">⚡ +${st.spd}</span>` : ''}${st.crit ? `<span class="pill">🎯 +${Math.round(st.crit * 100)}%</span>` : ''}`
           : `<span class="pill">🛡️ ${st.def}</span><span class="pill">❤️ +${st.hp}</span>`;
         return `<div class="card item-card" style="--rc:${rc(it.rarity)}">
-          <div class="item-head"><div class="item-icon">${it.icon}</div><div><div class="item-name">${it.name}</div><div class="stars">${stars(lvl)}</div><div class="item-meta">${RARITIES[it.rarity].icon} ${RARITIES[it.rarity].name}</div></div></div>
+          <div class="item-head"><div class="item-icon">${ico(id)}</div><div><div class="item-name">${it.name}</div><div class="stars">${stars(lvl)}</div><div class="item-meta">${RARITIES[it.rarity].icon} ${RARITIES[it.rarity].name}</div></div></div>
           <div class="stat-line">${stats}</div>
           <button class="btn small ${eq ? 'ghost' : ''}" data-act="equip" data-id="${id}" ${eq ? 'disabled' : ''}>${eq ? '✅ Equipado' : 'Equipar'}</button>
         </div>`;
@@ -1453,14 +1462,14 @@ const UI = (() => {
         .sort((a, b) => RARITY_ORDER.indexOf(MATERIALS[a].rarity) - RARITY_ORDER.indexOf(MATERIALS[b].rarity));
       const extra = t === 'special' ? `<div class="mat" style="--rc:var(--gem)"><span class="mi">💎</span><span class="mq">${fmt(s.gems)}</span><span class="mn">Cristales</span></div>` : '';
       body = ids.length || extra
-        ? `<div class="mat-grid">${extra}${ids.map(id => `<div class="mat" style="--rc:${rc(MATERIALS[id].rarity)}"><span class="mi">${MATERIALS[id].icon}</span><span class="mq">${fmt(Game.matCount(id))}</span><span class="mn">${MATERIALS[id].name}</span></div>`).join('')}</div>`
+        ? `<div class="mat-grid">${extra}${ids.map(id => `<div class="mat" style="--rc:${rc(MATERIALS[id].rarity)}"><span class="mi">${ico(id)}</span><span class="mq">${fmt(Game.matCount(id))}</span><span class="mn">${MATERIALS[id].name}</span></div>`).join('')}</div>`
         : '<div class="empty">Aún no tienes materiales. ¡Derrota enemigos para conseguirlos!</div>';
       if (t === 'special') body += '<p class="hint" style="margin-top:12px">Los materiales especiales los sueltan los jefes y sirven para forjar equipo poderoso.</p>';
     } else if (t === 'potions') {
       body = `<div class="cards">${Object.keys(POTIONS).map(id => {
         const pd = POTIONS[id];
         return `<div class="card item-card" style="--rc:${rc(pd.rarity)}">
-          <div class="item-head"><div class="item-icon">${pd.icon}</div><div><div class="item-name">${pd.name} x${s.potions[id] || 0}</div><div class="item-meta">Cura ${Math.round(pd.heal * 100)}% de tu vida en combate (botón 🧪)</div></div></div>
+          <div class="item-head"><div class="item-icon">${ico(id)}</div><div><div class="item-name">${pd.name} x${s.potions[id] || 0}</div><div class="item-meta">Cura ${Math.round(pd.heal * 100)}% de tu vida en combate (botón 🧪)</div></div></div>
           <button class="btn small" data-act="buy-potion" data-id="${id}" ${s.coins >= pd.price ? '' : 'disabled'}>Comprar por 💰 ${pd.price}</button>
         </div>`;
       }).join('')}</div>`;
@@ -1532,8 +1541,8 @@ const UI = (() => {
       </div>
       <h3 class="section-title">Equipo</h3>
       <div class="cards">
-        <div class="card item-card" style="--rc:${rc(w.rarity)}"><div class="item-head"><div class="item-icon">${w.icon}</div><div><div class="item-name">${w.name}</div><div class="stars">${stars(s.items[s.equip.weapon].lvl)}</div></div></div></div>
-        <div class="card item-card" style="--rc:${rc(a.rarity)}"><div class="item-head"><div class="item-icon">${a.icon}</div><div><div class="item-name">${a.name}</div><div class="stars">${stars(s.items[s.equip.armor].lvl)}</div></div></div></div>
+        <div class="card item-card" style="--rc:${rc(w.rarity)}"><div class="item-head"><div class="item-icon">${ico(s.equip.weapon)}</div><div><div class="item-name">${w.name}</div><div class="stars">${stars(s.items[s.equip.weapon].lvl)}</div></div></div></div>
+        <div class="card item-card" style="--rc:${rc(a.rarity)}"><div class="item-head"><div class="item-icon">${ico(s.equip.armor)}</div><div><div class="item-name">${a.name}</div><div class="stars">${stars(s.items[s.equip.armor].lvl)}</div></div></div></div>
       </div>
       <button class="btn ghost wide" style="margin-top:10px" data-act="go" data-to="inv">🎒 Cambiar equipo</button>
       <div class="acc-btns"><button class="btn ghost" data-act="pets-open" data-tab="pets">🐾 Mascotas${s.pets.active ? ` · ${PETS[s.pets.active].icon}` : ''}</button><button class="btn ghost" data-act="pets-open" data-tab="style">🎨 Apariencia</button><button class="btn ghost" data-act="forge-open" data-tab="enchant">🪄 Encantar</button></div>

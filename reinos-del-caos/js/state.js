@@ -693,12 +693,12 @@ const Game = (() => {
   /** Nombre corto e icono de un premio, para mostrar en la ruleta. */
   function prizeLabel(p) {
     if (p.bundle) return { icon: '🎁', name: 'Cofre', full: p.bundle.map(b => prizeLabel(b).full).join(' + ') };
-    if (p.mat) return { icon: MATERIALS[p.mat].icon, name: `x${p.qty}`, full: `${MATERIALS[p.mat].name} x${p.qty}` };
-    if (p.potion) return { icon: POTIONS[p.potion].icon, name: `x${p.qty}`, full: `${POTIONS[p.potion].name} x${p.qty}` };
+    if (p.mat) return { id: p.mat, icon: MATERIALS[p.mat].icon, name: `x${p.qty}`, full: `${MATERIALS[p.mat].name} x${p.qty}` };
+    if (p.potion) return { id: p.potion, icon: POTIONS[p.potion].icon, name: `x${p.qty}`, full: `${POTIONS[p.potion].name} x${p.qty}` };
     if (p.gems) return { icon: '💎', name: `x${p.gems}`, full: `${p.gems} cristales` };
     if (p.tickets) return { icon: '🎟️', name: `x${p.tickets}`, full: `${p.tickets} ticket${p.tickets > 1 ? 's' : ''}` };
     if (p.coins) return { icon: '💰', name: `x${p.coins}`, full: `${p.coins} monedas` };
-    if (p.item) return { icon: ITEMS[p.item].icon, name: ITEMS[p.item].name.split(' ').slice(-1)[0], full: ITEMS[p.item].name };
+    if (p.item) return { id: p.item, icon: ITEMS[p.item].icon, name: ITEMS[p.item].name.split(' ').slice(-1)[0], full: ITEMS[p.item].name };
     if (p.skill) return { icon: SKILLS[p.skill].icon, name: 'Habilidad', full: SKILLS[p.skill].name };
     return { icon: '?', name: '', full: '' };
   }

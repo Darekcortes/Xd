@@ -768,7 +768,7 @@ button.power-chip { cursor: pointer; color: inherit; font: inherit; }
 .ftile:active { transform: translateY(2px); }
 .ftile.sel { border-color: #fde68a; box-shadow: 0 0 0 2px #fde68a, 0 0 16px #fde68aaa, 0 3px 0 #07050e; transform: translateY(-2px); }
 .ftile.locked .ft-ico { filter: grayscale(1) brightness(.35); }
-.ftile.owned .ft-ico { opacity: .55; }
+.ftile.owned .ft-ico { opacity: .75; }
 .ftile.ready { animation: tilepulse 1.6s ease-in-out infinite; }
 @keyframes tilepulse { 50% { box-shadow: 0 0 14px color-mix(in srgb, var(--rc) 90%, #fff), 0 3px 0 #07050e; } }
 .ft-tag { position: absolute; top: -6px; right: -6px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px; font-size: .72rem; font-weight: 900; display: grid; place-items: center; box-shadow: 0 0 0 2px #120e1e; }
@@ -916,3 +916,11 @@ button.power-chip { cursor: pointer; color: inherit; font: inherit; }
   .power-chip .rank-tag { display: none; }
   .power-chip .uname { max-width: 34vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
+
+/* ---------- Iconos dibujados (SVG) ---------- */
+.gi-wrap { display: inline-block; width: 1.25em; height: 1.25em; vertical-align: -.3em; line-height: 0; }
+.gi { width: 100%; height: 100%; display: block; overflow: visible; filter: drop-shadow(0 2px 1px #0008); }
+.item-icon .gi-wrap, .ft-ico .gi-wrap, .u-icon .gi-wrap, .prize-icon .gi-wrap { width: 1.45em; height: 1.45em; vertical-align: middle; }
+.fs-item .gi-wrap { width: 1.5em; height: 1.5em; }
+.mslot .ms-ico .gi-wrap, .mat .mi .gi-wrap { width: 1.5em; height: 1.5em; }
+.ft-ico { display: grid; place-items: center; }
