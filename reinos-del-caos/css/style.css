@@ -584,3 +584,8 @@ button.power-chip { cursor: pointer; color: inherit; font: inherit; }
   .ctl.attack { font-size: 1.7rem; }
   .ctl .cdtext, .ctl.potion b { font-size: .75rem; }
 }
+
+/* Cuenta con contraseña */
+.name-form input + input { margin-top: 8px; }
+.acc-btns { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.acc-btns .btn { flex: 1 1 120px; }

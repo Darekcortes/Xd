@@ -225,10 +225,23 @@ const UI = (() => {
 
   /* ---------- Cuenta: nombre de usuario y guardado ---------- */
   function cloudIcon() {
+    const A = Game.account;
+    if (A.session) return A.status === 'ok' ? '<span class="cloud-ico" title="Guardado en tu cuenta">🔐</span>' : A.status === 'connecting' ? '<span class="cloud-ico" title="Conectando con tu cuenta">⏳</span>' : '<span class="cloud-ico" title="Sin conexión con la cuenta">⚠️</span>';
     const st = Game.cloud.status;
     return st === 'cloud' ? '<span class="cloud-ico" title="Guardado en tu cuenta">☁️</span>' : st === 'connecting' ? '<span class="cloud-ico" title="Conectando con tu cuenta">⏳</span>' : '';
   }
+  function accountText() {
+    const A = Game.account, when = t => new Date(t).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
+    if (A.status === 'ok') return `🔐 Sesión iniciada. Tu progreso se guarda en tu cuenta${A.lastSync ? ` · último guardado ${when(A.lastSync)}` : ''}. Entra con tu usuario y contraseña en cualquier dispositivo para seguir jugando.`;
+    if (A.status === 'connecting') return '⏳ Conectando con tu cuenta…';
+    if (A.status === 'denied') return '⚠️ Tu acceso a esta página no permite guardar (pide al dueño acceso de Colaborador). Se guarda en este dispositivo.';
+    if (A.status === 'offline') return '📱 Aquí no hay conexión con las cuentas (solo funcionan en el enlace de Claude). Se guarda en este dispositivo y se subirá a tu cuenta al abrirlo allí.';
+    if (A.status === 'missing') return '⚠️ Esta cuenta ya no existe. Cierra sesión y crea una nueva.';
+    if (A.status === 'expired') return '🔑 La contraseña de la cuenta cambió. Vuelve a iniciar sesión.';
+    return '⚠️ No se pudo guardar en la cuenta ahora mismo; se reintentará. Mientras tanto está guardado en este dispositivo.';
+  }
   function cloudText() {
+    if (Game.account.session) return accountText();
     const c = Game.cloud;
     if (c.status === 'cloud') return `☁️ Tu progreso se guarda en tu cuenta de Claude${c.lastSync ? ` · último guardado ${new Date(c.lastSync).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}` : ''}. Si cambias de teléfono o borras el navegador, lo recuperas al abrir el juego aquí con tu cuenta.`;
     if (c.status === 'connecting') return '⏳ Conectando con tu cuenta…';
@@ -264,6 +277,64 @@ const UI = (() => {
       if (RENDER[current]) RENDER[current]();
     });
   }
+  /* ---------- Cuenta con usuario y contraseña ---------- */
+  /** Bienvenida: entrar, crear cuenta o jugar sin cuenta. */
+  function askAccount() {
+    if (Game.account.session) return;
+    openModal(`
+      <h2>⚔️ Reinos del Caos</h2>
+      <p class="sub">Crea una cuenta con usuario y contraseña para guardar tu progreso y recuperarlo en cualquier dispositivo.</p>
+      <div class="modal-actions">
+        <button class="btn" data-act="acc-create">🆕 Crear cuenta</button>
+        <button class="btn ghost" data-act="acc-login">🔑 Ya tengo cuenta</button>
+        <button class="btn ghost" data-act="acc-guest">Jugar sin cuenta</button>
+      </div>`);
+  }
+  function accountForm(mode) {
+    const create = mode === 'create';
+    openModal(`
+      <h2>${create ? '🆕 Crear cuenta' : '🔑 Iniciar sesión'}</h2>
+      <p class="sub">${create ? 'Tu progreso actual se guardará en la cuenta nueva.' : 'Se cargará el progreso guardado en tu cuenta.'}</p>
+      <form id="acc-form" class="name-form" autocomplete="on">
+        <input id="acc-user" maxlength="16" autocomplete="username" placeholder="Usuario (3-16 letras)" value="${esc(create ? (S().username || '') : '')}">
+        <input id="acc-pass" type="password" maxlength="64" autocomplete="${create ? 'new-password' : 'current-password'}" placeholder="Contraseña (mínimo 6)">
+        ${create ? '<input id="acc-pass2" type="password" maxlength="64" autocomplete="new-password" placeholder="Repite la contraseña">' : ''}
+        <div class="hint" id="acc-err"></div>
+        <div class="modal-actions">
+          <button class="btn" type="submit" id="acc-go">${create ? '✅ Crear cuenta' : '✅ Entrar'}</button>
+          <button class="btn ghost" type="button" data-act="${create ? 'acc-login' : 'acc-create'}">${create ? 'Ya tengo cuenta' : 'Crear una cuenta nueva'}</button>
+          <button class="btn ghost" type="button" data-act="close">Cancelar</button>
+        </div>
+      </form>`);
+    const user = $('acc-user'), pass = $('acc-pass'), err = $('acc-err'), go = $('acc-go');
+    setTimeout(() => (user.value ? pass : user).focus(), 50);
+    $('acc-form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const name = user.value.trim().replace(/\s+/g, ' ');
+      if (!NAME_RE.test(name)) { err.textContent = 'El usuario debe tener de 3 a 16 letras, números, espacios, puntos o guiones.'; return; }
+      if (pass.value.length < 6) { err.textContent = 'La contraseña debe tener al menos 6 caracteres.'; return; }
+      if (create && pass.value !== $('acc-pass2').value) { err.textContent = 'Las contraseñas no coinciden.'; return; }
+      go.disabled = true; err.textContent = create ? 'Creando cuenta…' : 'Entrando…';
+      const fail = create ? await Game.createAccount(name, pass.value) : await Game.login(name, pass.value);
+      go.disabled = false;
+      if (fail) { err.textContent = fail; return; }
+      closeModal();
+      toast(create ? `🔐 ¡Cuenta creada! Bienvenido, ${S().username}` : `🔐 ¡Hola de nuevo, ${S().username}! Progreso cargado`);
+      Sfx.setEnabled(S().settings.sound);
+      refreshTop();
+      show('menu');
+    });
+  }
+  function confirmLogout() {
+    openModal(`
+      <h2>🚪 Cerrar sesión</h2>
+      <p class="sub">Tu progreso queda guardado en la cuenta <b>${esc(Game.account.session.name)}</b>. En este dispositivo empezará una partida nueva hasta que vuelvas a entrar.</p>
+      <div class="modal-actions">
+        <button class="btn danger" data-act="acc-logout-ok">Cerrar sesión</button>
+        <button class="btn ghost" data-act="close">Cancelar</button>
+      </div>`);
+  }
+
   /** Se llama cuando cambia el estado de la cuenta (o llega una partida guardada en ella). */
   function onCloud(loaded) {
     if (loaded) toast('☁️ Progreso recuperado de tu cuenta');
@@ -427,6 +498,9 @@ const UI = (() => {
       const def = ENEMIES[cv.dataset.foe], c = cv.getContext('2d');
       const wide = def.sprite.shape === 'dragon' ? 0.55 : def.sprite.shape === 'wolf' ? 0.85 : 1;
       const e = { def, x: 80, y: 138, size: 100 * wide, face: -1, walk: 0.6, flash: 0, windup: 0, windupMax: 1, recover: 0, seed: 2, frozen: 0, state: 'move' };
+      // El arte ilustrado se ajusta para que se vea entero en el recuadro
+      const fit = Sprites.artFit(def, 148, 128);
+      if (fit) { e.size = fit.size; e.x = 80 + fit.dx; e.y = 140 - fit.dy; }
       c.clearRect(0, 0, cv.width, cv.height);
       Sprites.enemy(c, e, 0.4);
     });
@@ -1071,7 +1145,10 @@ const UI = (() => {
     $('scr-settings').innerHTML = `${head('⚙️ Ajustes')}
       <div class="card setting"><div><b>🔊 Sonido</b><div class="item-meta">Efectos de sonido del juego</div></div><button class="switch ${s.settings.sound ? 'on' : ''}" data-act="toggle" data-key="sound" aria-label="Sonido"></button></div>
       <div class="card account">
-        <div class="setting" style="padding:0;margin:0"><div><b>👤 ${s.username ? esc(s.username) : 'Sin nombre'}</b><div class="item-meta">Tu nombre de usuario</div></div><button class="btn small ghost" data-act="name">✏️ Cambiar</button></div>
+        ${Game.account.session
+          ? `<div class="setting" style="padding:0;margin:0"><div><b>🔐 ${esc(Game.account.session.name)}</b><div class="item-meta">Cuenta con contraseña</div></div><button class="btn small ghost" data-act="acc-logout">🚪 Cerrar sesión</button></div>`
+          : `<div class="setting" style="padding:0;margin:0"><div><b>👤 ${s.username ? esc(s.username) : 'Sin cuenta'}</b><div class="item-meta">Jugando sin cuenta</div></div><button class="btn small ghost" data-act="name">✏️ Nombre</button></div>
+             <div class="acc-btns"><button class="btn small" data-act="acc-create">🆕 Crear cuenta</button><button class="btn small ghost" data-act="acc-login">🔑 Iniciar sesión</button></div>`}
         <p class="hint" style="margin:10px 0 8px">${cloudText()}</p>
         <button class="btn small ghost" data-act="save-code">💾 Código de guardado</button>
       </div>
@@ -1133,7 +1210,12 @@ const UI = (() => {
     claim: d => claimMission(d.i),
     'portrait-ok': () => { portraitOk = true; checkOrientation(); },
     fullscreen: () => toggleFullscreen(),
-    name: () => askUsername(true),
+    name: () => (Game.account.session ? show('settings') : askAccount()),
+    'acc-create': () => accountForm('create'),
+    'acc-login': () => accountForm('login'),
+    'acc-guest': () => { closeModal(); askUsername(); },
+    'acc-logout': () => confirmLogout(),
+    'acc-logout-ok': async () => { closeModal(); await Game.logout(); toast('🚪 Sesión cerrada'); refreshTop(); show('menu'); setTimeout(askAccount, 300); },
     'save-code': () => saveCodeModal(),
     'code-copy': () => {
       const box = $('code-box');
@@ -1274,5 +1356,5 @@ const UI = (() => {
     });
   }
 
-  return { show, toast, vibrate, refreshTop, bindEvents, askUsername, onCloud, redrawArt: drawFoes, get current() { return current; } };
+  return { show, toast, vibrate, refreshTop, bindEvents, askUsername, askAccount, onCloud, redrawArt: drawFoes, get current() { return current; } };
 })();

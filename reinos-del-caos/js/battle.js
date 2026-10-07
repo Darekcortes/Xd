@@ -150,7 +150,8 @@ const Battle = (() => {
     if (st.tips.length && st.time >= st.tips[0].t && !st.ended) showBanner('', st.tips.shift().text, '#ffffff', 3.6);
     updatePlayer(dt);
     updateWaves(dt);
-    for (const e of st.enemies) updateEnemy(e, dt);
+    for (const e of st.enemies) { zoneOwner = e; updateEnemy(e, dt); }
+    zoneOwner = null;
     separateEnemies();
     st.enemies = st.enemies.filter(e => !(e.dead && e.deathT <= 0));
     updateProjectiles(dt);
@@ -582,7 +583,7 @@ const Battle = (() => {
     const sp = speed || (kind === 'arrow' ? 230 : 175);
     st.projs.push({
       x: e.x + Math.cos(ang) * e.size * 0.35, y: e.y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp * 0.8,
-      hostile: true, kind: kind || 'darkorb', dmg: e.atk * (e.boss ? 0.7 : 1), life: 3.2, h: e.size * 0.55, boss: e.boss,
+      hostile: true, kind: kind || 'darkorb', dmg: e.atk * (e.boss ? 0.7 : 1), life: 3.2, h: e.size * 0.55, boss: e.boss, owner: e,
     });
   }
 
@@ -605,8 +606,10 @@ const Battle = (() => {
     return false;
   }
 
+  // Enemigo que crea las zonas de peligro (si muere, sus zonas se apagan)
+  let zoneOwner = null;
   function addZone(x, y, r, delay, dmg, fx, fall) {
-    st.zones.push({ x: clamp(x, 10, W - 10), y: clamp(y, fieldTop(), fieldBot()), r, t: delay, total: delay, dmg, fx, fall, boom: 0 });
+    st.zones.push({ x: clamp(x, 10, W - 10), y: clamp(y, fieldTop(), fieldBot()), r, t: delay, total: delay, dmg, fx, fall, boom: 0, owner: zoneOwner });
   }
 
   function startAction(e, type) {
@@ -698,6 +701,7 @@ const Battle = (() => {
   function updateZones(dt) {
     const p = st.p;
     for (const z of st.zones) {
+      if (z.t > 0 && z.owner && z.owner.dead) { z.t = 0; z.boom = 0; burst(z.x, z.y - 4, '#9ca3af', 6, 60, -40); continue; }
       if (z.t > 0) {
         z.t -= dt;
         if (z.t <= 0) {
@@ -768,6 +772,7 @@ const Battle = (() => {
 
   function killEnemy(e) {
     e.dead = true; e.deathT = 0.45; e.hp = 0; e.action = null; e.z = 0; e.state = 'move';
+    e.windup = 0; e.recover = 0; e.dashHit = true;   // muerto ya no termina su ataque
     if (!e.mini) st.killed++;
     st.kills++;
     Game.S.stats.kills++;
@@ -877,6 +882,7 @@ const Battle = (() => {
     for (const pr of st.projs) {
       pr.x += pr.vx * dt; pr.y += pr.vy * dt; pr.life -= dt;
       if ((pr.kind === 'bigfire' || pr.kind === 'fireball') && st.parts.length < 450) st.parts.push({ x: pr.x, y: pr.y - (pr.h || 24), vx: rand(-20, 20), vy: rand(-40, 0), life: 0.3, max: 0.3, color: '#fb923c', size: rand(2, 5), grav: 0 });
+      if (pr.hostile && pr.owner && pr.owner.dead) { pr.life = 0; burst(pr.x, pr.y - (pr.h || 24), '#9ca3af', 5, 60); continue; }
       if (pr.hostile) {
         if (gdist(pr.x, pr.y, p.x, p.y) < 14) { if (hurtPlayer(pr.dmg, pr.boss)) { pr.life = 0; burst(pr.x, pr.y - 24, '#fca5a5', 6, 80); } }
       } else {

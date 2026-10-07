@@ -52,6 +52,7 @@ const Game = (() => {
     S.unlocked = Math.min(Math.max(1, S.unlocked), MAX_STAGE);
     if (data.rank === undefined) S.rank = rankOf(S.level);   // no celebrar rangos ya alcanzados
     S.username = typeof S.username === 'string' ? S.username.slice(0, 16) : '';
+    lastPrint = printOf();
     Sfx.setEnabled(S.settings.sound);
   }
 
@@ -71,8 +72,13 @@ const Game = (() => {
   function writeLocal() {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(S)); } catch (e) { /* almacenamiento no disponible */ }
   }
+  // Huella del último estado guardado: la fecha solo avanza si algo cambió de verdad,
+  // así un dispositivo con datos viejos nunca pisa una partida más nueva al cerrarse.
+  let lastPrint = '';
+  const printOf = () => JSON.stringify(Object.assign({}, S, { savedAt: 0 }));
   function writeSave() {
-    S.savedAt = Date.now();
+    const print = printOf();
+    if (print !== lastPrint) { lastPrint = print; S.savedAt = Date.now(); }
     writeLocal();
     scheduleCloud();
   }
@@ -93,9 +99,11 @@ const Game = (() => {
      se guarda también en el espacio privado de la cuenta del jugador
      (data/users/<id>/save), que nadie más puede leer. Fuera de Claude
      (archivo descargado) se guarda solo en el navegador. */
-  const Cloud = { status: 'local', ref: null, ready: false, timer: null, writing: false, again: false, lastSync: 0 };
+  const Cloud = { status: 'local', ref: null, ready: false, timer: null, writing: false, again: false, lastSync: 0, syncedAt: -1 };
 
   async function connectCloud(onChange) {
+    Acc.onChange = onChange;
+    if (Acc.session) return resumeAccount(onChange);
     try {
       if (!window.claude || typeof window.claude.use !== 'function') return;
       const [db, user] = await Promise.all([window.claude.use('db'), window.claude.use('user')]);
@@ -116,9 +124,10 @@ const Game = (() => {
       if (remote && (isFresh(S) || (remote.savedAt || 0) > (S.savedAt || 0))) {
         applyData(remote);
         writeLocal();
-        Cloud.lastSync = remote.savedAt || Date.now();
+        Cloud.lastSync = remote.savedAt || Date.now(); Cloud.syncedAt = remote.savedAt || 0;
         onChange(true);
       } else {
+        Cloud.syncedAt = remote ? remote.savedAt || 0 : -1;
         onChange(false);
         if (!remote || (S.savedAt || 0) > (remote.savedAt || 0)) cloudWrite();
       }
@@ -128,18 +137,22 @@ const Game = (() => {
   }
 
   function scheduleCloud() {
+    if (Acc.session) { scheduleAccount(); return; }
     if (!Cloud.ready) return;
     clearTimeout(Cloud.timer);
     Cloud.timer = setTimeout(cloudWrite, 2500);
   }
 
   async function cloudWrite() {
+    if (Acc.session) return accountWrite();
     if (!Cloud.ready || !Cloud.ref) return;
+    if ((S.savedAt || 0) <= Cloud.syncedAt) return;   // nada nuevo que subir
     if (Cloud.writing) { Cloud.again = true; return; }   // una escritura a la vez
     Cloud.writing = true;
     try {
-      await Cloud.ref.set({ v: 1, savedAt: S.savedAt || Date.now(), username: S.username || '', state: JSON.stringify(S) });
-      Cloud.lastSync = Date.now();
+      const at = S.savedAt || Date.now();
+      await Cloud.ref.set({ v: 1, savedAt: at, username: S.username || '', state: JSON.stringify(S) });
+      Cloud.lastSync = Date.now(); Cloud.syncedAt = Math.max(Cloud.syncedAt, at);
       Cloud.status = 'cloud';
     } catch (e) {
       // invalid_argument = esta cuenta no puede guardar aquí; revoked = acceso retirado
@@ -148,6 +161,155 @@ const Game = (() => {
     }
     Cloud.writing = false;
     if (Cloud.again) { Cloud.again = false; cloudWrite(); }
+  }
+
+  /* ---------- Cuenta con usuario y contraseña ----------
+     Cada cuenta es un documento accounts/<usuario> en los datos del juego.
+     La contraseña nunca se guarda: de ella se derivan (PBKDF2) un
+     verificador para comprobarla y una clave AES con la que se cifra la
+     partida, así que sin la contraseña nadie puede leer el progreso.
+     En este dispositivo se recuerda la sesión (usuario y clave derivada)
+     hasta que el jugador cierra sesión.                                */
+  const ACC_KEY = 'reinos-del-caos-account';
+  const PBKDF2_ITER = 150000;
+  const Acc = { session: null, status: 'none', lastSync: 0, syncedAt: 0, timer: null, writing: false, again: false, onChange: null };
+  try { const raw = localStorage.getItem(ACC_KEY); if (raw) Acc.session = JSON.parse(raw); } catch (e) { Acc.session = null; }
+
+  const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+  const unb64 = str => Uint8Array.from(atob(str), ch => ch.charCodeAt(0));
+  /** Identificador del documento: minúsculas, sin acentos, solo caracteres válidos. */
+  function accountId(name) {
+    return String(name).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim()
+      .replace(/\s+/g, '_').replace(/[^a-z0-9_.-]/g, '_').replace(/^\.+$/, '_');
+  }
+  async function accountDb() {
+    if (!window.claude || typeof window.claude.use !== 'function') return null;
+    try { return await window.claude.use('db'); } catch (e) { return null; }
+  }
+  const hasCrypto = () => !!(window.crypto && crypto.subtle);
+  async function deriveKeys(password, saltB64) {
+    const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveBits']);
+    const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: unb64(saltB64), iterations: PBKDF2_ITER }, base, 512);
+    return { ver: b64(bits.slice(0, 32)), keyRaw: b64(bits.slice(32)) };
+  }
+  const aesKey = keyRaw => crypto.subtle.importKey('raw', unb64(keyRaw), 'AES-GCM', false, ['encrypt', 'decrypt']);
+  async function seal(keyRaw, obj) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const data = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, await aesKey(keyRaw), new TextEncoder().encode(JSON.stringify(obj)));
+    return { iv: b64(iv), data: b64(data) };
+  }
+  async function unseal(keyRaw, iv, data) {
+    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: unb64(iv) }, await aesKey(keyRaw), unb64(data));
+    return JSON.parse(new TextDecoder().decode(plain));
+  }
+  function rememberSession(sess) {
+    Acc.session = sess;
+    try { if (sess) localStorage.setItem(ACC_KEY, JSON.stringify(sess)); else localStorage.removeItem(ACC_KEY); } catch (e) { /* sin almacenamiento */ }
+  }
+  /** Motivo por el que no se pueden usar cuentas aquí (o null si se puede). */
+  async function accountsBlocked() {
+    if (!hasCrypto()) return 'Este navegador no permite cuentas seguras.';
+    const db = await accountDb();
+    if (!db) return 'Las cuentas solo funcionan abriendo el juego desde su enlace de Claude con tu sesión iniciada.';
+    return null;
+  }
+  const writeDenied = e => e && (e.code === 'invalid_argument' || e.code === 'revoked' || e.code === 'not_granted');
+  const DENIED_MSG = 'Tu acceso a esta página no permite guardar (pide al dueño acceso de Colaborador).';
+
+  /** Crea una cuenta nueva con el progreso actual. Devuelve null o un mensaje de error. */
+  async function createAccount(name, password) {
+    const blocked = await accountsBlocked(); if (blocked) return blocked;
+    const db = await accountDb(), id = accountId(name);
+    if (id.length < 3) return 'Ese nombre no sirve como usuario.';
+    const ref = db.doc('accounts/' + id);
+    try {
+      const snap = await ref.get();
+      if (snap.exists) return 'Ese usuario ya existe. Elige otro o inicia sesión.';
+      const salt = b64(crypto.getRandomValues(new Uint8Array(16)));
+      const { ver, keyRaw } = await deriveKeys(password, salt);
+      S.username = name; S.savedAt = Date.now();
+      const box = await seal(keyRaw, S);
+      await ref.set({ v: 1, name, salt, ver, iv: box.iv, data: box.data, savedAt: S.savedAt, created: Date.now() });
+      rememberSession({ id, name, ver, keyRaw });
+      Acc.status = 'ok'; Acc.lastSync = Date.now(); Acc.syncedAt = S.savedAt;
+      writeLocal();
+      return null;
+    } catch (e) { return writeDenied(e) ? DENIED_MSG : 'No se pudo crear la cuenta. Revisa tu conexión e inténtalo de nuevo.'; }
+  }
+
+  /** Entra en una cuenta y carga su progreso. Devuelve null o un mensaje de error. */
+  async function login(name, password) {
+    const blocked = await accountsBlocked(); if (blocked) return blocked;
+    const db = await accountDb(), id = accountId(name);
+    try {
+      const snap = await db.doc('accounts/' + id).get();
+      if (!snap.exists) return 'No existe ninguna cuenta con ese usuario.';
+      const doc = snap.data();
+      const { ver, keyRaw } = await deriveKeys(password, doc.salt);
+      if (ver !== doc.ver) return 'Contraseña incorrecta.';
+      const remote = await unseal(keyRaw, doc.iv, doc.data);
+      applyData(remote);
+      S.username = doc.name || name;
+      rememberSession({ id, name: S.username, ver, keyRaw });
+      Acc.status = 'ok'; Acc.lastSync = doc.savedAt || Date.now(); Acc.syncedAt = doc.savedAt || 0;
+      S.savedAt = doc.savedAt || 0;
+      writeLocal();
+      return null;
+    } catch (e) { return 'No se pudo entrar. Revisa tu conexión e inténtalo de nuevo.'; }
+  }
+
+  /** Al abrir el juego con la sesión recordada: trae el progreso más nuevo de la cuenta. */
+  async function resumeAccount(onChange) {
+    const sess = Acc.session;
+    const db = await accountDb();
+    if (!db || !hasCrypto()) { Acc.status = 'offline'; onChange(false); return; }
+    Acc.status = 'connecting'; onChange(false);
+    try {
+      const snap = await db.doc('accounts/' + sess.id).get();
+      if (!snap.exists) { Acc.status = 'missing'; onChange(false); return; }
+      const doc = snap.data();
+      if (doc.ver !== sess.ver) { rememberSession(null); Acc.status = 'expired'; onChange(false); return; }   // cambió la contraseña
+      let loaded = false;
+      if ((doc.savedAt || 0) > (S.savedAt || 0) || isFresh(S)) {
+        applyData(await unseal(sess.keyRaw, doc.iv, doc.data)); writeLocal(); loaded = true;
+      }
+      S.username = doc.name || sess.name;
+      Acc.status = 'ok'; Acc.lastSync = doc.savedAt || 0; Acc.syncedAt = doc.savedAt || 0;
+      if (loaded) S.savedAt = doc.savedAt || 0;
+      onChange(loaded);
+      if (!loaded && (S.savedAt || 0) > (doc.savedAt || 0)) accountWrite();
+    } catch (e) { Acc.status = 'error'; onChange(false); }
+  }
+
+  function scheduleAccount() {
+    if (Acc.status !== 'ok') return;
+    clearTimeout(Acc.timer);
+    Acc.timer = setTimeout(accountWrite, 2500);
+  }
+  async function accountWrite() {
+    const sess = Acc.session;
+    if (!sess || Acc.status !== 'ok') return;
+    if ((S.savedAt || 0) <= Acc.syncedAt) return;   // nada nuevo que subir
+    if (Acc.writing) { Acc.again = true; return; }   // una escritura a la vez
+    Acc.writing = true;
+    try {
+      const db = await accountDb();
+      const box = await seal(sess.keyRaw, S);
+      const at = S.savedAt || Date.now();
+      await db.doc('accounts/' + sess.id).update({ iv: box.iv, data: box.data, savedAt: at, name: sess.name });
+      Acc.lastSync = Date.now(); Acc.syncedAt = Math.max(Acc.syncedAt, at);
+    } catch (e) { Acc.status = writeDenied(e) ? 'denied' : 'error'; if (Acc.onChange) Acc.onChange(false); }
+    Acc.writing = false;
+    if (Acc.again) { Acc.again = false; accountWrite(); }
+  }
+
+  /** Cierra sesión: guarda por última vez y deja el dispositivo con una partida nueva. */
+  async function logout() {
+    if (Acc.session && Acc.status === 'ok') { clearTimeout(Acc.timer); S.savedAt = Date.now(); await accountWrite(); }
+    rememberSession(null);
+    Acc.status = 'none'; Acc.syncedAt = 0;
+    S = newState(); lastPrint = printOf();
+    writeLocal();
   }
 
   /* ---------- Código de guardado (para mover la partida a mano) ---------- */
@@ -350,6 +512,7 @@ const Game = (() => {
     giveItem, giveSkill, grant, prizeLabel, addXp, completeStage, highestWorld, rollChest,
     addShards, streakBonus, ensureDaily, track, missionText,
     connectCloud, cloudWrite, exportCode, importCode, get cloud() { return Cloud; },
+    createAccount, login, logout, accountsBlocked, get account() { return Acc; },
     rank: () => rankOf(S.level),
   };
 })();

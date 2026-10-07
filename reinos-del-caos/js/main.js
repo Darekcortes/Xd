@@ -8,15 +8,16 @@
   Battle.init();
   UI.bindEvents();
   UI.show('menu');
-  if (!Game.S.stats.kills && Game.S.unlocked === 1) {
+  // (sin cuenta ni nombre se muestra antes la bienvenida para crear cuenta)
+  if (!Game.S.stats.kills && Game.S.unlocked === 1 && (Game.account.session || Game.S.username)) {
     UI.toast('⚔️ ¡Bienvenido, guerrero! Pulsa JUGAR para empezar tu aventura');
   }
   // Guarda también al salir o cambiar de pestaña (en el navegador y en la cuenta)
   const flush = () => { Game.save(true); Game.cloudWrite(); };
   window.addEventListener('pagehide', flush);
   document.addEventListener('visibilitychange', () => { if (document.hidden) flush(); });
-  // Conecta con la cuenta de Claude (si la hay) y después pide el nombre de usuario
+  // Conecta con la cuenta (usuario y contraseña, o la de Claude) y, si no hay, ofrece crear una
   Game.connectCloud(UI.onCloud).finally(() => setTimeout(() => {
-    if (!Game.S.username && UI.current !== 'battle' && document.getElementById('modal').hidden) UI.askUsername();
+    if (!Game.account.session && !Game.S.username && UI.current !== 'battle' && document.getElementById('modal').hidden) UI.askAccount();
   }, 400));
 })();
