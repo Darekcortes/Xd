@@ -210,18 +210,56 @@ const Sprites = (() => {
     if (sat < 90) return ARC_BLUE;                    // armas sencillas: azul
     return [Math.round(r * 0.75 + 59 * 0.25), Math.round(g * 0.75 + 130 * 0.25), Math.round(b * 0.75 + 246 * 0.25)];
   }
+  /** Equipo que se nota en el caballero: rareza de armadura y arma. */
+  function gearLook() {
+    if (typeof Game === 'undefined' || !Game.S || typeof ITEMS === 'undefined') return {};
+    const S = Game.S, w = ITEMS[S.equip.weapon], a = ITEMS[S.equip.armor];
+    const ri = it => (it ? RARITY_ORDER.indexOf(it.rarity) : 0);
+    return { weapon: w, armor: a, wr: ri(w), ar: ri(a), aura: S.cosmetics && COSMETICS[S.cosmetics.aura] };
+  }
+  /** Aura cosmética: resplandor y chispas que suben alrededor del caballero. */
+  function cosmeticAura(c, s, t, color) {
+    const n = parseInt(color.slice(1), 16), rgb = `${n >> 16},${(n >> 8) & 255},${n & 255}`;
+    const pulse = 0.28 + Math.sin(t * 3.2) * 0.08;
+    const g = c.createRadialGradient(0, -30 * s, 4 * s, 0, -30 * s, 38 * s);
+    g.addColorStop(0, `rgba(${rgb},${pulse})`); g.addColorStop(1, `rgba(${rgb},0)`);
+    c.fillStyle = g; c.beginPath(); c.ellipse(0, -30 * s, 30 * s, 40 * s, 0, 0, Math.PI * 2); c.fill();
+    c.fillStyle = `rgba(${rgb},.9)`;
+    for (let i = 0; i < 6; i++) {
+      const ph = (t * 0.8 + i / 6) % 1;
+      c.globalAlpha = (1 - ph) * 0.9;
+      c.beginPath(); c.arc(Math.sin(i * 2.1 + t * 1.5) * 15 * s, -ph * 62 * s, 1.5 * s, 0, Math.PI * 2); c.fill();
+    }
+    c.globalAlpha = 1;
+  }
   function knightArt(c, x, y, s, o) {
     const unit = KNIGHT_PX * s / ART.base.k, tint = o.flash ? 'rgba(255,50,50,.6)' : null;
+    const G = gearLook(), t = o.time || 0;
+    let key, style;
+    if (o.swing >= 0) { style = o.style || (o.heavy ? 'smash' : 'slash'); key = knightSwing(o); }
+    else key = o.walk ? 'k_w' + walkIndex(o.walk) : null;
+    const draw = (tn, alpha) => key ? blit(c, key, tn, unit, alpha) : blitIdleTint(c, t, tn, unit, alpha);
     c.save();
     c.translate(x, y);
     c.scale(o.face, 1);
-    if (o.swing >= 0) {
-      const style = o.style || (o.heavy ? 'smash' : 'slash');
-      blit(c, knightSwing(o), tint, unit);
-      swingArc(c, style, o.swing, s, arcColor(o.weaponColor));
-    } else if (o.walk) blit(c, 'k_w' + walkIndex(o.walk), tint, unit);
-    else blitIdle(c, 'k', o.time || 0, tint, unit);
+    if (G.aura) cosmeticAura(c, s, t, G.aura.color);
+    // Arma épica o mejor: el caballero brilla con el color del arma
+    if (G.wr >= 3 && G.weapon && !tint) {
+      const glow = 0.35 + Math.sin(t * 4) * 0.12, off = 1.6 * s;
+      for (const [dx, dy] of [[off, 0], [-off, 0], [0, off], [0, -off]]) { c.save(); c.translate(dx, dy); draw(G.weapon.color, glow); c.restore(); }
+    }
+    draw(tint);
+    // Armadura rara o mejor: tinte del color de la armadura
+    if (G.ar >= 2 && G.armor && !tint) draw(G.armor.color, 0.1 + 0.05 * (G.ar - 2));
+    if (o.swing >= 0) swingArc(c, style, o.swing, s, arcColor(o.weaponColor));
     c.restore();
+  }
+  /** Reposo con tinte opcional (para brillo y color de armadura). */
+  function blitIdleTint(c, t, tn, unit, alpha) {
+    const ph = ((t / 2.6) % 1 + 1) % 1 * IDLE_FRAMES, i = Math.floor(ph), fr = ph - i;
+    const a = alpha === undefined ? 1 : alpha;
+    blit(c, 'k_i' + i, tn, unit, a);
+    blit(c, 'k_i' + ((i + 1) % IDLE_FRAMES), tn, unit, a * fr);
   }
 
   /** Tamaño y desplazamiento para que un enemigo ilustrado quepa entero en un recuadro. */

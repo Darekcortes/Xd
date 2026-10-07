@@ -19,8 +19,14 @@ const Game = (() => {
       equip: { weapon: 'espada_madera', armor: 'ropa_viajero' },
       skills: {},                // { habilidad: nivel }
       bossKills: {},
-      settings: { sound: true, vibrate: true, helmet: false, landscape: true, classic: false },
-      stats: { kills: 0, spins: 0, crafted: 0, deaths: 0, elites: 0, bestCombo: 0 },
+      settings: { sound: true, music: true, vibrate: true, helmet: false, landscape: true, classic: false },
+      stats: { kills: 0, spins: 0, crafted: 0, deaths: 0, elites: 0, bestCombo: 0, noPotionBoss: 0 },
+      login: { last: '', day: 0, total: 0 },          // calendario de 7 días
+      achievements: {},                                // { logro: medallas reclamadas (0-3) }
+      pets: { owned: {}, active: null },               // { mascota: { lvl, xp } }
+      enchants: {},                                    // { arma: encantamiento }
+      cosmetics: { owned: [], aura: null, trail: null },
+      tower: { best: 0, runs: 0 },
       tickets: 1, ticketShards: 0,   // 🎟️ tickets de ruleta y fragmentos
       streak: 0, bestStreak: 0,      // racha de victorias seguidas
       daily: null,                   // misiones del día
@@ -37,7 +43,8 @@ const Game = (() => {
     const defaults = newState();
     S = Object.assign(newState(), data);
     // Fusiona sub-objetos para que partidas antiguas reciban campos nuevos
-    for (const k of ['alloc', 'potions', 'settings', 'stats', 'equip']) S[k] = Object.assign({}, defaults[k], data[k] || {});
+    for (const k of ['alloc', 'potions', 'settings', 'stats', 'equip', 'login', 'pets', 'cosmetics', 'tower']) S[k] = Object.assign({}, defaults[k], data[k] || {});
+    if (!Array.isArray(S.cosmetics.owned)) S.cosmetics.owned = [];
     if (!data.items) S.items = defaults.items;
     // Limpia referencias a objetos que ya no existan
     for (const id of Object.keys(S.items)) if (!ITEMS[id]) delete S.items[id];
@@ -298,6 +305,7 @@ const Game = (() => {
       const at = S.savedAt || Date.now();
       await db.doc('accounts/' + sess.id).update({ iv: box.iv, data: box.data, savedAt: at, name: sess.name });
       Acc.lastSync = Date.now(); Acc.syncedAt = Math.max(Acc.syncedAt, at);
+      submitScore();
     } catch (e) { Acc.status = writeDenied(e) ? 'denied' : 'error'; if (Acc.onChange) Acc.onChange(false); }
     Acc.writing = false;
     if (Acc.again) { Acc.again = false; accountWrite(); }
@@ -310,6 +318,36 @@ const Game = (() => {
     Acc.status = 'none'; Acc.syncedAt = 0;
     S = newState(); lastPrint = printOf();
     writeLocal();
+  }
+
+  /* ---------- Ranking ----------
+     Cada cuenta publica su marca en leaderboard/<usuario> (solo datos de juego). */
+  let lastScore = '';
+  function scoreEntry() {
+    const P = stats();
+    return { name: S.username || (Acc.session && Acc.session.name) || 'Guerrero', level: S.level, power: P.power,
+             tower: S.tower.best || 0, combo: S.stats.bestCombo || 0,
+             bosses: Object.values(S.bossKills).reduce((a, b) => a + b, 0), rank: rankOf(S.level) };
+  }
+  async function submitScore() {
+    const sess = Acc.session;
+    if (!sess || Acc.status !== 'ok') return;
+    const entry = scoreEntry(), print = JSON.stringify(entry);
+    if (print === lastScore) return;
+    try {
+      const db = await accountDb();
+      await db.doc('leaderboard/' + sess.id).set(Object.assign(entry, { at: Date.now() }));
+      lastScore = print;
+    } catch (e) { /* sin permiso o sin conexión: se reintenta en el próximo guardado */ }
+  }
+  /** Los 30 mejores según el campo (power, level, tower, combo). null si no hay conexión. */
+  async function fetchLeaderboard(field) {
+    const db = await accountDb();
+    if (!db) return null;
+    try {
+      const snap = await db.collection('leaderboard').orderBy(field, 'desc').limit(30).get();
+      return snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+    } catch (e) { return null; }
   }
 
   /* ---------- Código de guardado (para mover la partida a mano) ---------- */
@@ -346,7 +384,7 @@ const Game = (() => {
     const dmg = Math.round(8 + L * B.levelDmg + S.alloc.dmg * B.pointDmg + w.dmg);
     const def = Math.round(L * B.levelDef + S.alloc.def * B.pointDef + a.def);
     const spd = Math.min(2.6, 1 + S.alloc.spd * B.pointSpd + w.spd);
-    const crit = Math.min(0.6, 0.05 + w.crit);
+    const crit = Math.min(0.6, 0.05 + w.crit + (S.enchants[S.equip.weapon] === 'llama' ? 0.08 : 0));
     const skillBonus = Object.values(S.skills).reduce((t, l) => t + l * 0.06, 0);
     const power = Math.round((dmg * spd * (1 + crit) * 3) * (1 + skillBonus) + maxHp * 0.5 + def * 4);
     return { maxHp, dmg, def, spd, crit, power };
@@ -396,6 +434,12 @@ const Game = (() => {
     if (prize.tickets) { S.tickets += prize.tickets; return `🎟️ ${prize.tickets} ticket${prize.tickets > 1 ? 's' : ''} de ruleta`; }
     if (prize.shards) { const t = addShards(prize.shards); return `🧩 ${prize.shards} fragmento${prize.shards > 1 ? 's' : ''} de ticket${t ? ` (¡+${t} 🎟️!)` : ''}`; }
     if (prize.chest) { return rollChest(Math.max(1, S.unlocked - 1), false).map(grant).join(' · '); }
+    if (prize.epicChest) {
+      const bossStage = Math.max(STAGES_PER_WORLD, highestWorld() * STAGES_PER_WORLD);
+      const t = rollChest(bossStage, true).map(grant).join(' · ');
+      return prize.gems ? `${t} · ${grant({ gems: prize.gems })}` : t;
+    }
+    if (prize.pet) return givePet(prize.pet);
     if (prize.coins) { S.coins += prize.coins; return `💰 ${prize.coins} monedas`; }
     if (prize.item) { const r = giveItem(prize.item); return `${ITEMS[prize.item].icon} ${ITEMS[prize.item].name} (${r.text})`; }
     if (prize.skill) { const r = giveSkill(prize.skill); return `${SKILLS[prize.skill].icon} ${SKILLS[prize.skill].name} (${r.text})`; }
@@ -506,6 +550,99 @@ const Game = (() => {
     return rewards;
   }
 
+  /* ---------- Calendario de 7 días ---------- */
+  const dayNum = str => { const [y, m, d] = str.split('-').map(Number); return Math.round(new Date(y, m - 1, d).getTime() / 864e5); };
+  /** ¿Hay premio hoy? y qué casilla (0-6) toca. */
+  function loginStatus() {
+    const L = S.login, t = today();
+    if (L.last === t) return { claimable: false, day: (L.day + 6) % 7 };
+    const gap = L.last ? dayNum(t) - dayNum(L.last) : 99;
+    return { claimable: true, day: gap === 1 ? L.day % 7 : 0, reset: gap > 1 && !!L.last };
+  }
+  function claimLogin() {
+    const st = loginStatus();
+    if (!st.claimable) return null;
+    const def = LOGIN_REWARDS[st.day], w = highestWorld();
+    const text = grant(def.prize(w));
+    S.login = { last: today(), day: st.day + 1, total: (S.login.total || 0) + 1 };
+    save(true);
+    return { day: st.day, text };
+  }
+
+  /* ---------- Logros ---------- */
+  function achState(a) {
+    const claimed = S.achievements[a.id] || 0, value = a.value(S) || 0;
+    const tier = claimed < 3 ? claimed : 2;
+    return { claimed, value, goal: a.goals[tier], claimable: claimed < 3 && value >= a.goals[claimed], done: claimed >= 3, reached: a.goals.filter(g => value >= g).length };
+  }
+  const achClaimable = () => ACHIEVEMENTS.filter(a => achState(a).claimable).length;
+  function claimAchievement(id) {
+    const a = ACHIEVEMENTS.find(x => x.id === id), st = a && achState(a);
+    if (!st || !st.claimable) return null;
+    const medal = st.claimed;
+    S.achievements[id] = medal + 1;
+    S.gems += a.gems[medal];
+    save(true);
+    return { medal, gems: a.gems[medal] };
+  }
+
+  /* ---------- Mascotas ---------- */
+  function givePet(id) {
+    const P = PETS[id];
+    if (!S.pets.owned[id]) {
+      S.pets.owned[id] = { lvl: 1, xp: 0 };
+      if (!S.pets.active) S.pets.active = id;
+      return `${P.icon} ¡Nueva mascota: ${P.name}!`;
+    }
+    const o = S.pets.owned[id];
+    if (o.lvl < PET_MAX_LEVEL) { o.lvl++; o.xp = 0; return `${P.icon} ${P.name} sube a nivel ${o.lvl}`; }
+    S.gems += 5;
+    return `${P.icon} ${P.name} ya está al máximo → +5 💎`;
+  }
+  /** La mascota activa gana experiencia por cada derrota. Devuelve el nuevo nivel si subió. */
+  function petGainXp(n) {
+    const id = S.pets.active, o = id && S.pets.owned[id];
+    if (!o || o.lvl >= PET_MAX_LEVEL) return 0;
+    o.xp += n;
+    let up = 0;
+    while (o.lvl < PET_MAX_LEVEL && o.xp >= petXpFor(o.lvl)) { o.xp -= petXpFor(o.lvl); o.lvl++; up = o.lvl; }
+    return up;
+  }
+
+  /* ---------- Encantamientos ---------- */
+  function enchantWeapon(enchId) {
+    const E = ENCHANTS[enchId], wid = S.equip.weapon;
+    if (!E || S.enchants[wid] === enchId) return false;
+    if (!payCost(E.cost, E.coins, E.gems)) return false;
+    S.enchants[wid] = enchId;
+    S.stats.crafted++;
+    save(true);
+    return true;
+  }
+
+  /* ---------- Cosméticos ---------- */
+  function cosmeticUnlocked(id) {
+    const C = COSMETICS[id];
+    if (S.cosmetics.owned.includes(id)) return true;
+    if (C.ach) { const a = ACHIEVEMENTS.find(x => x.id === C.ach[0]); return (a.value(S) || 0) >= a.goals[C.ach[1]]; }
+    return false;
+  }
+  function buyCosmetic(id) {
+    const C = COSMETICS[id];
+    if (cosmeticUnlocked(id) || !C.gems || S.gems < C.gems) return false;
+    S.gems -= C.gems; S.cosmetics.owned.push(id);
+    save(true);
+    return true;
+  }
+  function wearCosmetic(id) {
+    const C = COSMETICS[id];
+    if (!cosmeticUnlocked(id)) return false;
+    if (!S.cosmetics.owned.includes(id)) S.cosmetics.owned.push(id);
+    S.cosmetics[C.type] = S.cosmetics[C.type] === id ? null : id;
+    save(true);
+    return true;
+  }
+
   return {
     get S() { return S; },
     load, save, reset, stats, itemStats, matCount, addMat, hasCost, payCost,
@@ -514,5 +651,7 @@ const Game = (() => {
     connectCloud, cloudWrite, exportCode, importCode, get cloud() { return Cloud; },
     createAccount, login, logout, accountsBlocked, get account() { return Acc; },
     rank: () => rankOf(S.level),
+    loginStatus, claimLogin, achState, achClaimable, claimAchievement, givePet, petGainXp,
+    enchantWeapon, cosmeticUnlocked, buyCosmetic, wearCosmetic, submitScore, fetchLeaderboard,
   };
 })();

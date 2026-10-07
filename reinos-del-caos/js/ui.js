@@ -122,7 +122,8 @@ const UI = (() => {
           <button class="power-chip" data-act="name" aria-label="Tu nombre de usuario">${s.username ? `<span class="uname">${esc(s.username)}</span>` : ''}<span class="rank-tag" style="color:${RANKS[Game.rank()].color}">${RANKS[Game.rank()].name}</span> 💥 <b>${fmt(P.power)}</b>${cloudIcon()}</button>
           <div class="head-btns">
             <button class="icon-btn" data-act="fullscreen" aria-label="Pantalla completa">⛶</button>
-            <button class="icon-btn" data-act="go" data-to="missions" aria-label="Misiones diarias">📜${claimable ? `<span class="badge">${claimable}</span>` : ''}</button>
+            <button class="icon-btn" data-act="go" data-to="trophies" aria-label="Logros y ranking">🏆${Game.achClaimable() ? `<span class="badge">${Game.achClaimable()}</span>` : ''}</button>
+            <button class="icon-btn" data-act="go" data-to="missions" aria-label="Misiones diarias">📜${claimable + (Game.loginStatus().claimable ? 1 : 0) ? `<span class="badge">${claimable + (Game.loginStatus().claimable ? 1 : 0)}</span>` : ''}</button>
             <button class="icon-btn" data-act="go" data-to="settings" aria-label="Ajustes">⚙️</button>
           </div>
         </div>
@@ -145,6 +146,7 @@ const UI = (() => {
           ${dock('inv', '🎒', 'Mochila')}
           ${dock('map', '🗺️', 'Mapa')}
           ${dock('char', '👤', 'Héroe', s.points || '')}
+          ${dock('tower', '🏰', 'Torre', s.cleared[TOWER.unlockStage] && !s.tower.runs ? '!' : '')}
         </nav>
       </div>`;
     animateMenuScene(w);
@@ -408,6 +410,10 @@ const UI = (() => {
     }).join('');
     const allDone = d.missions.every(m => m.claimed);
     $('scr-missions').innerHTML = `${head('📜 Misiones diarias')}
+      <div class="card mission-card cal-card ${Game.loginStatus().claimable ? 'ready' : 'claimed'}">
+        <div class="m-top"><b>📅 Premio diario · día ${Game.loginStatus().day + 1} de 7</b><span class="m-rew">${LOGIN_REWARDS[Game.loginStatus().day].icon} ${LOGIN_REWARDS[Game.loginStatus().day].label(Game.highestWorld())}</span></div>
+        <div class="m-bottom"><span>Días seguidos: ${Game.loginStatus().claimable ? Game.loginStatus().day : Game.loginStatus().day + 1}/7</span><button class="btn small" data-act="login-open">${Game.loginStatus().claimable ? '🎁 Reclamar' : '📅 Ver calendario'}</button></div>
+      </div>
       <p class="hint">Se renuevan cada día · faltan ${hrs} h ${mins} min</p>
       <div class="mission-list">${cards}</div>
       <div class="card mission-card bonus ${d.bonusClaimed ? 'claimed' : allDone ? 'ready' : ''}">
@@ -601,6 +607,10 @@ const UI = (() => {
         const firstBoss = !s.bossKills[w.boss];
         s.bossKills[w.boss] = (s.bossKills[w.boss] || 0) + 1;
         gifts.push({ icon: '🎟️', text: Game.grant({ tickets: 1 }) + ' (jefe)' });
+        // Mascota del jefe: segura la primera vez, después a veces (la sube de nivel)
+        const petId = PET_ORDER.find(id => PETS[id].from === w.boss);
+        if (petId && (firstBoss || !s.pets.owned[petId] || Math.random() < 0.2)) gifts.push({ icon: '🐾', text: Game.grant({ pet: petId }) });
+        if (r.potionsUsed === 0) s.stats.noPotionBoss = (s.stats.noPotionBoss || 0) + 1;
         if (firstBoss) {
           if (w.bossSkill) gifts.push({ icon: '✨', text: Game.grant({ skill: w.bossSkill }) });
           else {
@@ -624,12 +634,14 @@ const UI = (() => {
     ];
     s.stats.elites += r.elites || 0;
     s.stats.bestCombo = Math.max(s.stats.bestCombo, r.maxCombo || 0);
+    const petUp = Game.petGainXp(r.kills || 0);
+    if (petUp) gifts.push({ icon: '🐾', text: `${PETS[s.pets.active].name} subió a nivel ${petUp}` });
     const ups = Game.addXp(xp);
     const rankNow = Game.rank(), rankUp = rankNow > s.rank ? rankNow : null;
     s.rank = Math.max(s.rank, rankNow);
     const newSkills = SKILL_ORDER.filter(id => !skillsBefore[id] && s.skills[id]);
     const newItems = Object.keys(s.items).filter(id => !itemsBefore.has(id));
-    Game.save();
+    Game.save(); Game.submitScore();
     if (ups) Sfx.play('levelup');
     showResults({ r, mats, coins, xp, first, gems, gifts, extra, made, ups, rankUp, newSkills, newItems, done, bonus, lostStreak });
   }
@@ -686,7 +698,8 @@ const UI = (() => {
         <canvas id="rank-cv" width="120" height="150" aria-hidden="true"></canvas>
         <div class="u-body"><div class="u-kicker">¡Ascenso!</div><div class="u-name">${RANKS[o.rankUp].name}</div><div class="u-desc">Tu caballero luce más poderoso.</div></div>
       </div>` : '';
-    const missionsDone = o.done.length ? `<div class="levelup mission">📜 Misión completada: ${o.done.map(m => esc(Game.missionText(m))).join(' · ')} — reclámala en Misiones</div>` : '';
+    const missionsDone = (o.done.length ? `<div class="levelup mission">📜 Misión completada: ${o.done.map(m => esc(Game.missionText(m))).join(' · ')} — reclámala en Misiones</div>` : '')
+      + (Game.achClaimable() ? '<div class="levelup mission">🏅 ¡Tienes logros por reclamar en 🏆 Logros!</div>' : '');
     const nextShard = TICKET_SHARDS - s.ticketShards;
     openModal(`
       ${title}
@@ -933,6 +946,20 @@ const UI = (() => {
         </div>`;
       }).join('');
       body = `<p class="hint">Fabrica armas y armaduras con los materiales que sueltan los enemigos.</p><div class="cards">${cards}</div>`;
+    } else if (view.forgeTab === 'enchant') {
+      const wid = s.equip.weapon, w = ITEMS[wid], curE = s.enchants[wid];
+      const cards = ENCHANT_ORDER.map(id => {
+        const E = ENCHANTS[id], has = curE === id;
+        return `<div class="card item-card" style="--rc:${E.color}">
+          <div class="item-head"><div class="item-icon">${E.icon}</div><div><div class="item-name">${E.name}${has ? ' <small style="color:var(--heal)">(activo)</small>' : ''}</div><div class="item-meta">${E.desc}</div></div></div>
+          ${has ? '<div class="item-meta">✅ Tu arma ya tiene este encantamiento</div>' : `<div class="stat-line">${costPills(E.cost, E.coins, E.gems)}</div>
+          <button class="btn small" data-act="enchant" data-id="${id}" ${Game.hasCost(E.cost, E.coins, E.gems) ? '' : 'disabled'}>🪄 ${curE ? 'Cambiar a este' : 'Encantar'}</button>`}
+        </div>`;
+      }).join('');
+      body = `<div class="card enchant-now" style="--rc:${rc(w.rarity)}"><div class="item-head"><div class="item-icon">${w.icon}</div><div><div class="item-name">${w.name}</div>
+        <div class="item-meta">${curE ? `Encantamiento: ${ENCHANTS[curE].icon} ${ENCHANTS[curE].name}` : 'Sin encantamiento'}</div></div></div></div>
+        <p class="hint">Cada arma puede tener un encantamiento. Se aplica al arma equipada; si la cambias, el nuevo reemplaza al anterior.</p>
+        <div class="cards">${cards}</div>`;
     } else {
       const ids = Object.keys(s.items).sort((a, b) => (ITEMS[a].type > ITEMS[b].type ? -1 : ITEMS[a].type < ITEMS[b].type ? 1 : 0) || RARITY_ORDER.indexOf(ITEMS[b].rarity) - RARITY_ORDER.indexOf(ITEMS[a].rarity));
       const cards = ids.map(id => {
@@ -958,6 +985,7 @@ const UI = (() => {
       <div class="tabs">
         <button class="tab ${view.forgeTab === 'craft' ? 'active' : ''}" data-act="forge-tab" data-tab="craft">🔨 Fabricar</button>
         <button class="tab ${view.forgeTab === 'upgrade' ? 'active' : ''}" data-act="forge-tab" data-tab="upgrade">⬆️ Mejorar</button>
+        <button class="tab ${view.forgeTab === 'enchant' ? 'active' : ''}" data-act="forge-tab" data-tab="enchant">🪄 Encantar</button>
       </div>${body}`;
   };
 
@@ -1117,6 +1145,7 @@ const UI = (() => {
         <div class="card item-card" style="--rc:${rc(a.rarity)}"><div class="item-head"><div class="item-icon">${a.icon}</div><div><div class="item-name">${a.name}</div><div class="stars">${stars(s.items[s.equip.armor].lvl)}</div></div></div></div>
       </div>
       <button class="btn ghost wide" style="margin-top:10px" data-act="go" data-to="inv">🎒 Cambiar equipo</button>
+      <div class="acc-btns"><button class="btn ghost" data-act="pets-open" data-tab="pets">🐾 Mascotas${s.pets.active ? ` · ${PETS[s.pets.active].icon}` : ''}</button><button class="btn ghost" data-act="pets-open" data-tab="style">🎨 Apariencia</button><button class="btn ghost" data-act="forge-open" data-tab="enchant">🪄 Encantar</button></div>
       <h3 class="section-title">Habilidades</h3>
       <div class="cards">${skills}</div>`;
     animateKnight('char-cv', 'char', 100, 380, 4.4);
@@ -1139,11 +1168,195 @@ const UI = (() => {
     })(t0);
   }
 
+  /* ---------- Calendario de 7 días ---------- */
+  function loginModal(auto) {
+    const st = Game.loginStatus();
+    if (auto && !st.claimable) return false;
+    const w = Game.highestWorld();
+    const cells = LOGIN_REWARDS.map((r, i) => {
+      const cls = i < st.day ? 'got' : i === st.day && st.claimable ? 'today' : '';
+      return `<div class="cal-day ${cls} ${i === 6 ? 'big' : ''}"><small>Día ${i + 1}</small><span class="cal-ico">${i < st.day ? '✅' : r.icon}</span><span class="cal-lbl">${r.label(w)}</span></div>`;
+    }).join('');
+    openModal(`
+      <h2>📅 Premio diario</h2>
+      <p class="sub">${st.claimable ? (st.reset ? 'Faltaste un día y el calendario volvió a empezar. ¡Entra cada día para llegar al cofre épico!' : 'Entra cada día: el día 7 te espera un cofre épico.') : 'Ya reclamaste el premio de hoy. ¡Vuelve mañana!'}</p>
+      <div class="calendar">${cells}</div>
+      <div class="modal-actions">
+        ${st.claimable ? '<button class="btn" data-act="login-claim">🎁 Reclamar día ' + (st.day + 1) + '</button>' : ''}
+        <button class="btn ghost" data-act="close">${st.claimable ? 'Más tarde' : 'Cerrar'}</button>
+      </div>`);
+    return true;
+  }
+
+  /* ---------- Logros y ranking ---------- */
+  RENDER.trophies = () => {
+    const tab = view.trophyTab || 'ach';
+    let body = '';
+    if (tab === 'ach') {
+      body = ACHIEVEMENTS.map(a => {
+        const st = Game.achState(a);
+        const medals = MEDALS.map((m, i) => `<span class="medal-ico ${i < st.claimed ? 'got' : i < st.reached ? 'ready' : ''}" title="${m.name}">${m.icon}</span>`).join('');
+        const pct = Math.min(100, st.value / st.goal * 100);
+        return `<div class="card ach ${st.done ? 'done' : ''}">
+          <div class="ach-ico">${a.icon}</div>
+          <div class="ach-body"><div class="ach-top"><b>${a.name}</b><span class="medals">${medals}</span></div>
+            <div class="item-meta">${st.done ? '¡Completado!' : a.text(st.goal)}</div>
+            ${st.done ? '' : `<div class="bar small"><i style="width:${pct}%"></i></div><div class="item-meta">${fmt(Math.min(st.value, st.goal))} / ${fmt(st.goal)}</div>`}
+          </div>
+          ${st.claimable ? `<button class="btn small" data-act="ach-claim" data-id="${a.id}">${MEDALS[st.claimed].icon} +${a.gems[st.claimed]} 💎</button>` : ''}
+        </div>`;
+      }).join('');
+    } else {
+      const field = view.rankField || 'power';
+      const fields = { power: '💥 Poder', level: '⭐ Nivel', tower: '🏰 Torre', combo: '🔥 Combo' };
+      body = `<div class="tabs small">${Object.keys(fields).map(f => `<button class="tab ${f === field ? 'active' : ''}" data-act="rank-field" data-f="${f}">${fields[f]}</button>`).join('')}</div>
+        <div id="rank-list" class="rank-list"><p class="hint">Cargando ranking…</p></div>
+        <p class="hint">${Game.account.session ? `Apareces como <b>${esc(Game.account.session.name)}</b>. Tu marca se actualiza al guardar.` : 'Para aparecer en el ranking crea una cuenta con usuario y contraseña (en ⚙️ Ajustes).'}</p>`;
+    }
+    $('scr-trophies').innerHTML = `${head('🏆 Logros')}
+      <div class="tabs">
+        <button class="tab ${tab === 'ach' ? 'active' : ''}" data-act="trophy-tab" data-tab="ach">🏅 Logros${Game.achClaimable() ? ` <span class="badge-inline">${Game.achClaimable()}</span>` : ''}</button>
+        <button class="tab ${tab === 'rank' ? 'active' : ''}" data-act="trophy-tab" data-tab="rank">🏆 Ranking</button>
+      </div>
+      <div class="cards ach-list">${body}</div>`;
+    if (tab === 'rank') loadRanking(view.rankField || 'power');
+  };
+  let rankReq = 0;
+  async function loadRanking(field) {
+    const req = ++rankReq;
+    Game.submitScore();
+    const list = await Game.fetchLeaderboard(field);
+    if (req !== rankReq || current !== 'trophies') return;
+    const box = $('rank-list');
+    if (!box) return;
+    if (!list) { box.innerHTML = '<p class="hint">El ranking solo está disponible abriendo el juego desde su enlace de Claude con tu sesión iniciada.</p>'; return; }
+    if (!list.length) { box.innerHTML = '<p class="hint">Todavía no hay nadie en el ranking. ¡Sé el primero!</p>'; return; }
+    const me = Game.account.session && Game.account.session.id;
+    const val = r => field === 'power' ? `💥 ${fmt(r.power || 0)}` : field === 'level' ? `⭐ Nv ${r.level || 1}` : field === 'tower' ? `🏰 Piso ${r.tower || 0}` : `🔥 x${r.combo || 0}`;
+    box.innerHTML = list.map((r, i) => `<div class="rank-row ${r.id === me ? 'me' : ''}">
+      <span class="pos">${i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</span>
+      <span class="who"><b>${esc(String(r.name || 'Guerrero').slice(0, 16))}</b><small style="color:${(RANKS[r.rank] || RANKS[0]).color}">${(RANKS[r.rank] || RANKS[0]).name}</small></span>
+      <span class="val">${val(r)}</span></div>`).join('');
+  }
+
+  /* ---------- Mascotas y apariencia ---------- */
+  RENDER.pets = () => {
+    const s = S(), tab = view.petTab || 'pets';
+    let body;
+    if (tab === 'pets') {
+      body = PET_ORDER.map(id => {
+        const P = PETS[id], o = s.pets.owned[id], active = s.pets.active === id;
+        const lvlBar = o ? (o.lvl >= PET_MAX_LEVEL ? '<div class="item-meta">⭐ Nivel máximo</div>' : `<div class="bar small"><i style="width:${Math.min(100, o.xp / petXpFor(o.lvl) * 100)}%"></i></div><div class="item-meta">${o.xp}/${petXpFor(o.lvl)} derrotas para nivel ${o.lvl + 1}</div>`) : '';
+        return `<div class="card pet-card ${o ? '' : 'locked'} ${active ? 'active' : ''}">
+          <canvas data-pet="${id}" width="120" height="100" ${o ? '' : 'class="dim"'}></canvas>
+          <div class="pet-body"><b>${o ? P.icon + ' ' + P.name : '🔒 ' + P.name}</b>${o ? ` <span class="pill">Nv ${o.lvl}</span>` : ''}
+            <div class="item-meta">${P.desc}</div>
+            ${o ? `<div class="item-meta">⚔️ ${Math.round(P.dmg * petMult(o.lvl) * 100)}% de tu daño · ${P.kind === 'melee' ? 'cuerpo a cuerpo' : 'a distancia'}</div>${lvlBar}
+              <button class="btn small ${active ? 'ghost' : ''}" data-act="pet-use" data-id="${id}">${active ? '✅ Te acompaña' : '🐾 Llevar'}</button>`
+              : `<div class="item-meta">Se consigue al vencer a ${ENEMIES[P.from].name}.</div>`}
+          </div></div>`;
+      }).join('');
+      body = `<p class="hint">Tu mascota te sigue en combate y ataca sola. Gana experiencia con cada enemigo derrotado mientras te acompaña.</p><div class="cards">${body}</div>`;
+    } else {
+      const cards = COSMETIC_ORDER.map(id => {
+        const C = COSMETICS[id], unlocked = Game.cosmeticUnlocked(id), worn = s.cosmetics[C.type] === id;
+        let how = '';
+        if (!unlocked) {
+          if (C.gems) how = `<button class="btn small" data-act="cos-buy" data-id="${id}" ${s.gems >= C.gems ? '' : 'disabled'}>💎 ${C.gems} Comprar</button>`;
+          else { const a = ACHIEVEMENTS.find(x => x.id === C.ach[0]); how = `<div class="item-meta">🔒 Logro «${a.name}» ${MEDALS[C.ach[1]].icon}: ${a.text(a.goals[C.ach[1]])}</div>`; }
+        } else how = `<button class="btn small ${worn ? 'ghost' : ''}" data-act="cos-wear" data-id="${id}">${worn ? '✅ Puesto (quitar)' : '✨ Ponerse'}</button>`;
+        return `<div class="card item-card ${unlocked ? '' : 'locked'}" style="--rc:${C.color}">
+          <div class="item-head"><div class="item-icon">${C.icon}</div><div><div class="item-name">${C.name}</div><div class="item-meta">${C.type === 'aura' ? 'Aura alrededor del caballero' : 'Estela al moverte en combate'}</div></div></div>
+          ${how}</div>`;
+      }).join('');
+      body = `<div class="style-preview"><canvas id="style-cv" width="240" height="300" aria-label="Vista previa"></canvas></div>
+        <p class="hint">Solo cambian el aspecto: no dan poder.</p><div class="cards">${cards}</div>`;
+    }
+    $('scr-pets').innerHTML = `${head('🐾 Compañeros')}
+      <div class="tabs">
+        <button class="tab ${tab === 'pets' ? 'active' : ''}" data-act="pet-tab" data-tab="pets">🐾 Mascotas</button>
+        <button class="tab ${tab === 'style' ? 'active' : ''}" data-act="pet-tab" data-tab="style">🎨 Apariencia</button>
+      </div>${body}`;
+    drawPets();
+    if (tab === 'style') animateKnight('style-cv', 'pets', 120, 285, 3.4);
+  };
+  function drawPets() {
+    document.querySelectorAll('canvas[data-pet]').forEach(cv => {
+      const P = PETS[cv.dataset.pet], c = cv.getContext('2d');
+      const e = { def: { sprite: { art: P.art } }, x: 60, y: 90, size: 60, face: -1, walk: 0, flash: 0, windup: 0, windupMax: 1, recover: 0, seed: 1, frozen: 0, state: 'move' };
+      const fit = Sprites.artFit(e.def, 110, 82);
+      if (fit) { e.size = fit.size; e.x = 60 + fit.dx; e.y = 92 - fit.dy; }
+      c.clearRect(0, 0, cv.width, cv.height);
+      Sprites.enemy(c, e, 0.5);
+    });
+  }
+
+  /* ---------- Torre del Caos ---------- */
+  RENDER.tower = () => {
+    const s = S(), open = s.cleared[TOWER.unlockStage];
+    $('scr-tower').innerHTML = `${head('🏰 Torre del Caos')}
+      <div class="card tower-card">
+        <div class="tower-art">🏰</div>
+        <p>Oleadas sin fin que se vuelven cada vez más duras. Cada piso es una oleada; cada ${TOWER.milestone} pisos aparece un jefe, recuperas un 25% de vida y ganas 🎟️ y 💎.</p>
+        <div class="info-rows">
+          <div class="info-row"><span>Tu récord</span><b>🏆 Piso ${s.tower.best}</b></div>
+          <div class="info-row"><span>Intentos</span><b>${s.tower.runs}</b></div>
+          <div class="info-row"><span>Botín</span><b>Te quedas con todo lo que recojas</b></div>
+        </div>
+        ${open ? '<button class="btn btn-play" data-act="tower-go"><span class="play-main">⚔️ SUBIR A LA TORRE</span></button>' : `<p class="hint">🔒 Se desbloquea al vencer al primer jefe (etapa ${TOWER.unlockStage}).</p>`}
+      </div>`;
+  };
+  function onTowerEnd(r) {
+    const s = S(), floor = r.tower ? r.tower.floor : 1;
+    const mats = {};
+    for (const id in r.loot.mats) { const q = r.loot.mats[id]; if (q > 0) { Game.addMat(id, q); mats[id] = q; } }
+    const coins = r.loot.coins; s.coins += coins;
+    s.tickets += r.loot.tickets; s.gems += r.loot.gems;
+    const made = Game.addShards(r.loot.shards);
+    const xp = r.loot.xp;
+    const record = floor > s.tower.best;
+    s.tower.best = Math.max(s.tower.best, floor); s.tower.runs++;
+    s.stats.elites += r.elites || 0;
+    s.stats.bestCombo = Math.max(s.stats.bestCombo, r.maxCombo || 0);
+    const petUp = Game.petGainXp(r.kills || 0);
+    const ups = Game.addXp(xp);
+    Game.track('kill', r.kills || 0); Game.track('combo', r.maxCombo || 0); Game.track('elite', r.elites || 0); Game.track('coins', coins);
+    Game.save(); Game.submitScore();
+    if (ups) Sfx.play('levelup');
+    openModal(`
+      <div class="reward-title ${record ? 'boss' : ''}">${record ? '🏆 ¡Nuevo récord!' : '🏰 Fin de la escalada'}</div>
+      <p class="sub">Llegaste al piso <b>${floor}</b> · récord: piso ${s.tower.best}</p>
+      ${ups ? `<div class="levelup">⭐ ¡Subiste a nivel ${s.level}!</div>` : ''}
+      ${petUp ? `<div class="levelup">🐾 ${PETS[s.pets.active].name} subió a nivel ${petUp}</div>` : ''}
+      ${Game.achClaimable() ? '<div class="levelup mission">🏅 ¡Tienes logros por reclamar!</div>' : ''}
+      <div class="info-rows">
+        <div class="info-row"><span>Experiencia</span><b>⭐ +${fmt(xp)} XP</b></div>
+        <div class="info-row"><span>Enemigos</span><b>☠️ ${r.kills}</b></div>
+        ${r.maxCombo >= 3 ? `<div class="info-row"><span>Combo máximo</span><b>🔥 x${r.maxCombo}</b></div>` : ''}
+      </div>
+      <div class="loot-grid">${lootChips(mats, coins, { tickets: r.loot.tickets, gems: r.loot.gems, shards: r.loot.shards })}</div>
+      ${made ? `<p class="hint" style="text-align:center">🧩 ¡Fragmentos completaron ${made} 🎟️!</p>` : ''}
+      <div class="modal-actions">
+        <button class="btn" data-act="tower-go">🔁 Volver a subir</button>
+        <button class="btn ghost" data-act="go" data-to="trophies">🏆 Ranking y logros</button>
+        <button class="btn ghost" data-act="go" data-to="menu">🏠 Menú</button>
+      </div>`);
+    if (record) confetti(70);
+  }
+  function startTower() {
+    closeModal();
+    show('battle');
+    goLandscape();
+    Battle.start('tower', onTowerEnd);
+    checkOrientation();
+  }
+
   /* ---------- Ajustes ---------- */
   RENDER.settings = () => {
     const s = S();
     $('scr-settings').innerHTML = `${head('⚙️ Ajustes')}
       <div class="card setting"><div><b>🔊 Sonido</b><div class="item-meta">Efectos de sonido del juego</div></div><button class="switch ${s.settings.sound ? 'on' : ''}" data-act="toggle" data-key="sound" aria-label="Sonido"></button></div>
+      <div class="card setting"><div><b>🎵 Música</b><div class="item-meta">Música de fondo de cada mundo y de los jefes</div></div><button class="switch ${s.settings.music ? 'on' : ''}" data-act="toggle" data-key="music" aria-label="Música"></button></div>
       <div class="card account">
         ${Game.account.session
           ? `<div class="setting" style="padding:0;margin:0"><div><b>🔐 ${esc(Game.account.session.name)}</b><div class="item-meta">Cuenta con contraseña</div></div><button class="btn small ghost" data-act="acc-logout">🚪 Cerrar sesión</button></div>`
@@ -1196,6 +1409,39 @@ const UI = (() => {
     'wheel-sel': d => { if (!view.spinning) { view.wheel = d.id; RENDER.wheel(); } },
     spin: d => spin(d.mode),
     'forge-tab': d => { view.forgeTab = d.tab; RENDER.forge(); },
+    'forge-open': d => { view.forgeTab = d.tab; show('forge'); },
+    enchant: d => {
+      if (!Game.enchantWeapon(d.id)) return;
+      Sfx.play('forge'); confetti(30, [ENCHANTS[d.id].color, '#fff']);
+      toast(`🪄 ${ITEMS[S().equip.weapon].name}: ${ENCHANTS[d.id].name}`);
+      RENDER.forge(); refreshTop();
+    },
+    'trophy-tab': d => { view.trophyTab = d.tab; RENDER.trophies(); },
+    'rank-field': d => { view.rankField = d.f; RENDER.trophies(); },
+    'ach-claim': d => {
+      const r = Game.claimAchievement(d.id);
+      if (!r) return;
+      Sfx.play('legendary'); confetti(40, [MEDALS[r.medal].color, '#fff']);
+      toast(`${MEDALS[r.medal].icon} ¡Medalla de ${MEDALS[r.medal].name.toLowerCase()}! +${r.gems} 💎`);
+      RENDER.trophies(); refreshTop();
+    },
+    'pet-tab': d => { view.petTab = d.tab; RENDER.pets(); },
+    'pets-open': d => { view.petTab = d.tab; show('pets'); },
+    'pet-use': d => { S().pets.active = d.id; Game.save(); toast(`🐾 ${PETS[d.id].name} te acompaña`); RENDER.pets(); },
+    'cos-buy': d => { if (Game.buyCosmetic(d.id)) { Sfx.play('chest'); Game.wearCosmetic(d.id); toast(`✨ ${COSMETICS[d.id].name}`); RENDER.pets(); refreshTop(); } },
+    'cos-wear': d => { Game.wearCosmetic(d.id); RENDER.pets(); },
+    'tower-go': () => startTower(),
+    'login-open': () => loginModal(false),
+    'login-claim': () => {
+      const r = Game.claimLogin();
+      if (!r) return;
+      closeModal();
+      Sfx.play(r.day === 6 ? 'legendary' : 'chest');
+      if (r.day === 6) confetti(80);
+      toast(`📅 Día ${r.day + 1}: ${r.text}`);
+      refreshTop();
+      if (RENDER[current]) RENDER[current]();
+    },
     craft: d => craft(+d.i),
     upgrade: d => upgrade(d.id),
     'inv-tab': d => { view.invTab = d.tab; RENDER.inv(); },
@@ -1254,6 +1500,7 @@ const UI = (() => {
       const s = S();
       s.settings[d.key] = !s.settings[d.key];
       if (d.key === 'sound') Sfx.setEnabled(s.settings.sound);
+      if (d.key === 'music') Music.setEnabled(s.settings.music);
       Game.save(); RENDER.settings();
       if (d.key === 'sound' && s.settings.sound) Sfx.play('click');
       if (d.key === 'vibrate') vibrate(60);
@@ -1294,6 +1541,7 @@ const UI = (() => {
     });
     $('b-potion').addEventListener('pointerdown', e => { e.preventDefault(); Battle.usePotion(); });
     $('b-dodge').addEventListener('pointerdown', e => { e.preventDefault(); Battle.dodge(); });
+    $('b-ult').addEventListener('pointerdown', e => { e.preventDefault(); Sfx.unlock(); Battle.ultimate(); });
     $('scr-battle').addEventListener('touchmove', e => e.preventDefault(), { passive: false });
 
     // Joystick virtual: aparece donde tocas dentro de la zona izquierda
@@ -1336,6 +1584,7 @@ const UI = (() => {
       if (current !== 'battle' || !$('modal').hidden) return;
       if (KEYS[e.key]) { e.preventDefault(); Battle.setInput(KEYS[e.key], true); }
       else if (e.key === 'Shift' || e.key === 'k' || e.key === 'K') Battle.dodge();
+      else if (e.key === 'u' || e.key === 'U' || e.key === 'q' || e.key === 'Q') Battle.ultimate();
       else if (e.key === '1') Battle.castSkill('fuego');
       else if (e.key === '2') Battle.castSkill('hielo');
       else if (e.key === '3') Battle.castSkill('rayo');
@@ -1347,6 +1596,7 @@ const UI = (() => {
     // Pantalla completa automática al primer toque (si el navegador lo permite)
     document.addEventListener('pointerdown', function first() {
       document.removeEventListener('pointerdown', first, true);
+      Music.unlock();
       if (S().settings.landscape && canFullscreen() && matchMedia('(pointer: coarse)').matches) goLandscape();
     }, true);
     window.addEventListener('resize', checkOrientation);
@@ -1356,5 +1606,5 @@ const UI = (() => {
     });
   }
 
-  return { show, toast, vibrate, refreshTop, bindEvents, askUsername, askAccount, onCloud, redrawArt: drawFoes, get current() { return current; } };
+  return { show, toast, vibrate, refreshTop, bindEvents, askUsername, askAccount, onCloud, loginModal, redrawArt: drawFoes, get current() { return current; } };
 })();

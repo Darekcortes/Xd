@@ -451,3 +451,121 @@ function weightedPick(weights) {
   for (const k in weights) { r -= weights[k]; if (r < 0) return k; }
   return Object.keys(weights)[0];
 }
+
+/* =====================================================================
+   SISTEMAS EXTRA: calendario, logros, mascotas, encantamientos,
+   cosméticos, definitiva, fases de jefe y Torre del Caos
+   ===================================================================== */
+
+/* ---------- Calendario de 7 días ----------
+   Se reclama una vez al día. Si pasa más de un día sin entrar, vuelve al día 1.
+   El oro escala con el mundo más alto alcanzado (w). */
+const LOGIN_REWARDS = [
+  { icon: '💰', label: w => `${200 * w} oro`,   prize: w => ({ coins: 200 * w }) },
+  { icon: '🧪', label: () => '3 pociones',        prize: () => ({ potion: 'pocion', qty: 3 }) },
+  { icon: '🎟️', label: () => '1 ticket',          prize: () => ({ tickets: 1 }) },
+  { icon: '💎', label: () => '5 cristales',       prize: () => ({ gems: 5 }) },
+  { icon: '⚗️', label: () => '2 pociones grandes', prize: () => ({ potion: 'pocion_grande', qty: 2 }) },
+  { icon: '🎟️', label: () => '2 tickets',         prize: () => ({ tickets: 2 }) },
+  { icon: '👑', label: () => 'Cofre épico + 10 💎', prize: () => ({ epicChest: true, gems: 10 }) },
+];
+
+/* ---------- Logros ----------
+   Cada logro tiene 3 medallas (bronce, plata, oro) con su meta y su premio.
+   value(S) devuelve el progreso actual a partir del estado del jugador. */
+const MEDALS = [
+  { name: 'Bronce', icon: '🥉', color: '#d97706' },
+  { name: 'Plata',  icon: '🥈', color: '#cbd5e1' },
+  { name: 'Oro',    icon: '🥇', color: '#facc15' },
+];
+const ACHIEVEMENTS = [
+  { id: 'kills',   icon: '☠️', name: 'Cazador',          text: n => `Derrota ${n} enemigos`,            goals: [100, 1000, 5000],  gems: [3, 8, 20], value: S => S.stats.kills },
+  { id: 'bosses',  icon: '👹', name: 'Matajefes',        text: n => `Derrota ${n} jefes`,               goals: [1, 10, 40],        gems: [3, 8, 20], value: S => Object.values(S.bossKills).reduce((a, b) => a + b, 0) },
+  { id: 'worlds',  icon: '🗺️', name: 'Conquistador',     text: n => `Conquista ${n} mundo${n > 1 ? 's' : ''}`, goals: [1, 3, 5], gems: [5, 10, 25], value: S => WORLDS.filter(w => S.bossKills[w.boss]).length },
+  { id: 'combo',   icon: '🔥', name: 'Imparable',        text: n => `Haz un combo de x${n}`,            goals: [10, 25, 50],       gems: [3, 8, 20], value: S => S.stats.bestCombo },
+  { id: 'level',   icon: '⭐', name: 'Veterano',         text: n => `Llega al nivel ${n}`,              goals: [10, 25, 50],       gems: [3, 8, 20], value: S => S.level },
+  { id: 'crafted', icon: '🔨', name: 'Herrero',          text: n => `Forja o mejora ${n} veces`,        goals: [5, 25, 75],        gems: [3, 6, 15], value: S => S.stats.crafted },
+  { id: 'spins',   icon: '🎰', name: 'Afortunado',       text: n => `Gira la ruleta ${n} veces`,        goals: [10, 50, 200],      gems: [3, 6, 15], value: S => S.stats.spins },
+  { id: 'elites',  icon: '⭐', name: 'Azote de élites',  text: n => `Derrota ${n} élites`,              goals: [5, 30, 100],       gems: [3, 8, 20], value: S => S.stats.elites },
+  { id: 'tower',   icon: '🏰', name: 'Escalador',        text: n => `Llega al piso ${n} de la Torre`,   goals: [10, 25, 50],       gems: [5, 12, 30], value: S => S.tower.best },
+  { id: 'nopot',   icon: '🧪', name: 'Sin ayuda',        text: n => `Vence ${n} jefe${n > 1 ? 's' : ''} sin usar pociones`, goals: [1, 5, 15], gems: [5, 10, 20], value: S => S.stats.noPotionBoss || 0 },
+  { id: 'dragon',  icon: '🐉', name: 'Matadragones',     text: n => `Vence al Dragón Volcánico ${n} ${n > 1 ? 'veces' : 'vez'}`, goals: [1, 5, 20], gems: [5, 10, 20], value: S => S.bossKills.dragon || 0 },
+  { id: 'pets',    icon: '🐾', name: 'Domador',          text: n => `Consigue ${n} mascota${n > 1 ? 's' : ''}`, goals: [1, 3, 5], gems: [3, 8, 20], value: S => Object.keys(S.pets.owned).length },
+  { id: 'login',   icon: '📅', name: 'Fiel',             text: n => `Entra ${n} días`,                  goals: [3, 7, 30],         gems: [3, 8, 20], value: S => S.login.total },
+  { id: 'enchant', icon: '🪄', name: 'Encantador',       text: n => `Encanta ${n} arma${n > 1 ? 's' : ''}`, goals: [1, 3, 6],      gems: [3, 6, 15], value: S => Object.keys(S.enchants).length },
+];
+
+/* ---------- Mascotas ----------
+   Te siguen en combate y atacan solas. Se consiguen al vencer por primera
+   vez al jefe indicado (o, después, con cierta probabilidad en su cofre).
+   kind: melee (muerde de cerca) o ranged (dispara). dmg = % del daño del jugador. */
+const PETS = {
+  lobito:     { name: 'Lobito',          icon: '🐺', art: 'wolf',     size: 24, kind: 'melee',  dmg: 0.32, cd: 1.0, range: 26,  from: 'rey_lobo',         desc: 'Muerde rápido a los enemigos cercanos.' },
+  escorpion:  { name: 'Escorpioncito',   icon: '🦂', art: 'scorpion', size: 22, kind: 'melee',  dmg: 0.26, cd: 1.1, range: 24,  from: 'reina_escorpion',  desc: 'Su picadura envenena.', poison: true },
+  lobo_hielo: { name: 'Cachorro de hielo', icon: '❄️', art: 'icewolf', size: 24, kind: 'melee', dmg: 0.3, cd: 1.1, range: 26,  from: 'golem_hielo_boss', desc: 'Sus mordiscos ralentizan.', slow: true },
+  llamita:    { name: 'Llamita',         icon: '🔥', art: 'flame',    size: 20, kind: 'ranged', dmg: 0.36, cd: 1.6, range: 170, from: 'dragon',           desc: 'Lanza bolas de fuego desde lejos.', proj: 'fireball' },
+  fantasma:   { name: 'Espectro',        icon: '👻', art: 'ghost',    size: 24, kind: 'ranged', dmg: 0.42, cd: 1.8, range: 190, from: 'caballero_maldito', desc: 'Dispara orbes oscuros que atraviesan.', proj: 'darkorb' },
+};
+const PET_ORDER = ['lobito', 'escorpion', 'lobo_hielo', 'llamita', 'fantasma'];
+const PET_MAX_LEVEL = 10;
+const petXpFor = lvl => 20 + lvl * lvl * 12;      // experiencia (derrotas) para el siguiente nivel
+const petMult = lvl => 1 + 0.15 * (lvl - 1);
+
+/* ---------- Encantamientos ----------
+   Una piedra de encantamiento da un efecto al arma equipada (uno por arma). */
+const ENCHANTS = {
+  veneno:  { name: 'Veneno',        icon: '🧪', color: '#84cc16', desc: 'Los golpes envenenan: daño durante 3 s.', cost: { esencia: 3, cristal: 6 }, coins: 400, gems: 3 },
+  vampiro: { name: 'Robo de vida',  icon: '🩸', color: '#ef4444', desc: 'Recuperas el 6% del daño que haces.',     cost: { esencia: 4, oro: 6 }, coins: 600, gems: 4 },
+  llama:   { name: 'Golpe ígneo',   icon: '🔥', color: '#fb923c', desc: '+8% de crítico y los críticos queman.',   cost: { esencia_fuego: 4, mineral_volcanico: 8 }, coins: 900, gems: 5 },
+  escarcha:{ name: 'Escarcha',      icon: '❄️', color: '#7dd3fc', desc: 'Los golpes ralentizan al enemigo 2 s.',   cost: { esencia_hielo: 4, cristal_hielo: 8 }, coins: 700, gems: 4 },
+};
+const ENCHANT_ORDER = ['veneno', 'vampiro', 'escarcha', 'llama'];
+
+/* ---------- Cosméticos (solo cambian el aspecto) ----------
+   type: aura (brillo alrededor del caballero) o trail (estela al moverse).
+   Se compran con cristales o se desbloquean con un logro (ach: id + medalla). */
+const COSMETICS = {
+  aura_dorada:  { type: 'aura',  name: 'Aura dorada',      icon: '✨', color: '#facc15', gems: 40 },
+  aura_hielo:   { type: 'aura',  name: 'Aura de escarcha', icon: '❄️', color: '#7dd3fc', gems: 40 },
+  aura_fuego:   { type: 'aura',  name: 'Aura de fuego',    icon: '🔥', color: '#f97316', ach: ['dragon', 0] },
+  aura_sombra:  { type: 'aura',  name: 'Aura de sombra',   icon: '🌑', color: '#a855f7', ach: ['worlds', 2] },
+  estela_luz:   { type: 'trail', name: 'Estela de luz',    icon: '💫', color: '#fde68a', gems: 25 },
+  estela_hojas: { type: 'trail', name: 'Estela de hojas',  icon: '🍃', color: '#84cc16', gems: 25 },
+  estela_fuego: { type: 'trail', name: 'Estela de brasas', icon: '🔥', color: '#fb923c', ach: ['combo', 1] },
+  estela_caos:  { type: 'trail', name: 'Estela del Caos',  icon: '🌀', color: '#f43f5e', ach: ['tower', 1] },
+};
+const COSMETIC_ORDER = ['aura_dorada', 'aura_hielo', 'aura_fuego', 'aura_sombra', 'estela_luz', 'estela_hojas', 'estela_fuego', 'estela_caos'];
+
+/* ---------- Definitiva: "Furia del Caos" ----------
+   La barra se llena al golpear y al recibir daño. */
+const ULTIMATE = { name: 'Furia del Caos', icon: '💥', mult: 4.5, bossMult: 2.2, fillHit: 0.035, fillKill: 0.06, fillHurt: 0.05 };
+
+/* ---------- Segunda fase de los jefes (al 50 % de vida) ----------
+   Ataques que se añaden y nombre de la fase. */
+const BOSS_PHASE2 = {
+  rey_lobo:          { title: 'Aullido de la manada', attacks: ['howl', 'charge', 'leap', 'charge', 'summon:lobo'] },
+  reina_escorpion:   { title: 'Furia venenosa',       attacks: ['volley', 'lob', 'spin', 'slam', 'volley'] },
+  golem_hielo_boss:  { title: 'Ventisca eterna',      attacks: ['zones', 'spin', 'leap', 'zones', 'summon:lobo_hielo'] },
+  dragon:            { title: 'Vuelo infernal',       attacks: ['fly', 'breath', 'charge', 'fly', 'volley'] },
+  caballero_maldito: { title: 'Corona del Caos',      attacks: ['spin', 'zones', 'charge', 'volley', 'summon:criatura_maldita', 'spin'] },
+};
+
+/* ---------- Torre del Caos (modo infinito) ----------
+   Se desbloquea al vencer al primer jefe. Cada piso es una oleada más dura;
+   cada 5 pisos aparece un jefe y hay premio. La vida se conserva entre pisos
+   (se recupera un 25 % cada 5). */
+const TOWER = { unlockStage: 5, milestone: 5, milestonePrize: f => ({ tickets: 1, gems: 2 + Math.floor(f / 10) }) };
+const TOWER_BOSSES = ['rey_lobo', 'reina_escorpion', 'golem_hielo_boss', 'dragon', 'caballero_maldito'];
+function towerInfo(floor) {
+  const hw = Math.max(1, ...WORLDS.map(w => w.id));
+  const base = stageInfo(Math.min(MAX_STAGE, 2 + floor));
+  const extra = Math.pow(1.1, Math.max(0, floor + 2 - MAX_STAGE));
+  const world = WORLDS[Math.floor((floor - 1) / TOWER.milestone) % hw];   // cambia de mundo cada 5 pisos
+  return Object.assign({}, base, {
+    world, tower: true, floor, boss: floor % TOWER.milestone === 0,
+    name: `Piso ${floor}`,
+    hp: base.hp * extra, atk: base.atk * extra, dmgMult: base.dmgMult * (1 + Math.max(0, floor - MAX_STAGE) * 0.02),
+    enemyCount: Math.min(14, 4 + Math.floor(floor / 2)), maxAlive: Math.min(5, 2 + Math.floor(floor / 6)),
+    eliteChance: Math.min(0.2, 0.05 + floor * 0.004),
+  });
+}

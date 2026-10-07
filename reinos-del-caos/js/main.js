@@ -4,6 +4,7 @@
    ===================================================================== */
 (function boot() {
   Game.load();
+  Music.setEnabled(Game.S.settings.music);
   Sprites.loadArt(() => UI.redrawArt());   // arte ilustrado (si no carga, se usan los dibujos clásicos)
   Battle.init();
   UI.bindEvents();
@@ -18,6 +19,13 @@
   document.addEventListener('visibilitychange', () => { if (document.hidden) flush(); });
   // Conecta con la cuenta (usuario y contraseña, o la de Claude) y, si no hay, ofrece crear una
   Game.connectCloud(UI.onCloud).finally(() => setTimeout(() => {
-    if (!Game.account.session && !Game.S.username && UI.current !== 'battle' && document.getElementById('modal').hidden) UI.askAccount();
+    const free = UI.current !== 'battle' && document.getElementById('modal').hidden;
+    if (!Game.account.session && !Game.S.username && free) UI.askAccount();
+    else if (free) UI.loginModal(true);   // premio diario
   }, 400));
+  // App instalable: el service worker solo funciona en una web normal (https), no en el archivo ni dentro de Claude
+  try {
+    const web = (location.protocol === 'https:' || location.hostname === 'localhost') && !/claude|anthropic/.test(location.hostname);
+    if ('serviceWorker' in navigator && web && window.top === window) navigator.serviceWorker.register('sw.js').catch(() => {});
+  } catch (e) { /* no disponible */ }
 })();

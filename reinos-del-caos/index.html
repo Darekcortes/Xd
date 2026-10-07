@@ -4,6 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="theme-color" content="#0f0c1d">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/icon-192.png">
+<link rel="apple-touch-icon" href="assets/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <title>Reinos del Caos</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -33,6 +38,9 @@
     <section class="screen" id="scr-char"></section>
     <section class="screen" id="scr-settings"></section>
     <section class="screen" id="scr-missions"></section>
+    <section class="screen" id="scr-trophies"></section>
+    <section class="screen" id="scr-pets"></section>
+    <section class="screen" id="scr-tower"></section>
 
     <!-- Combate -->
     <section class="screen" id="scr-battle">
@@ -50,6 +58,7 @@
             <span id="b-boss-name"></span>
             <div class="bar"><i id="b-boss-fill"></i></div>
           </div>
+          <button class="ult-btn" id="b-ult" aria-label="Furia del Caos: ataque definitivo"><span>💥</span></button>
           <div class="b-hp">
             <div class="bar hp"><i id="b-hp-fill"></i><span id="b-hp-text"></span></div>
           </div>

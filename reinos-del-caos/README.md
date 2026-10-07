@@ -43,6 +43,22 @@ En computadora también funciona con teclado: WASD o flechas, Espacio/J atacar, 
 - **Rangos del caballero**: Novato → Guerrero → Caballero → Veterano → Legendario → Señor del Caos.
   Cada rango cambia su aspecto (ribetes dorados, cruz en la capa, espada brillante, aura).
 - **Metas en el menú**: el menú muestra lo que te falta para tu próxima meta (nivel, forja, ticket, jefe, misión).
+- **Premio diario 📅**: un calendario de 7 días (el día 7 da un cofre épico). Si faltas un día vuelve a empezar.
+- **Logros 🏅**: 14 logros con medallas de bronce, plata y oro que dan cristales.
+- **Ranking 🏆**: los mejores por poder, nivel, piso de la Torre y combo (requiere cuenta con contraseña).
+- **Mascotas 🐾**: lobito, escorpioncito, cachorro de hielo, llamita y espectro. Se consiguen al vencer a cada
+  jefe, te siguen en combate, atacan solas y suben hasta el nivel 10.
+- **Encantamientos 🪄** (Forja → Encantar): veneno, robo de vida, escarcha o golpe ígneo para el arma equipada.
+- **Apariencia 🎨**: auras y estelas que solo cambian el aspecto (con cristales o por logros).
+- **Furia del Caos 💥**: la barra se llena al golpear, derrotar y recibir daño; al llenarse, el botón 💥 lanza una
+  onda que golpea a todos los enemigos de la pantalla.
+- **Fase 2 de los jefes**: al 50 % de vida cambian de ataques (el Rey Lobo aúlla a su manada, el dragón vuela y
+  lanza meteoritos...), se hacen más grandes y brillan en rojo.
+- **Torre del Caos 🏰**: modo infinito tras vencer al primer jefe. Cada piso es más duro, cada 5 hay jefe,
+  premio y curación. Te quedas con todo el botín y se guarda tu récord.
+- **Equipo visible**: las armas épicas o mejores hacen brillar al caballero con su color y las armaduras raras
+  o mejores lo tiñen. El arco del espadazo toma el color de las armas mágicas.
+- **Música 🎵**: un tema por mundo y otro para los jefes, generados en vivo (se puede apagar en Ajustes).
 
 ## Contenido
 
@@ -56,6 +72,22 @@ En computadora también funciona con teclado: WASD o flechas, Espacio/J atacar, 
 
 Rarezas: ⚪ Común · 🟢 Poco común · 🔵 Raro · 🟣 Épico · 🟠 Legendario · 🔴 Mítico.
 Al vencer por primera vez a los tres primeros jefes se desbloquean las habilidades de fuego, hielo y rayo.
+
+## Instalar como app en el teléfono
+
+El juego incluye `manifest.webmanifest`, iconos y `sw.js` (funciona sin internet). Para instalarlo hay que
+publicarlo en una web con `https`, por ejemplo **GitHub Pages**:
+
+1. En GitHub: *Settings → Pages → Build and deployment → Source: Deploy from a branch*, elige la rama
+   y la carpeta `/ (root)` y guarda. A los minutos aparece la dirección, por ejemplo
+   `https://USUARIO.github.io/REPO/reinos-del-caos/`.
+2. **Android (Chrome)**: abre esa dirección → menú ⋮ → *Instalar app* (o *Agregar a pantalla principal*).
+3. **iPhone (Safari)**: abre la dirección → botón *Compartir* → *Agregar a inicio*.
+
+Instalado se abre a pantalla completa, en horizontal y sin internet. Al publicar una versión nueva, cambia
+`VERSION` en `sw.js` para que los teléfonos la descarguen. Las cuentas con contraseña y el ranking solo
+funcionan en el enlace de Claude; en la app instalada el progreso se guarda en el teléfono (usa el código de
+guardado para pasarlo).
 
 ## Estructura del código
 
@@ -74,6 +106,7 @@ js/battle.js      arena con movimiento libre, oleadas, IA de enemigos, ataques d
                   habilidades, esquiva, combos y botín
 js/ui.js          menú, mapa, ruleta, forja, inventario, personaje y ajustes
 js/main.js        arranque
+manifest.webmanifest, sw.js   app instalable y modo sin internet
 ```
 
 ## Cómo ampliarlo
