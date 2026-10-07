@@ -960,16 +960,22 @@ const UI = (() => {
     } else if (view.forgeTab === 'enchant') {
       const wid = s.equip.weapon, w = ITEMS[wid], curE = s.enchants[wid];
       const cards = ENCHANT_ORDER.map(id => {
-        const E = ENCHANTS[id], has = curE === id;
+        const E = ENCHANTS[id], has = curE === id, owned = Game.enchantOwned(id);
+        let act;
+        if (has) act = '<div class="item-meta">✅ Tu arma ya tiene este encantamiento</div><button class="btn small ghost" data-act="enchant-off">✖️ Quitar</button>';
+        else if (owned) act = `<div class="item-meta">💾 Ya lo compraste para esta arma: cambiar es gratis</div>
+          <button class="btn small" data-act="enchant" data-id="${id}">🔄 ${curE ? 'Cambiar a este (gratis)' : 'Ponerlo (gratis)'}</button>`;
+        else act = `<div class="stat-line">${costPills(E.cost, E.coins, E.gems)}</div>
+          <button class="btn small" data-act="enchant" data-id="${id}" ${Game.hasCost(E.cost, E.coins, E.gems) ? '' : 'disabled'}>🪄 ${curE ? 'Comprar y cambiar' : 'Encantar'}</button>
+          ${Game.hasCost(E.cost, E.coins, E.gems) ? '' : '<div class="item-meta">🔒 Te faltan materiales, monedas o gemas</div>'}`;
         return `<div class="card item-card" style="--rc:${E.color}">
           <div class="item-head"><div class="item-icon">${E.icon}</div><div><div class="item-name">${E.name}${has ? ' <small style="color:var(--heal)">(activo)</small>' : ''}</div><div class="item-meta">${E.desc}</div></div></div>
-          ${has ? '<div class="item-meta">✅ Tu arma ya tiene este encantamiento</div>' : `<div class="stat-line">${costPills(E.cost, E.coins, E.gems)}</div>
-          <button class="btn small" data-act="enchant" data-id="${id}" ${Game.hasCost(E.cost, E.coins, E.gems) ? '' : 'disabled'}>🪄 ${curE ? 'Cambiar a este' : 'Encantar'}</button>`}
+          ${act}
         </div>`;
       }).join('');
       body = `<div class="card enchant-now" style="--rc:${rc(w.rarity)}"><div class="item-head"><div class="item-icon">${w.icon}</div><div><div class="item-name">${w.name}</div>
         <div class="item-meta">${curE ? `Encantamiento: ${ENCHANTS[curE].icon} ${ENCHANTS[curE].name}` : 'Sin encantamiento'}</div></div></div></div>
-        <p class="hint">Cada arma puede tener un encantamiento. Se aplica al arma equipada; si la cambias, el nuevo reemplaza al anterior.</p>
+        <p class="hint">Cada arma lleva un encantamiento a la vez. Los que compras para un arma se quedan guardados: puedes cambiar entre ellos gratis cuando quieras.</p>
         <div class="cards">${cards}</div>`;
     } else {
       const ids = Object.keys(s.items).sort((a, b) => (ITEMS[a].type > ITEMS[b].type ? -1 : ITEMS[a].type < ITEMS[b].type ? 1 : 0) || RARITY_ORDER.indexOf(ITEMS[b].rarity) - RARITY_ORDER.indexOf(ITEMS[a].rarity));
@@ -1502,6 +1508,7 @@ const UI = (() => {
     spin: d => spin(d.mode),
     'forge-tab': d => { view.forgeTab = d.tab; RENDER.forge(); },
     'forge-open': d => { view.forgeTab = d.tab; show('forge'); },
+    'enchant-off': () => { if (Game.removeEnchant()) { toast('Encantamiento quitado (puedes volver a ponerlo gratis)'); RENDER.forge(); } },
     enchant: d => {
       if (!Game.enchantWeapon(d.id)) return;
       Sfx.play('forge'); confetti(30, [ENCHANTS[d.id].color, '#fff']);

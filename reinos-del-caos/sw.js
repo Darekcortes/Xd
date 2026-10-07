@@ -1,7 +1,7 @@
 /* Reinos del Caos — permite instalar el juego y jugar sin internet.
    Guarda los archivos del juego la primera vez; cambia VERSION al publicar
    una versión nueva para que los teléfonos descarguen la actualización. */
-const VERSION = 'rdc-v6';
+const VERSION = 'rdc-v7';
 const FILES = [
   './', './index.html', './manifest.webmanifest', './css/style.css',
   './js/data.js', './js/audio.js', './js/state.js', './js/sprites.js', './js/battle.js', './js/ui.js', './js/main.js',

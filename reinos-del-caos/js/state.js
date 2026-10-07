@@ -25,6 +25,7 @@ const Game = (() => {
       achievements: {},                                // { logro: medallas reclamadas (0-3) }
       pets: { owned: {}, active: null },               // { mascota: { lvl, xp } }
       enchants: {},                                    // { arma: encantamiento }
+      enchantsOwned: {},                               // { arma: [encantamientos ya comprados] }
       cosmetics: { owned: [], aura: null, trail: null },
       tower: { best: 0, runs: 0 },
       tickets: 1, ticketShards: 0,   // 🎟️ tickets de ruleta y fragmentos
@@ -45,6 +46,14 @@ const Game = (() => {
     // Fusiona sub-objetos para que partidas antiguas reciban campos nuevos
     for (const k of ['alloc', 'potions', 'settings', 'stats', 'equip', 'login', 'pets', 'cosmetics', 'tower']) S[k] = Object.assign({}, defaults[k], data[k] || {});
     if (!Array.isArray(S.cosmetics.owned)) S.cosmetics.owned = [];
+    // Encantamientos ya pagados: se guardan por arma y cambiar entre ellos es gratis
+    if (!S.enchantsOwned || typeof S.enchantsOwned !== 'object') S.enchantsOwned = {};
+    for (const w in S.enchants) {
+      const e = S.enchants[w];
+      if (!ENCHANTS[e]) { delete S.enchants[w]; continue; }
+      const list = S.enchantsOwned[w] = Array.isArray(S.enchantsOwned[w]) ? S.enchantsOwned[w] : [];
+      if (!list.includes(e)) list.push(e);
+    }
     if (!data.items) S.items = defaults.items;
     // Limpia referencias a objetos que ya no existan
     for (const id of Object.keys(S.items)) if (!ITEMS[id]) delete S.items[id];
@@ -843,12 +852,24 @@ const Game = (() => {
   }
 
   /* ---------- Encantamientos ---------- */
+  const enchantOwned = (enchId, wid = S.equip.weapon) => (S.enchantsOwned[wid] || []).includes(enchId);
+  /** Encanta el arma equipada. Si ese encantamiento ya se compró para esta arma, cambiar es gratis. */
   function enchantWeapon(enchId) {
     const E = ENCHANTS[enchId], wid = S.equip.weapon;
     if (!E || S.enchants[wid] === enchId) return false;
-    if (!payCost(E.cost, E.coins, E.gems)) return false;
+    if (!enchantOwned(enchId, wid)) {
+      if (!payCost(E.cost, E.coins, E.gems)) return false;
+      (S.enchantsOwned[wid] = S.enchantsOwned[wid] || []).push(enchId);
+      S.stats.crafted++;
+    }
     S.enchants[wid] = enchId;
-    S.stats.crafted++;
+    save(true);
+    return true;
+  }
+  /** Quita el encantamiento del arma equipada (sigue comprado para volver a ponerlo gratis). */
+  function removeEnchant() {
+    if (!S.enchants[S.equip.weapon]) return false;
+    delete S.enchants[S.equip.weapon];
     save(true);
     return true;
   }
@@ -887,6 +908,6 @@ const Game = (() => {
     supaReady,
     rank: () => rankOf(S.level),
     loginStatus, claimLogin, achState, achClaimable, claimAchievement, givePet, petGainXp,
-    enchantWeapon, cosmeticUnlocked, buyCosmetic, wearCosmetic, submitScore, fetchLeaderboard, watchLeaderboard, myScore,
+    enchantWeapon, enchantOwned, removeEnchant, cosmeticUnlocked, buyCosmetic, wearCosmetic, submitScore, fetchLeaderboard, watchLeaderboard, myScore,
   };
 })();
