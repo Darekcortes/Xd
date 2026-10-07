@@ -579,8 +579,10 @@ const Game = (() => {
       const data = JSON.parse(decodeURIComponent(escape(atob(txt.slice(5)))));
       if (!data || typeof data !== 'object' || !data.items) return false;
       applyData(data);
-      save(true);
-      if (Cloud.ready) cloudWrite();
+      if (Acc.session) S.username = Acc.session.name;   // la partida pasa a la cuenta con la que entraste
+      S.savedAt = Date.now();                             // es lo más nuevo: se sube a la cuenta
+      writeLocal();
+      if (Acc.session) accountWrite(true); else if (Cloud.ready) cloudWrite();
       return true;
     } catch (e) { return false; }
   }
