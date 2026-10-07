@@ -67,6 +67,12 @@ const Game = (() => {
         if (p.item && ITEMS[p.item] && !S.items[p.item]) S.items[p.item] = { lvl: 1 };
       }
     }
+    // Mascotas de los jefes ya vencidos (las mascotas se añadieron después)
+    if (!S.pets.owned) S.pets.owned = {};
+    for (const id of PET_ORDER) {
+      if ((S.bossKills[PETS[id].from] || 0) > 0 && !S.pets.owned[id]) S.pets.owned[id] = { lvl: 1, xp: 0 };
+    }
+    if (!S.pets.active || !S.pets.owned[S.pets.active]) S.pets.active = PET_ORDER.find(id => S.pets.owned[id]) || null;
     lastPrint = printOf();
     Sfx.setEnabled(S.settings.sound);
   }
