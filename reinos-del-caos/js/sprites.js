@@ -79,6 +79,98 @@ const Sprites = (() => {
     return { ang, ext: 0, lean, trail };
   }
 
+  /* ---------- Arte ilustrado (atlas assets/sprites.webp) ----------
+     Cada cuadro: [x, y, ancho, alto, anclaX, anclaY] — el ancla son los pies.
+     Si la imagen no carga (o se eligen gráficos clásicos) se usa el dibujo
+     vectorial de siempre.                                              */
+  const ART = {
+    frames: {"k_idle":[547,218,113,159,72.3,158.2],"k_slash1":[738,0,178,179,110.1,176.2],"k_slash2":[465,0,172,196,100.2,193.5],"k_slash3":[0,397,124,141,75.9,139.5],"k_thrust1":[550,397,163,128,44.8,127.5],"k_thrust2":[381,397,167,130,45.7,126.8],"k_thrust3":[715,397,182,125,49.4,124.5],"k_raise":[136,0,145,202,63.3,201.0],"k_smash1":[283,0,180,200,60.7,199.5],"k_smash2":[0,0,134,216,62.0,213.0],"k_smash3":[662,218,118,158,60.7,155.2],"hood":[922,218,85,144,56.3,144.0],"mummy":[221,397,79,136,44.6,135.0],"archer":[126,397,93,141,60.3,141.0],"iceknight":[639,0,97,194,47.8,194.2],"demon":[418,218,127,162,64.2,161.2],"darkknight":[286,218,130,166,56.7,165.0],"wizard":[918,0,106,177,73.0,174.0],"slime":[899,397,82,89,41.3,85.5],"icegolem":[782,218,138,156,71.2,156.0],"lavagolem":[144,218,140,174,79.7,174.0],"flame":[302,397,77,136,39.1,133.5],"darkking":[0,218,142,177,70.4,174.8]},
+    // Altura en pantalla de cada enemigo, relativa a su tamaño (e.size)
+    height: { hood: 1.3, mummy: 1.25, archer: 1.3, iceknight: 1.55, demon: 1.35, darkknight: 1.35, wizard: 1.45,
+              slime: 0.85, icegolem: 1.15, lavagolem: 1.2, flame: 1.25, darkking: 1.3 },
+    img: null, red: null, white: null, ready: false,
+  };
+  const KNIGHT_H = 62 / 158;   // escala del caballero: el cuadro de reposo mide 62 unidades
+  function tinted(img, color) {
+    const cv = document.createElement('canvas');
+    cv.width = img.width; cv.height = img.height;
+    const g = cv.getContext('2d');
+    g.drawImage(img, 0, 0);
+    g.globalCompositeOperation = 'source-atop';
+    g.fillStyle = color; g.fillRect(0, 0, cv.width, cv.height);
+    return cv;
+  }
+  function loadArt(onReady) {
+    if (typeof Image === 'undefined') return;
+    const img = new Image();
+    img.onload = () => {
+      ART.img = img;
+      ART.red = tinted(img, 'rgba(255,50,50,.6)');
+      ART.white = tinted(img, 'rgba(255,255,255,.75)');
+      ART.ready = true;
+      if (onReady) onReady();
+    };
+    img.src = 'assets/sprites.webp';
+  }
+  const artOn = () => ART.ready && !(typeof Game !== 'undefined' && Game.S && Game.S.settings && Game.S.settings.classic);
+  function blit(c, key, src, k) {
+    const f = ART.frames[key];
+    c.drawImage(src || ART.img, f[0], f[1], f[2], f[3], -f[4] * k, -f[5] * k, f[2] * k, f[3] * k);
+  }
+
+  /** Cuadro del caballero según el golpe: tajo, estocada o golpe fuerte. */
+  function knightFrame(o) {
+    const t = o.swing;
+    if (t < 0) return 'k_idle';
+    const style = o.style || (o.heavy ? 'smash' : 'slash');
+    if (style === 'thrust') return t < 0.3 ? 'k_thrust1' : t < 0.65 ? 'k_thrust2' : 'k_thrust3';
+    if (style === 'smash') return t < 0.24 ? 'k_raise' : t < 0.45 ? 'k_smash1' : t < 0.72 ? 'k_smash2' : 'k_smash3';
+    return t < 0.12 ? 'k_raise' : t < 0.4 ? 'k_slash1' : t < 0.7 ? 'k_slash2' : 'k_slash3';
+  }
+  function knightArt(c, x, y, s, o) {
+    const t = o.time || 0;
+    const idle = !o.walk && o.swing < 0;
+    const bob = idle ? Math.sin(t * 2.2) * 0.5 : o.swing < 0 ? -Math.abs(Math.sin(o.walk)) * 2 : 0;
+    const k = KNIGHT_H * s;
+    c.save();
+    c.translate(x, y + bob * s);
+    c.scale(o.face, 1);
+    if (o.swing < 0 && o.walk) c.rotate(0.05 + Math.sin(o.walk * 2) * 0.03);   // inclinado al caminar
+    if (idle) c.scale(1, 1 + Math.sin(t * 2.2) * 0.01);
+    blit(c, knightFrame(o), o.flash ? ART.red : null, k);
+    c.restore();
+  }
+
+  /** Enemigo ilustrado con animación sencilla: paso, respiración, carga y embestida. */
+  function enemyArt(c, x, y, size, o, sp) {
+    const key = sp.art, f = ART.frames[key];
+    if (!f) return false;
+    const t = o.time || 0, seed = o.seed || 0;
+    const k = size * (ART.height[key] || 1.25) / f[3];
+    shadow(c, x, y, size * (key === 'slime' ? 0.42 : 0.36));
+    let rot = 0, sx = 1, sy = 1, dy = 0;
+    if (key === 'slime') {
+      const b = Math.abs(Math.sin(o.walk * 1.4));
+      sx = 1 + (1 - b) * 0.12; sy = 1 - (1 - b) * 0.1; dy = -b * size * 0.12;
+    } else if (key === 'flame') {
+      sy = 1 + Math.sin(t * 9 + seed) * 0.05; sx = 1 - Math.sin(t * 9 + seed) * 0.03; dy = -size * 0.08 + Math.sin(t * 3 + seed) * 2;
+    } else {
+      dy = -Math.abs(Math.sin(o.walk)) * size * 0.05;
+      rot = Math.sin(o.walk) * 0.035;
+      sy = 1 + Math.sin(t * 2.5 + seed) * 0.012;
+    }
+    if (o.atk > 0) { rot -= 0.16 * o.atk; sx *= 1 - 0.05 * o.atk; sy *= 1 + 0.04 * o.atk; }   // se echa atrás al cargar
+    if (o.recover > 0 || o.dash) rot += 0.18;                                                 // embestida
+    c.save();
+    c.translate(x, y + dy);
+    c.scale(-o.face, 1);            // los dibujos miran a la izquierda
+    c.rotate(-rot);
+    c.scale(sx, sy);
+    blit(c, key, o.flash ? ART.white : null, k);
+    c.restore();
+    return true;
+  }
+
   function knight(c, x, y, s, o) {
     const t = o.time || 0;
     const idle = !o.walk && o.swing < 0;
@@ -111,6 +203,7 @@ const Sprites = (() => {
       c.globalAlpha = 1;
     }
     shadow(c, x, y, 17 * s);
+    if (artOn()) { knightArt(c, x, y, s, o); return; }
     c.save();
     c.translate(x, y);
     c.scale(o.face * s, s);
@@ -865,7 +958,7 @@ const Sprites = (() => {
     }
     if (z) { shadow(c, e.x, e.y, e.size * 0.4); skipShadow = true; }
     if (e.frozen > 0) c.globalAlpha = 0.85;
-    (SHAPES[sp.shape] || humanoid)(c, e.x, e.y - z, e.size, o, sp);
+    if (!(sp.art && artOn() && enemyArt(c, e.x, e.y - z, e.size, o, sp))) (SHAPES[sp.shape] || humanoid)(c, e.x, e.y - z, e.size, o, sp);
     skipShadow = false;
     c.globalAlpha = 1;
     if (sp.crown && sp.shape === 'golem') crown(c, e.x, e.y - z - e.size * 1.2, e.size * 0.24);
@@ -1066,5 +1159,5 @@ const Sprites = (() => {
     c.beginPath(); c.moveTo(x, base); c.lineTo(x, base - 36); c.moveTo(x, base - 22); c.lineTo(x - 12, base - 34); c.moveTo(x, base - 30); c.lineTo(x + 11, base - 42); c.stroke();
   }
 
-  return { knight, enemy, background, coin, gem, heart, prop, crown, THEMES, rrect, shade };
+  return { loadArt, ART, knight, enemy, background, coin, gem, heart, prop, crown, THEMES, rrect, shade };
 })();

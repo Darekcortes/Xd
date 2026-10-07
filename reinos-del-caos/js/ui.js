@@ -1077,7 +1077,8 @@ const UI = (() => {
       </div>
       <div class="card setting"><div><b>⛶ Pantalla completa</b><div class="item-meta">${canFullscreen() ? 'Activa o desactiva la pantalla completa' : 'No disponible aquí: abre el archivo descargado en Chrome'}</div></div><button class="btn small ghost" data-act="fullscreen">${isFullscreen() ? 'Salir' : 'Activar'}</button></div>
       <div class="card setting"><div><b>📱 Horizontal y pantalla completa</b><div class="item-meta">Pantalla completa al tocar y pide girar el teléfono al combatir</div></div><button class="switch ${s.settings.landscape ? 'on' : ''}" data-act="toggle" data-key="landscape" aria-label="Combate en horizontal"></button></div>
-      <div class="card setting"><div><b>⛑️ Casco</b><div class="item-meta">Muestra el yelmo del caballero</div></div><button class="switch ${s.settings.helmet ? 'on' : ''}" data-act="toggle" data-key="helmet" aria-label="Casco"></button></div>
+      <div class="card setting"><div><b>🎨 Gráficos clásicos</b><div class="item-meta">Usa los dibujos sencillos en lugar del arte ilustrado</div></div><button class="switch ${s.settings.classic ? 'on' : ''}" data-act="toggle" data-key="classic" aria-label="Gráficos clásicos"></button></div>
+      <div class="card setting"><div><b>⛑️ Casco</b><div class="item-meta">Muestra el yelmo del caballero (gráficos clásicos)</div></div><button class="switch ${s.settings.helmet ? 'on' : ''}" data-act="toggle" data-key="helmet" aria-label="Casco"></button></div>
       <div class="card setting"><div><b>📳 Vibración</b><div class="item-meta">Vibra al recibir daño (si tu teléfono lo permite)</div></div><button class="switch ${s.settings.vibrate ? 'on' : ''}" data-act="toggle" data-key="vibrate" aria-label="Vibración"></button></div>
       <div class="card" style="margin-bottom:10px">
         <b>💾 Guardado</b>
@@ -1273,5 +1274,5 @@ const UI = (() => {
     });
   }
 
-  return { show, toast, vibrate, refreshTop, bindEvents, askUsername, onCloud, get current() { return current; } };
+  return { show, toast, vibrate, refreshTop, bindEvents, askUsername, onCloud, redrawArt: drawFoes, get current() { return current; } };
 })();

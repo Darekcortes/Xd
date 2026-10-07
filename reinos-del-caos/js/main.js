@@ -4,6 +4,7 @@
    ===================================================================== */
 (function boot() {
   Game.load();
+  Sprites.loadArt(() => UI.redrawArt());   // arte ilustrado (si no carga, se usan los dibujos clásicos)
   Battle.init();
   UI.bindEvents();
   UI.show('menu');

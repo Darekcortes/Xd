@@ -66,8 +66,10 @@ js/data.js        TODO el contenido: rarezas, materiales, objetos, recetas,
                   habilidades, enemigos, jefes, ruletas, mundos y balance
 js/audio.js       efectos de sonido sintetizados (Web Audio)
 js/state.js       estado del jugador, guardado en localStorage, estadísticas y recompensas
-js/sprites.js     dibujo en canvas del caballero, criaturas (lobos, escorpiones,
-                  espectros, dragón, gólems...), botín y escenarios
+js/sprites.js     dibujo del caballero y las criaturas: arte ilustrado del atlas
+                  (assets/sprites.webp) con dibujos vectoriales de respaldo, botín y escenarios
+assets/sprites.webp  atlas del arte ilustrado: caballero (reposo, tajo, estocada,
+                  golpe fuerte) y 12 enemigos
 js/battle.js      arena con movimiento libre, oleadas, IA de enemigos, ataques de jefes,
                   habilidades, esquiva, combos y botín
 js/ui.js          menú, mapa, ruleta, forja, inventario, personaje y ajustes
@@ -80,7 +82,8 @@ Casi todo se añade editando `js/data.js`:
 
 - **Nuevo mundo**: añade un objeto a `WORLDS` (enemigos, jefe, materiales, ruleta, cofre).
   Sus 5 etapas se generan solas y el mapa lo muestra automáticamente.
-- **Nuevo enemigo o jefe**: entrada en `ENEMIES` con su `sprite` (forma y colores) y su `ai`
+- **Nuevo enemigo o jefe**: entrada en `ENEMIES` con su `sprite` (forma y colores, y `art` si tiene
+  cuadro en el atlas de `js/sprites.js`) y su `ai`
   (`melee`, `ranged`, `charger`, `tank`). Los jefes combinan los ataques
   `leap`, `slam`, `zones`, `lob`, `volley`, `breath`, `charge`, `spin` y `summon:<enemigo>`.
 - **Nueva arma o armadura**: entrada en `ITEMS`; luego úsala en `RECIPES`, `WHEELS` o en `chestItems` de un mundo.
