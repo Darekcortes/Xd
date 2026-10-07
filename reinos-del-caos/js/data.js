@@ -136,14 +136,14 @@ const SKILL_UPGRADE = lvl => ({ coins: 150 * lvl * lvl, gems: 2 * lvl });
 const ENEMIES = {
   // Bosque
   slime:   { icon: '🟢', name: 'Slime',   hp: 0.8, atk: 0.7, speed: 34, range: 20, size: 26, ai: 'melee',   atkCd: 1.5, split: true, sprite: { art: 'slime', shape: 'slime', color: '#4ade80' } },
-  lobo:    { icon: '🐺', name: 'Lobo',    hp: 0.9, atk: 1.0, speed: 62, range: 24, size: 36, ai: 'charger', atkCd: 1.1, sprite: { shape: 'wolf', color: '#78716c', eye: '#fde047' } },
+  lobo:    { icon: '🐺', name: 'Lobo',    hp: 0.9, atk: 1.0, speed: 62, range: 24, size: 36, ai: 'charger', atkCd: 1.1, sprite: { art: 'wolf', shape: 'wolf', color: '#78716c', eye: '#fde047' } },
   bandido: { icon: '🥷', name: 'Bandido', hp: 1.1, atk: 1.1, speed: 48, range: 26, size: 40, ai: 'melee',   atkCd: 1.2, sprite: { art: 'hood', shape: 'humanoid', body: '#7c2d12', skin: '#e0b48a', head: 'hood', hood: '#3f3f46', mask: '#991b1b', weapon: 'dagger' } },
   // Desierto
-  escorpion:        { icon: '🦂', name: 'Escorpión',            hp: 1.0, atk: 1.1, speed: 50, range: 26, size: 36, ai: 'melee',  atkCd: 1.1, sprite: { shape: 'scorpion', color: '#b45309', sting: '#84cc16' } },
+  escorpion:        { icon: '🦂', name: 'Escorpión',            hp: 1.0, atk: 1.1, speed: 50, range: 26, size: 36, ai: 'melee',  atkCd: 1.1, sprite: { art: 'scorpion', shape: 'scorpion', color: '#b45309', sting: '#84cc16' } },
   momia:            { icon: '🧟', name: 'Momia',                hp: 1.6, atk: 0.9, speed: 26, range: 24, size: 42, ai: 'melee',  atkCd: 1.4, sprite: { art: 'mummy', shape: 'humanoid', body: '#d6cfb4', skin: '#d6cfb4', head: 'wrap', eye: '#facc15' } },
   bandido_desierto: { icon: '🏹', name: 'Arquero del desierto', hp: 0.9, atk: 1.2, speed: 42, range: 170, size: 40, ai: 'ranged', atkCd: 2.0, proj: 'arrow', sprite: { art: 'archer', shape: 'humanoid', body: '#c2410c', skin: '#c08457', head: 'turban', hood: '#fde68a', weapon: 'bow' } },
   // Hielo
-  lobo_hielo:         { icon: '🐺', name: 'Lobo de hielo',      hp: 1.0, atk: 1.1, speed: 66, range: 24, size: 38, ai: 'charger', atkCd: 1.0, resist: 'hielo', sprite: { shape: 'wolf', color: '#cbd5e1', eye: '#38bdf8', aura: '#7dd3fc' } },
+  lobo_hielo:         { icon: '🐺', name: 'Lobo de hielo',      hp: 1.0, atk: 1.1, speed: 66, range: 24, size: 38, ai: 'charger', atkCd: 1.0, resist: 'hielo', sprite: { art: 'icewolf', shape: 'wolf', color: '#cbd5e1', eye: '#38bdf8', aura: '#7dd3fc' } },
   golem_hielo:        { icon: '🗿', name: 'Gólem de hielo',     hp: 2.2, atk: 1.3, speed: 22, range: 30, size: 46, ai: 'tank',    atkCd: 1.8, resist: 'hielo', sprite: { art: 'icegolem', shape: 'golem', color: '#93c5fd', glow: '#e0f2fe' } },
   guerrero_congelado: { icon: '🥶', name: 'Guerrero congelado', hp: 1.3, atk: 1.2, speed: 40, range: 28, size: 42, ai: 'melee',   atkCd: 1.2, resist: 'hielo', sprite: { art: 'iceknight', shape: 'humanoid', body: '#3b82f6', skin: '#bfdbfe', head: 'helmet', weapon: 'sword', eye: '#e0f2fe', icicles: true } },
   // Volcán
@@ -153,7 +153,7 @@ const ENEMIES = {
   // Reino Oscuro
   caballero_oscuro: { icon: '🛡️', name: 'Caballero oscuro', hp: 1.6, atk: 1.3, speed: 40, range: 28, size: 44, ai: 'melee',  atkCd: 1.2, sprite: { art: 'darkknight', shape: 'humanoid', body: '#1f2937', skin: '#374151', head: 'helmet', weapon: 'sword', eye: '#ef4444', cape: '#450a0a', spikes: true } },
   mago_oscuro:      { icon: '🧙', name: 'Mago oscuro',      hp: 0.9, atk: 1.5, speed: 38, range: 180, size: 42, ai: 'ranged', atkCd: 2.1, proj: 'darkorb', sprite: { art: 'wizard', shape: 'humanoid', body: '#4c1d95', skin: '#a78bfa', head: 'wizard', hood: '#2e1065', weapon: 'staff', eye: '#f0abfc' } },
-  criatura_maldita: { icon: '👻', name: 'Criatura maldita', hp: 1.0, atk: 1.2, speed: 58, range: 24, size: 38, ai: 'melee',  atkCd: 1.0, float: true, sprite: { shape: 'ghost', color: '#9333ea', eye: '#f0abfc' } },
+  criatura_maldita: { icon: '👻', name: 'Criatura maldita', hp: 1.0, atk: 1.2, speed: 58, range: 24, size: 38, ai: 'melee',  atkCd: 1.0, float: true, sprite: { art: 'ghost', shape: 'ghost', color: '#9333ea', eye: '#f0abfc' } },
 
   /* ----- Jefes -----
      attacks: leap (salto con impacto), slam (onda alrededor),
@@ -163,12 +163,12 @@ const ENEMIES = {
      proyectiles) y summon:<id> (invoca esbirros)                   */
   rey_lobo: {
     icon: '🐺', name: 'Rey Lobo', boss: true, hp: 18, atk: 1.6, speed: 60, range: 46, size: 84, ai: 'melee', atkCd: 1.3,
-    sprite: { shape: 'wolf', color: '#44403c', eye: '#ef4444', crown: true, aura: '#fbbf24' }, zoneFx: 'claw',
+    sprite: { art: 'kingwolf', shape: 'wolf', color: '#44403c', eye: '#ef4444', crown: true, aura: '#fbbf24' }, zoneFx: 'claw',
     attacks: ['charge', 'summon:lobo', 'leap', 'slam', 'charge'], specialCd: 4.2,
   },
   reina_escorpion: {
     icon: '🦂', name: 'Reina Escorpión', boss: true, hp: 22, atk: 1.7, speed: 48, range: 50, size: 88, ai: 'melee', atkCd: 1.3,
-    sprite: { shape: 'scorpion', color: '#7c2d12', sting: '#a3e635', crown: true }, proj: 'poison', zoneFx: 'poison',
+    sprite: { art: 'queenscorp', shape: 'scorpion', color: '#7c2d12', sting: '#a3e635', crown: true }, proj: 'poison', zoneFx: 'poison',
     attacks: ['volley', 'lob', 'slam', 'summon:escorpion'], specialCd: 4.0,
   },
   golem_hielo_boss: {
@@ -178,7 +178,7 @@ const ENEMIES = {
   },
   dragon: {
     icon: '🐉', name: 'Dragón Volcánico', boss: true, hp: 30, atk: 1.9, speed: 46, range: 64, size: 110, ai: 'melee', atkCd: 1.4,
-    resist: 'fuego', sprite: { shape: 'dragon', color: '#b91c1c', belly: '#fbbf24' }, proj: 'fireball', zoneFx: 'meteor',
+    resist: 'fuego', sprite: { art: 'dragon', shape: 'dragon', color: '#b91c1c', belly: '#fbbf24' }, proj: 'fireball', zoneFx: 'meteor',
     attacks: ['breath', 'zones', 'charge', 'lob', 'volley'], specialCd: 3.6,
   },
   caballero_maldito: {
