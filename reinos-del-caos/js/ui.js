@@ -129,7 +129,8 @@ const UI = (() => {
           </div>
         </div>
         <div class="logo" aria-label="Reinos del Caos">
-          <span class="logo-a">Reinos</span><span class="logo-b">del</span><span class="logo-c">Caos</span>
+          <div class="logo-crest">${EMBLEM}</div>
+          <div class="logo-txt"><span class="logo-a">Reinos</span><span class="logo-b">— del —</span><span class="logo-c">Caos</span></div>
         </div>
         <div class="menu-space"></div>
         <div class="goals">${nextGoals().map(g => `<button class="goal ${g.ready ? 'ready' : ''}" data-act="go" data-to="${g.to}">${g.text}</button>`).join('')}</div>
@@ -138,7 +139,7 @@ const UI = (() => {
           <div class="pips">${pips}</div>
         </div>
         <button class="btn btn-play" data-act="play">
-          <span class="play-main">⚔️ JUGAR</span>
+          <span class="play-main"><span class="pm-sw">⚔️</span> JUGAR</span>
           <small>${allDone ? 'Reinos conquistados · repetir etapa ' + stage : `Etapa ${stage} · ${esc(info.name)}${info.boss ? ' · ¡JEFE!' : ''}`}</small>
         </button>
         <nav class="dock">
@@ -220,10 +221,205 @@ const UI = (() => {
         c.globalAlpha = 0.35 + Math.sin(m.ph * 2) * 0.25;
         c.fillStyle = moteCol;
         c.beginPath(); c.arc(x, y, m.s * 1.4, 0, Math.PI * 2); c.fill();
+        // halo suave alrededor de cada luz
+        c.globalAlpha *= 0.25; c.beginPath(); c.arc(x, y, m.s * 4, 0, Math.PI * 2); c.fill();
       }
       c.globalAlpha = 1;
+      // Rayos de luz que bajan del cielo
+      c.save(); c.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 4; i++) {
+        const x0 = W * (0.08 + i * 0.13) + Math.sin(time * 0.3 + i) * 12, a = 0.05 + 0.03 * Math.sin(time * 0.7 + i * 2);
+        const g = c.createLinearGradient(0, 0, 0, H * 0.8);
+        g.addColorStop(0, `rgba(255,240,200,${a})`); g.addColorStop(1, 'rgba(255,240,200,0)');
+        c.fillStyle = g; c.beginPath(); c.moveTo(x0, 0); c.lineTo(x0 + 40, 0); c.lineTo(x0 + 140, H * 0.8); c.lineTo(x0 + 60, H * 0.8); c.fill();
+      }
+      c.restore();
+      // Viñeta
+      const vg = c.createRadialGradient(knightX, H * 0.55, Math.min(W, H) * 0.25, knightX, H * 0.55, Math.max(W, H) * 0.85);
+      vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(5,3,15,.55)');
+      c.fillStyle = vg; c.fillRect(0, 0, W, H);
       menuRaf = requestAnimationFrame(frame);
     })(t0);
+  }
+
+  /* ---------- Portada (pantalla de título) ---------- */
+  const EMBLEM = `<svg class="emblem" viewBox="0 0 100 112" aria-hidden="true">
+    <defs><linearGradient id="emg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff6d6"/><stop offset=".5" stop-color="#e8b54a"/><stop offset="1" stop-color="#7a4b0c"/></linearGradient>
+    <linearGradient id="emf" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4c1d95"/><stop offset="1" stop-color="#1e0b3a"/></linearGradient></defs>
+    <path d="M50 12 L88 24 L84 66 Q78 92 50 106 Q22 92 16 66 L12 24 Z" fill="url(#emf)" stroke="url(#emg)" stroke-width="5"/>
+    <g stroke="url(#emg)" stroke-width="5" stroke-linecap="round"><line x1="30" y1="34" x2="70" y2="84"/><line x1="70" y1="34" x2="30" y2="84"/></g>
+    <g fill="url(#emg)"><rect x="22" y="72" width="16" height="5" rx="2" transform="rotate(-50 30 74)"/><rect x="62" y="72" width="16" height="5" rx="2" transform="rotate(50 70 74)"/>
+    <path d="M30 14 L36 2 L43 11 L50 0 L57 11 L64 2 L70 14 Z"/></g>
+    <circle cx="50" cy="59" r="6" fill="#f43f5e" stroke="url(#emg)" stroke-width="2"/></svg>`;
+  /** Muestra la portada; se resuelve cuando el jugador toca para empezar. */
+  function title() {
+    return new Promise(resolve => {
+      const s = S();
+      const el = document.createElement('div');
+      el.id = 'title'; el.className = 'title-screen';
+      el.innerHTML = `<canvas id="title-cv" aria-hidden="true"></canvas>
+        <div class="title-ui">
+          <div class="t-crest">${EMBLEM}</div>
+          <h1 class="t-logo" aria-label="Reinos del Caos"><span class="tl-a">Reinos</span><span class="tl-b">— del —</span><span class="tl-c">Caos</span></h1>
+          <div class="t-sub">Forja tu leyenda · derrota al Caos</div>
+          <button class="t-tap" id="t-tap">TOCA PARA EMPEZAR</button>
+          ${s.stats.kills || s.username ? `<div class="t-save">🛡️ ${s.username ? esc(s.username) + ' · ' : ''}Nivel ${s.level} · ${RANKS[Game.rank()].name}</div>` : ''}
+        </div>`;
+      document.body.appendChild(el);
+      const stopScene = titleScene($('title-cv'));
+      let gone = false;
+      const go = () => {
+        if (gone) return; gone = true;
+        try { Sfx.unlock && Sfx.unlock(); Music.unlock && Music.unlock(); } catch (e) { /* sin audio */ }
+        Sfx.play('legendary'); vibrate(30);
+        el.classList.add('leaving');
+        setTimeout(() => { stopScene(); el.remove(); resolve(); }, 650);
+      };
+      el.addEventListener('pointerup', go);
+      el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') go(); });
+      setTimeout(() => { const b = $('t-tap'); if (b) b.focus({ preventScroll: true }); }, 50);
+    });
+  }
+  /** Escena nocturna: luna, castillo en la montaña, dragón que cruza, niebla, brasas y el caballero en el risco. */
+  function titleScene(cv) {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    let raf = 0, W = 0, H = 0, layers = null;
+    const rnd = (i => () => { i = (i * 16807) % 2147483647; return (i - 1) / 2147483646; })(7);
+    const stars = Array.from({ length: 140 }, () => ({ x: rnd(), y: rnd() * 0.6, r: 0.4 + rnd() * 1.3, p: rnd() * 6 }));
+    const embers = [];
+    const ridge = (seed, n, amp) => { const r = (i => () => { i = (i * 48271) % 2147483647; return i / 2147483647; })(seed); const pts = []; let v = 0.5; for (let i = 0; i <= n; i++) { v = Math.min(1, Math.max(0, v + (r() - 0.5) * 0.5)); pts.push(v * amp); } return pts; };
+    const far = ridge(11, 18, 1), mid = ridge(23, 12, 1);
+    const s = S(), t0 = performance.now();
+    let flash = 0, nextBolt = 3 + Math.random() * 4, bolt = null;
+    function size() {
+      const r = cv.getBoundingClientRect();
+      W = Math.max(1, r.width); H = Math.max(1, r.height);
+      cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+      layers = null;
+    }
+    function drawRidge(c, pts, base, amp, color, shift) {
+      c.fillStyle = color; c.beginPath(); c.moveTo(-20, H);
+      const step = (W + 80) / (pts.length - 1);
+      pts.forEach((v, i) => c.lineTo(-40 + i * step + shift, base - v * amp));
+      c.lineTo(W + 40, H); c.closePath(); c.fill();
+    }
+    function castle(c, x, y, k, time) {
+      c.fillStyle = '#140b26';
+      const tw = (cx, w, h) => { c.fillRect(cx - w / 2, y - h, w, h); c.beginPath(); c.moveTo(cx - w * 0.65, y - h); c.lineTo(cx, y - h - w * 1.3); c.lineTo(cx + w * 0.65, y - h); c.fill(); };
+      c.fillRect(x - 46 * k, y - 26 * k, 92 * k, 26 * k);
+      for (let i = -46; i <= 40; i += 10) c.fillRect(x + i * k, y - 30 * k, 5 * k, 4 * k);
+      tw(x, 18 * k, 62 * k); tw(x - 34 * k, 13 * k, 42 * k); tw(x + 34 * k, 13 * k, 46 * k); tw(x - 55 * k, 9 * k, 30 * k); tw(x + 56 * k, 9 * k, 34 * k);
+      // Ventanas encendidas que titilan
+      const wins = [[0, 44], [0, 30], [-34, 30], [34, 32], [-12, 14], [12, 14], [-55, 20], [56, 22]];
+      wins.forEach(([dx, dy], i) => {
+        const a = 0.55 + 0.45 * Math.sin(time * (1.3 + i * 0.37) + i);
+        c.fillStyle = `rgba(253,186,116,${a})`; c.fillRect(x + dx * k - 1.6 * k, y - dy * k - 3 * k, 3.2 * k, 5 * k);
+      });
+      // Bandera
+      c.strokeStyle = '#140b26'; c.lineWidth = 1.5 * k; c.beginPath(); c.moveTo(x, y - 85 * k); c.lineTo(x, y - 100 * k); c.stroke();
+      c.fillStyle = '#be123c'; c.beginPath(); c.moveTo(x, y - 100 * k);
+      c.quadraticCurveTo(x + 7 * k, y - 99 * k + Math.sin(time * 4) * 2 * k, x + 13 * k, y - 97 * k); c.lineTo(x, y - 93 * k); c.fill();
+    }
+    function dragon(c, x, y, k, flap) {
+      c.save(); c.translate(x, y); c.scale(k, k); c.fillStyle = '#0c0618';
+      c.beginPath(); c.ellipse(0, 0, 22, 5, 0, 0, Math.PI * 2); c.fill();                    // cuerpo
+      c.beginPath(); c.moveTo(20, -2); c.quadraticCurveTo(30, -8, 36, -6); c.lineTo(38, -3); c.lineTo(30, -2); c.fill();   // cabeza
+      c.beginPath(); c.moveTo(-20, 0); c.quadraticCurveTo(-38, 4, -50, -4); c.quadraticCurveTo(-38, 0, -20, 3); c.fill();  // cola
+      const w = Math.sin(flap) * 26;
+      c.beginPath(); c.moveTo(-6, -2); c.quadraticCurveTo(-4, -18 - w * 0.5, 4, -30 - w); c.lineTo(10, -18 - w * 0.5); c.lineTo(14, -24 - w * 0.6); c.quadraticCurveTo(12, -8, 8, -2); c.fill();
+      c.restore();
+    }
+    size();
+    const onResize = () => size();
+    window.addEventListener('resize', onResize);
+    let last = t0;
+    (function frame(t) {
+      raf = requestAnimationFrame(frame);
+      const dt = Math.min(0.05, (t - last) / 1000); last = t;
+      const time = (t - t0) / 1000, c = cv.getContext('2d');
+      c.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const land = W > H, horizon = H * (land ? 0.62 : 0.58);
+      // Cielo de crepúsculo
+      const sky = c.createLinearGradient(0, 0, 0, horizon);
+      sky.addColorStop(0, '#05030f'); sky.addColorStop(0.45, '#1b0f3d'); sky.addColorStop(0.8, '#4a1a4f'); sky.addColorStop(1, '#8a2f3c');
+      c.fillStyle = sky; c.fillRect(0, 0, W, H);
+      for (const st of stars) { c.globalAlpha = 0.35 + 0.65 * Math.abs(Math.sin(time * 1.2 + st.p)); c.fillStyle = '#fff'; c.fillRect(st.x * W, st.y * horizon, st.r, st.r); }
+      c.globalAlpha = 1;
+      // Luna con halo
+      const mx = W * (land ? 0.74 : 0.7), my = H * (land ? 0.2 : 0.16), mr = Math.min(W, H) * 0.09;
+      const halo = c.createRadialGradient(mx, my, mr * 0.8, mx, my, mr * 4.5);
+      halo.addColorStop(0, 'rgba(254,226,226,.35)'); halo.addColorStop(1, 'rgba(254,226,226,0)');
+      c.fillStyle = halo; c.fillRect(0, 0, W, H);
+      const moon = c.createRadialGradient(mx - mr * 0.3, my - mr * 0.3, mr * 0.1, mx, my, mr);
+      moon.addColorStop(0, '#fff7ed'); moon.addColorStop(1, '#fecaca');
+      c.fillStyle = moon; c.beginPath(); c.arc(mx, my, mr, 0, Math.PI * 2); c.fill();
+      c.fillStyle = 'rgba(190,120,120,.25)';
+      [[-0.3, 0.1, 0.22], [0.25, -0.2, 0.15], [0.1, 0.35, 0.12]].forEach(([a, b, r]) => { c.beginPath(); c.arc(mx + a * mr, my + b * mr, r * mr, 0, Math.PI * 2); c.fill(); });
+      // Nubes que pasan delante de la luna
+      for (let i = 0; i < 4; i++) {
+        const cx = ((time * (6 + i * 3) + i * 230) % (W + 400)) - 200, cy = H * (0.12 + i * 0.07);
+        const g = c.createRadialGradient(cx, cy, 2, cx, cy, 120);
+        g.addColorStop(0, 'rgba(60,30,80,.55)'); g.addColorStop(1, 'rgba(60,30,80,0)');
+        c.fillStyle = g; c.beginPath(); c.ellipse(cx, cy, 160, 22, 0, 0, Math.PI * 2); c.fill();
+      }
+      // Dragón cruzando el cielo
+      const dp = (time % 22) / 22;
+      if (dp < 0.6) { const q = dp / 0.6; dragon(c, W * (1.15 - q * 1.35), H * (0.3 - Math.sin(q * Math.PI) * 0.12), Math.min(W, H) / 380, time * 6); }
+      // Rayo de vez en cuando
+      nextBolt -= dt;
+      if (nextBolt <= 0) {
+        nextBolt = 5 + Math.random() * 6; flash = 0.5;
+        const pts = []; let x = W * (0.3 + Math.random() * 0.5), y = 0;
+        while (y < horizon * 0.8) { pts.push([x, y]); x += (Math.random() - 0.5) * 50; y += 20 + Math.random() * 25; }
+        bolt = { pts, t: 0.35 };
+      }
+      if (bolt && (bolt.t -= dt) > 0) {
+        c.save(); c.globalCompositeOperation = 'lighter'; c.strokeStyle = `rgba(216,180,254,${bolt.t / 0.35})`; c.lineWidth = 2.5; c.shadowColor = '#c4b5fd'; c.shadowBlur = 14;
+        c.beginPath(); bolt.pts.forEach(([x, y], i) => i ? c.lineTo(x, y) : c.moveTo(x, y)); c.stroke(); c.restore();
+      }
+      // Montañas lejanas con el castillo del Caos
+      drawRidge(c, far, horizon, H * 0.2, '#2a1745', Math.sin(time * 0.05) * 6);
+      const peakI = far.indexOf(Math.max(...far.slice(4, 15))), step = (W + 80) / (far.length - 1);
+      castle(c, -40 + peakI * step + Math.sin(time * 0.05) * 6, horizon - far[peakI] * H * 0.2 + 2, Math.min(W, H) / 420, time);
+      drawRidge(c, mid, horizon + H * 0.1, H * 0.16, '#170c2b', Math.sin(time * 0.08) * 12);
+      // Niebla
+      for (let i = 0; i < 3; i++) {
+        const y = horizon + H * (0.04 + i * 0.07), off = (time * (10 + i * 6)) % W;
+        const g = c.createLinearGradient(0, y - 20, 0, y + 20);
+        g.addColorStop(0, 'rgba(120,80,160,0)'); g.addColorStop(0.5, `rgba(120,80,160,${0.16 - i * 0.03})`); g.addColorStop(1, 'rgba(120,80,160,0)');
+        c.fillStyle = g; c.save(); c.translate(-off, 0); c.fillRect(0, y - 20, W * 2, 40); c.restore();
+      }
+      // Risco del héroe
+      const kx = land ? W * 0.2 : W * 0.5, cliffY = land ? H * 0.86 : H * 0.94;
+      c.fillStyle = '#0a0614'; c.beginPath(); c.moveTo(-10, H);
+      c.lineTo(-10, cliffY + 6); c.quadraticCurveTo(kx - 60, cliffY - 8, kx, cliffY); c.quadraticCurveTo(kx + 70, cliffY + 2, kx + 120, cliffY + 30);
+      c.lineTo(kx + 170, H); c.closePath(); c.fill();
+      if (!land) { c.fillRect(-10, cliffY + 20, W + 20, H); }
+      c.strokeStyle = 'rgba(244,114,182,.35)'; c.lineWidth = 1.5; c.beginPath();
+      c.moveTo(-10, cliffY + 6); c.quadraticCurveTo(kx - 60, cliffY - 8, kx, cliffY); c.quadraticCurveTo(kx + 70, cliffY + 2, kx + 120, cliffY + 30); c.stroke();
+      const rim = c.createRadialGradient(kx, cliffY - 40, 5, kx, cliffY - 40, 140);
+      rim.addColorStop(0, 'rgba(244,63,94,.18)'); rim.addColorStop(1, 'rgba(244,63,94,0)');
+      c.fillStyle = rim; c.fillRect(kx - 160, cliffY - 200, 320, 260);
+      const ks = Math.max(1.4, Math.min(4, (land ? H * 0.5 : H * 0.3) / 64));
+      Sprites.knight(c, kx, cliffY + 2, ks, { face: 1, walk: 0, swing: -1, heavy: false, time, flash: false,
+        weaponColor: ITEMS[s.equip.weapon].color, armorColor: ITEMS[s.equip.armor].color, helmet: s.settings.helmet, rank: Game.rank() });
+      // Brasas
+      if (embers.length < 60 && Math.random() < dt * 30) embers.push({ x: Math.random() * W, y: H + 5, vx: 10 + Math.random() * 20, vy: -(30 + Math.random() * 60), life: 4, r: 0.8 + Math.random() * 1.8 });
+      c.save(); c.globalCompositeOperation = 'lighter';
+      for (const e of embers) {
+        e.x += (e.vx + Math.sin(time * 2 + e.y * 0.03) * 15) * dt; e.y += e.vy * dt; e.life -= dt;
+        c.globalAlpha = Math.min(1, e.life / 2); c.fillStyle = '#fb923c';
+        c.beginPath(); c.arc(e.x, e.y, e.r, 0, Math.PI * 2); c.fill();
+      }
+      for (let i = embers.length - 1; i >= 0; i--) if (embers[i].life <= 0 || embers[i].y < -10) embers.splice(i, 1);
+      c.restore();
+      // Destello del rayo y viñeta
+      if (flash > 0) { flash -= dt; c.fillStyle = `rgba(221,214,254,${flash * 0.35})`; c.fillRect(0, 0, W, H); }
+      const vg = c.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.3, W / 2, H / 2, Math.max(W, H) * 0.75);
+      vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.6)');
+      c.fillStyle = vg; c.fillRect(0, 0, W, H);
+    })(t0);
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', onResize); };
   }
 
   /* ---------- Cuenta: nombre de usuario y guardado ---------- */
@@ -931,32 +1127,19 @@ const UI = (() => {
     const s = S(), hw = Game.highestWorld();
     let body = '';
     if (view.forgeTab === 'craft') {
-      const cards = RECIPES.map((rec, i) => {
-        const locked = rec.world > hw;
-        if (rec.potion) {
-          const pd = POTIONS[rec.potion];
-          return `<div class="card item-card" style="--rc:${rc(pd.rarity)}">
-            <div class="item-head"><div class="item-icon">${pd.icon}</div><div><div class="item-name">${pd.name}</div><div class="item-meta">Cura ${Math.round(pd.heal * 100)}% de la vida · tienes ${s.potions[rec.potion] || 0}</div></div></div>
-            ${locked ? `<div class="item-meta">🔒 Se desbloquea en el mundo ${rec.world}</div>` : `<div class="stat-line">${costPills(rec.cost, rec.coins)}</div>
-            <button class="btn small" data-act="craft" data-i="${i}" ${Game.hasCost(rec.cost, rec.coins) ? '' : 'disabled'}>⚗️ Preparar</button>`}
-          </div>`;
-        }
-        const it = ITEMS[rec.item], owned = !!s.items[rec.item];
-        const st = Game.itemStats(rec.item, 1);
-        const statTxt = it.type === 'weapon'
-          ? `<span class="pill">⚔️ ${st.dmg}</span>${st.spd ? `<span class="pill">⚡ +${st.spd}</span>` : ''}${st.crit ? `<span class="pill">🎯 +${Math.round(st.crit * 100)}%</span>` : ''}`
-          : `<span class="pill">🛡️ ${st.def}</span><span class="pill">❤️ +${st.hp}</span>`;
-        return `<div class="card item-card" style="--rc:${rc(it.rarity)}" id="recipe-${i}">
-          <div class="item-head"><div class="item-icon">${locked ? '🔒' : it.icon}</div>
-            <div><div class="item-name">${it.name}</div><div class="item-meta">${RARITIES[it.rarity].icon} ${RARITIES[it.rarity].name} · ${it.type === 'weapon' ? 'Arma' : 'Armadura'}</div></div></div>
-          <div class="stat-line">${statTxt}</div>
-          ${locked ? `<div class="item-meta">🔒 Se desbloquea en el mundo ${rec.world} (${WORLDS[rec.world - 1].name})</div>`
-            : owned ? `<div class="item-meta">✅ Ya la tienes · mejórala en la pestaña «Mejorar»</div>`
-            : `<div class="stat-line">${costPills(rec.cost, rec.coins)}</div>
-               <button class="btn small" data-act="craft" data-i="${i}" ${Game.hasCost(rec.cost, rec.coins) ? '' : 'disabled'}>🔨 Fabricar</button>`}
-        </div>`;
+      // Elige la receta seleccionada (o la primera que se pueda fabricar)
+      const avail = i => { const r = RECIPES[i]; return r.world <= hw && !(r.item && s.items[r.item]); };
+      if (view.forgeSel === undefined || !RECIPES[view.forgeSel] || RECIPES[view.forgeSel].world > hw) {
+        const ready = RECIPES.findIndex((r, i) => avail(i) && Game.hasCost(r.cost, r.coins));
+        view.forgeSel = ready >= 0 ? ready : Math.max(0, RECIPES.findIndex((r, i) => avail(i)));
+      }
+      const tiles = RECIPES.map((rec, i) => {
+        const locked = rec.world > hw, d = rec.potion ? POTIONS[rec.potion] : ITEMS[rec.item];
+        const owned = rec.item && s.items[rec.item], ready = !locked && !owned && Game.hasCost(rec.cost, rec.coins);
+        const tag = locked ? '<span class="ft-tag lock">🔒</span>' : owned ? '<span class="ft-tag own">✓</span>' : ready ? '<span class="ft-tag go">!</span>' : rec.potion ? `<span class="ft-tag qty">${s.potions[rec.potion] || 0}</span>` : '';
+        return `<button class="ftile ${view.forgeSel === i ? 'sel' : ''} ${locked ? 'locked' : ''} ${owned ? 'owned' : ''} ${ready ? 'ready' : ''}" style="--rc:${rc(d.rarity)}" data-act="forge-sel" data-i="${i}" aria-label="${esc(d.name)}"><span class="ft-ico">${d.icon}</span>${tag}</button>`;
       }).join('');
-      body = `<p class="hint">Fabrica armas y armaduras con los materiales que sueltan los enemigos.</p><div class="cards">${cards}</div>`;
+      body = `<div class="forge-wrap">${forgeStage('craft', view.forgeSel)}<div class="forge-side"><div class="fside-title">📜 Recetas</div><div class="forge-grid">${tiles}</div></div></div>`;
     } else if (view.forgeTab === 'enchant') {
       const wid = s.equip.weapon, w = ITEMS[wid], curE = s.enchants[wid];
       const cards = ENCHANT_ORDER.map(id => {
@@ -979,32 +1162,210 @@ const UI = (() => {
         <div class="cards">${cards}</div>`;
     } else {
       const ids = Object.keys(s.items).sort((a, b) => (ITEMS[a].type > ITEMS[b].type ? -1 : ITEMS[a].type < ITEMS[b].type ? 1 : 0) || RARITY_ORDER.indexOf(ITEMS[b].rarity) - RARITY_ORDER.indexOf(ITEMS[a].rarity));
-      const cards = ids.map(id => {
-        const it = ITEMS[id], lvl = s.items[id].lvl, cur = Game.itemStats(id, lvl);
-        const equipped = s.equip.weapon === id || s.equip.armor === id;
-        let action;
-        if (lvl >= MAX_ITEM_LEVEL) action = '<div class="item-meta">⭐ Nivel máximo</div>';
-        else {
-          const nxt = Game.itemStats(id, lvl + 1), c = upgradeCost(id);
-          const diff = it.type === 'weapon' ? `<span class="pill up">⚔️ ${cur.dmg} → ${nxt.dmg}</span>` : `<span class="pill up">🛡️ ${cur.def} → ${nxt.def}</span><span class="pill up">❤️ ${cur.hp} → ${nxt.hp}</span>`;
-          action = `<div class="stat-line">${diff}</div><div class="stat-line">${costPills(c.cost, c.coins)}</div>
-            <button class="btn small" data-act="upgrade" data-id="${id}" ${Game.hasCost(c.cost, c.coins) ? '' : 'disabled'}>⬆️ Mejorar a nivel ${lvl + 1}</button>`;
-        }
-        return `<div class="card item-card" style="--rc:${rc(it.rarity)}" id="up-${id}">
-          <div class="item-head"><div class="item-icon">${it.icon}</div>
-            <div><div class="item-name">${it.name}${equipped ? ' <small style="color:var(--heal)">(equipado)</small>' : ''}</div><div class="stars">${stars(lvl)}</div></div></div>
-          ${action}
-        </div>`;
+      if (!view.upSel || !s.items[view.upSel]) view.upSel = s.equip.weapon;
+      const tiles = ids.map(id => {
+        const it = ITEMS[id], lvl = s.items[id].lvl, eq = s.equip.weapon === id || s.equip.armor === id;
+        const max = lvl >= MAX_ITEM_LEVEL, c = max ? null : upgradeCost(id), ready = c && Game.hasCost(c.cost, c.coins);
+        return `<button class="ftile ${view.upSel === id ? 'sel' : ''} ${ready ? 'ready' : ''}" style="--rc:${rc(it.rarity)}" data-act="up-sel" data-id="${id}" aria-label="${esc(it.name)}">
+          <span class="ft-ico">${it.icon}</span>${eq ? '<span class="ft-tag eq">E</span>' : ready ? '<span class="ft-tag go">!</span>' : ''}<span class="ft-stars">${'★'.repeat(lvl)}</span></button>`;
       }).join('');
-      body = `<p class="hint">Cada nivel aumenta un ${Math.round(ITEM_LEVEL_BONUS * 100)}% las estadísticas del objeto (máximo nivel ${MAX_ITEM_LEVEL}).</p><div class="cards">${cards}</div>`;
+      body = `<div class="forge-wrap">${forgeStage('upgrade', view.upSel)}<div class="forge-side"><div class="fside-title">🎒 Tus objetos</div><div class="forge-grid">${tiles}</div></div></div>`;
     }
-    $('scr-forge').innerHTML = `${head('🔨 Forja')}
-      <div class="tabs">
+    $('scr-forge').innerHTML = `<div class="forge-top">${head('🔨 Forja')}
+      <div class="tabs forge-tabs">
         <button class="tab ${view.forgeTab === 'craft' ? 'active' : ''}" data-act="forge-tab" data-tab="craft">🔨 Fabricar</button>
         <button class="tab ${view.forgeTab === 'upgrade' ? 'active' : ''}" data-act="forge-tab" data-tab="upgrade">⬆️ Mejorar</button>
         <button class="tab ${view.forgeTab === 'enchant' ? 'active' : ''}" data-act="forge-tab" data-tab="enchant">🪄 Encantar</button>
-      </div>${body}`;
+      </div></div>${body}`;
+    if (view.forgeTab !== 'enchant') startForgeScene();
   };
+
+  /* ---------- Yunque: panel del objeto seleccionado ---------- */
+  const STAT_MAX = {};
+  function statMax(type, key) {
+    const k = type + key;
+    if (STAT_MAX[k] === undefined) STAT_MAX[k] = Math.max(1, ...Object.keys(ITEMS).filter(id => ITEMS[id].type === type).map(id => Game.itemStats(id, MAX_ITEM_LEVEL)[key] || 0));
+    return STAT_MAX[k];
+  }
+  /** Barra de estadística: valor actual y, si mejora, el tramo que se gana. */
+  function statBar(icon, label, cur, nxt, max, fmtV = v => v) {
+    // Escala de raíz: los objetos de los primeros mundos también llenan algo de barra
+    const pct = v => Math.min(100, Math.sqrt(Math.max(0, v) / max) * 100);
+    const a = pct(cur), b = nxt !== undefined ? pct(nxt) : a;
+    return `<div class="sbar"><span class="sb-lbl">${icon} ${label}</span><div class="sb-track"><i class="sb-cur" style="width:${a}%"></i>${b > a ? `<i class="sb-gain" style="left:${a}%;width:${b - a}%"></i>` : ''}</div>
+      <span class="sb-val">${fmtV(cur)}${nxt !== undefined && nxt !== cur ? ` <em>→ ${fmtV(nxt)}</em>` : ''}</span></div>`;
+  }
+  function itemBars(id, lvl, nextLvl) {
+    const it = ITEMS[id], a = Game.itemStats(id, lvl), b = nextLvl ? Game.itemStats(id, nextLvl) : null;
+    if (it.type === 'weapon') return statBar('⚔️', 'Daño', a.dmg, b ? b.dmg : undefined, statMax('weapon', 'dmg'))
+      + (a.spd ? statBar('⚡', 'Velocidad', a.spd, undefined, statMax('weapon', 'spd'), v => '+' + v) : '')
+      + (a.crit ? statBar('🎯', 'Crítico', a.crit, undefined, statMax('weapon', 'crit'), v => '+' + Math.round(v * 100) + '%') : '');
+    return statBar('🛡️', 'Defensa', a.def, b ? b.def : undefined, statMax('armor', 'def')) + statBar('❤️', 'Vida', a.hp, b ? b.hp : undefined, statMax('armor', 'hp'), v => '+' + v);
+  }
+  /** Ranuras de materiales: icono, lo que tienes y lo que hace falta. */
+  function matSlots(cost, coins) {
+    let h = '';
+    for (const k in cost) {
+      const have = Game.matCount(k), ok = have >= cost[k];
+      h += `<div class="mslot ${ok ? 'ok' : 'no'}" title="${esc(MATERIALS[k].name)}"><span class="ms-ico">${MATERIALS[k].icon}</span><span class="ms-n">${fmtShort(have)}/${cost[k]}</span></div>`;
+    }
+    if (coins) h += `<div class="mslot ${S().coins >= coins ? 'ok' : 'no'}" title="Monedas"><span class="ms-ico">💰</span><span class="ms-n">${fmtShort(coins)}</span></div>`;
+    return `<div class="mslots">${h}</div>`;
+  }
+  function forgeStage(mode, sel) {
+    const s = S(), hw = Game.highestWorld();
+    let d, rar, sub, bars = '', foot = '', lvl = 0;
+    if (mode === 'craft') {
+      const rec = RECIPES[sel];
+      if (!rec) return '<div class="forge-stage"><p class="hint">No hay recetas.</p></div>';
+      d = rec.potion ? POTIONS[rec.potion] : ITEMS[rec.item]; rar = d.rarity;
+      const locked = rec.world > hw, owned = rec.item && s.items[rec.item];
+      sub = rec.potion ? `Cura ${Math.round(d.heal * 100)}% de la vida · tienes ${s.potions[rec.potion] || 0}` : `${RARITIES[rar].name} · ${d.type === 'weapon' ? 'Arma' : 'Armadura'}`;
+      if (!rec.potion) bars = itemBars(rec.item, 1);
+      if (locked) foot = `<div class="fs-note">🔒 Se desbloquea en el mundo ${rec.world} (${WORLDS[rec.world - 1].name})</div>`;
+      else if (owned) foot = `<div class="fs-note">✅ Ya la tienes · súbele el nivel en «Mejorar»</div><button class="btn btn-forge ghost" data-act="up-open" data-id="${rec.item}">⬆️ Ir a mejorar</button>`;
+      else {
+        const can = Game.hasCost(rec.cost, rec.coins);
+        foot = matSlots(rec.cost, rec.coins) + `<button class="btn btn-forge ${can ? 'glow' : ''}" data-act="craft" data-i="${sel}" ${can ? '' : 'aria-disabled="true"'}>${rec.potion ? '⚗️ PREPARAR' : '🔨 FORJAR'}</button>`;
+      }
+    } else {
+      const id = sel; d = ITEMS[id]; rar = d.rarity; lvl = s.items[id].lvl;
+      const eq = s.equip.weapon === id || s.equip.armor === id;
+      sub = `${RARITIES[rar].name} · ${d.type === 'weapon' ? 'Arma' : 'Armadura'}${eq ? ' · <b class="eq-tag">Equipado</b>' : ''}`;
+      if (lvl >= MAX_ITEM_LEVEL) { bars = itemBars(id, lvl); foot = '<div class="fs-note max">⭐ ¡Nivel máximo alcanzado!</div>'; }
+      else {
+        const c = upgradeCost(id), can = Game.hasCost(c.cost, c.coins);
+        bars = itemBars(id, lvl, lvl + 1);
+        foot = matSlots(c.cost, c.coins) + `<button class="btn btn-forge ${can ? 'glow' : ''}" data-act="upgrade" data-id="${id}" ${can ? '' : 'aria-disabled="true"'}>⬆️ MEJORAR · Nv ${lvl} → ${lvl + 1}</button>`;
+      }
+    }
+    const stars = mode === 'upgrade' ? `<div class="fs-stars" id="fs-stars">${Array.from({ length: MAX_ITEM_LEVEL }, (_, i) => `<span class="${i < lvl ? 'on' : ''}">★</span>`).join('')}</div>` : '';
+    return `<div class="forge-stage" style="--rc:${rc(rar)}">
+      <div class="fs-anvil"><canvas id="forge-cv" aria-hidden="true"></canvas><div class="fs-item" id="fs-item"><span>${d.icon}</span></div>${stars}</div>
+      <div class="fs-info">
+        <div class="fs-name">${esc(d.name)}</div>
+        <div class="fs-rar"><span class="rar-gem">${RARITIES[rar].icon}</span> ${sub}</div>
+        <div class="fs-bars">${bars}</div>
+        ${foot}
+      </div></div>`;
+  }
+
+  /** Fragua animada: fuego, brasas, yunque y el martillo que golpea al forjar. */
+  let forgeRaf = 0;
+  const FORGE = { hits: [], sparks: [], shake: 0 };
+  function startForgeScene() {
+    cancelAnimationFrame(forgeRaf);
+    const cv = $('forge-cv');
+    if (!cv) return;
+    const dpr = Math.min(2, window.devicePixelRatio || 1), embers = [];
+    const t0 = performance.now();
+    let last = t0;
+    (function frame(t) {
+      if (!document.body.contains(cv)) return;
+      const dt = Math.min(0.05, (t - last) / 1000); last = t;
+      const time = (t - t0) / 1000;
+      const r = cv.getBoundingClientRect(), W = Math.max(1, r.width), H = Math.max(1, r.height);
+      if (cv.width !== Math.round(W * dpr) || cv.height !== Math.round(H * dpr)) { cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr); }
+      const c = cv.getContext('2d');
+      c.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const sh = FORGE.shake > 0 ? (FORGE.shake -= dt, (Math.random() - 0.5) * 6 * FORGE.shake / 0.2) : 0;
+      c.clearRect(0, 0, W, H);
+      c.save(); c.translate(sh, 0);
+      // Pared de piedra en penumbra
+      const bg = c.createLinearGradient(0, 0, 0, H);
+      bg.addColorStop(0, '#120c1c'); bg.addColorStop(1, '#2a1410');
+      c.fillStyle = bg; c.fillRect(-10, 0, W + 20, H);
+      c.strokeStyle = 'rgba(255,255,255,.04)'; c.lineWidth = 1;
+      for (let y = 10, row = 0; y < H * 0.7; y += 18, row++) {
+        c.beginPath(); c.moveTo(0, y); c.lineTo(W, y); c.stroke();
+        for (let x = (row % 2) * 22; x < W; x += 44) { c.beginPath(); c.moveTo(x, y); c.lineTo(x, y + 18); c.stroke(); }
+      }
+      // Resplandor del fuego de la fragua
+      const flick = 0.85 + Math.sin(time * 9) * 0.08 + Math.sin(time * 23) * 0.05;
+      const gl = c.createRadialGradient(W / 2, H * 0.92, 4, W / 2, H * 0.92, Math.max(W, H) * 0.75);
+      gl.addColorStop(0, `rgba(251,146,60,${0.55 * flick})`); gl.addColorStop(0.4, `rgba(220,38,38,${0.22 * flick})`); gl.addColorStop(1, 'rgba(0,0,0,0)');
+      c.fillStyle = gl; c.fillRect(-10, 0, W + 20, H);
+      // Llamas detrás del yunque
+      c.save(); c.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 11; i++) {
+        const x = W * (0.12 + i * 0.076), h = H * (0.2 + 0.12 * Math.sin(time * 7 + i * 1.7) + 0.08 * Math.sin(time * 13 + i));
+        const g = c.createLinearGradient(0, H, 0, H - h);
+        g.addColorStop(0, 'rgba(253,186,116,.55)'); g.addColorStop(0.5, 'rgba(249,115,22,.35)'); g.addColorStop(1, 'rgba(220,38,38,0)');
+        c.fillStyle = g; c.beginPath(); c.moveTo(x - 14, H); c.quadraticCurveTo(x - 10, H - h * 0.5, x + Math.sin(time * 5 + i) * 6, H - h); c.quadraticCurveTo(x + 10, H - h * 0.5, x + 14, H); c.fill();
+      }
+      c.restore();
+      // Yunque
+      const ax = W / 2, ay = H * 0.8, aw = Math.min(W * 0.62, H * 1.1);
+      c.fillStyle = '#0b0a10';
+      c.beginPath();
+      c.moveTo(ax - aw * 0.5, ay - aw * 0.1);                  // cuerno
+      c.quadraticCurveTo(ax - aw * 0.36, ay - aw * 0.02, ax - aw * 0.26, ay);
+      c.lineTo(ax - aw * 0.14, ay); c.lineTo(ax - aw * 0.1, ay + aw * 0.12); c.lineTo(ax - aw * 0.26, ay + aw * 0.2);
+      c.lineTo(ax + aw * 0.28, ay + aw * 0.2); c.lineTo(ax + aw * 0.14, ay + aw * 0.12); c.lineTo(ax + aw * 0.18, ay);
+      c.lineTo(ax + aw * 0.42, ay); c.lineTo(ax + aw * 0.42, ay - aw * 0.12); c.closePath(); c.fill();
+      const top = c.createLinearGradient(0, ay - aw * 0.13, 0, ay - aw * 0.08);
+      top.addColorStop(0, `rgba(253,186,116,${0.7 * flick})`); top.addColorStop(1, 'rgba(253,186,116,0)');
+      c.fillStyle = top; c.fillRect(ax - aw * 0.3, ay - aw * 0.12, aw * 0.72, aw * 0.05);
+      c.strokeStyle = 'rgba(253,186,116,.35)'; c.lineWidth = 1.2;
+      c.beginPath(); c.moveTo(ax - aw * 0.5, ay - aw * 0.1); c.lineTo(ax + aw * 0.42, ay - aw * 0.12); c.stroke();
+      // Martillo: sube y baja en cada golpe
+      let hammerA = null;
+      for (const h of FORGE.hits) {
+        const k = (t - h) / 1000;
+        if (k >= 0 && k < 0.34) hammerA = k < 0.22 ? -1.1 + (k / 0.22) * 1.25 : 0.15 - ((k - 0.22) / 0.12) * 0.5;
+      }
+      if (hammerA !== null) {
+        c.save(); c.translate(ax + aw * 0.55, ay - aw * 0.05); c.rotate(-hammerA - 0.15);
+        c.fillStyle = '#6b4423'; c.fillRect(-aw * 0.5, -3, aw * 0.5, 6);
+        c.fillStyle = '#4b5563'; c.fillRect(-aw * 0.6, -aw * 0.09, aw * 0.14, aw * 0.18);
+        c.fillStyle = '#9ca3af'; c.fillRect(-aw * 0.6, -aw * 0.09, aw * 0.14, aw * 0.04);
+        c.restore();
+      }
+      // Brasas que suben
+      if (embers.length < 40 && Math.random() < dt * 20) embers.push({ x: W * (0.2 + Math.random() * 0.6), y: H, vx: (Math.random() - 0.5) * 20, vy: -30 - Math.random() * 50, life: 1.5 + Math.random(), max: 2.5 });
+      c.save(); c.globalCompositeOperation = 'lighter';
+      for (const e of embers) {
+        e.x += (e.vx + Math.sin(time * 3 + e.y * 0.05) * 10) * dt; e.y += e.vy * dt; e.life -= dt;
+        c.globalAlpha = Math.max(0, e.life / e.max); c.fillStyle = '#fdba74';
+        c.beginPath(); c.arc(e.x, e.y, 1.3, 0, Math.PI * 2); c.fill();
+      }
+      for (let i = embers.length - 1; i >= 0; i--) if (embers[i].life <= 0) embers.splice(i, 1);
+      // Chispas de los martillazos
+      for (const p of FORGE.sparks) {
+        p.vy += 500 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.life -= dt;
+        c.globalAlpha = Math.max(0, p.life / 0.6); c.strokeStyle = p.c; c.lineWidth = 2;
+        c.beginPath(); c.moveTo(p.x, p.y); c.lineTo(p.x - p.vx * 0.03, p.y - p.vy * 0.03); c.stroke();
+      }
+      FORGE.sparks = FORGE.sparks.filter(p => p.life > 0);
+      c.restore();
+      c.restore();
+      forgeRaf = requestAnimationFrame(frame);
+    })(t0);
+  }
+  /** Tres martillazos con chispas y luego `done()`. */
+  function forgeHammer(done) {
+    const cv = $('forge-cv'), item = $('fs-item');
+    if (!cv) { done(); return; }
+    const now = performance.now();
+    const r = cv.getBoundingClientRect(), W = r.width, H = r.height;
+    FORGE.hits = [now, now + 380, now + 760];
+    document.querySelectorAll('.btn-forge').forEach(b => b.disabled = true);
+    [0, 380, 760].forEach((dl, n) => setTimeout(() => {
+      const k = 220;
+      setTimeout(() => {
+        Sfx.play(n === 2 ? 'forge' : 'hit'); vibrate(n === 2 ? 50 : 20);
+        FORGE.shake = 0.2;
+        const cols = ['#fde68a', '#fb923c', '#fff7ed', '#facc15'];
+        for (let i = 0; i < (n === 2 ? 36 : 18); i++) {
+          const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.6, sp = 120 + Math.random() * 260;
+          FORGE.sparks.push({ x: W / 2 + (Math.random() - 0.5) * 20, y: H * 0.68, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.6, c: cols[i % 4] });
+        }
+        if (item) { item.classList.remove('hit'); void item.offsetWidth; item.classList.add('hit'); }
+      }, k);
+    }, dl));
+    setTimeout(done, 760 + 220 + 380);
+  }
+
 
   function upgradeCost(id) {
     const it = ITEMS[id], lvl = S().items[id].lvl, ri = RARITY_ORDER.indexOf(it.rarity);
@@ -1016,8 +1377,11 @@ const UI = (() => {
     const rec = RECIPES[i];
     if (!rec || rec.world > Game.highestWorld()) return;
     if (rec.item && S().items[rec.item]) return;
-    if (!Game.payCost(rec.cost, rec.coins)) { toast('Te faltan materiales', true); return; }
-    Sfx.play('forge'); vibrate(40);
+    if (!Game.hasCost(rec.cost, rec.coins)) { toast('Te faltan materiales', true); shakeForgeBtn(); return; }
+    forgeHammer(() => finishCraft(rec));
+  }
+  function finishCraft(rec) {
+    if (!Game.payCost(rec.cost, rec.coins)) { RENDER.forge(); return; }
     if (rec.potion) {
       S().potions[rec.potion] = (S().potions[rec.potion] || 0) + 1;
       toast(`${POTIONS[rec.potion].icon} ${POTIONS[rec.potion].name} preparada`);
@@ -1045,14 +1409,24 @@ const UI = (() => {
     const s = S();
     if (!s.items[id] || s.items[id].lvl >= MAX_ITEM_LEVEL) return;
     const c = upgradeCost(id);
-    if (!Game.payCost(c.cost, c.coins)) { toast('Te faltan materiales o monedas', true); return; }
-    s.items[id].lvl++;
-    Game.save();
-    Sfx.play('forge'); vibrate(40);
-    toast(`⬆️ ${ITEMS[id].name} ahora es nivel ${s.items[id].lvl}`);
-    RENDER.forge(); refreshTop();
-    const card = $('up-' + id);
-    if (card) card.classList.add('forge-flash');
+    if (!Game.hasCost(c.cost, c.coins)) { toast('Te faltan materiales o monedas', true); shakeForgeBtn(); return; }
+    forgeHammer(() => {
+      if (!Game.payCost(c.cost, c.coins)) { RENDER.forge(); return; }
+      s.items[id].lvl++;
+      Game.save();
+      Sfx.play('legendary');
+      RENDER.forge(); refreshTop();
+      const star = document.querySelectorAll('#fs-stars span')[s.items[id].lvl - 1];
+      if (star) star.classList.add('pop');
+      const item = $('fs-item'); if (item) item.classList.add('levelup');
+      confetti(26, [rc(ITEMS[id].rarity), '#fde68a', '#fff']);
+      toast(`⬆️ ${ITEMS[id].name} ahora es nivel ${s.items[id].lvl}`);
+    });
+  }
+  function shakeForgeBtn() {
+    const b = document.querySelector('.btn-forge'); if (!b) return;
+    b.classList.remove('nope'); void b.offsetWidth; b.classList.add('nope');
+    document.querySelectorAll('.mslot.no').forEach(m => { m.classList.remove('nope'); void m.offsetWidth; m.classList.add('nope'); });
   }
 
   /* ---------- Inventario ---------- */
@@ -1551,6 +1925,9 @@ const UI = (() => {
     },
     craft: d => craft(+d.i),
     upgrade: d => upgrade(d.id),
+    'forge-sel': d => { view.forgeSel = +d.i; RENDER.forge(); },
+    'up-sel': d => { view.upSel = d.id; RENDER.forge(); },
+    'up-open': d => { view.upSel = d.id; view.forgeTab = 'upgrade'; RENDER.forge(); },
     'inv-tab': d => { view.invTab = d.tab; RENDER.inv(); },
     equip: d => equip(d.id),
     'equip-keep': (d, el) => {
@@ -1714,5 +2091,5 @@ const UI = (() => {
     });
   }
 
-  return { show, toast, vibrate, refreshTop, bindEvents, askUsername, askAccount, onCloud, loginModal, redrawArt: drawFoes, get current() { return current; } };
+  return { title, EMBLEM, show, toast, vibrate, refreshTop, bindEvents, askUsername, askAccount, onCloud, loginModal, redrawArt: drawFoes, get current() { return current; } };
 })();

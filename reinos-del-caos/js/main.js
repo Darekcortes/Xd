@@ -9,16 +9,20 @@
   Battle.init();
   UI.bindEvents();
   UI.show('menu');
-  // (sin cuenta ni nombre se muestra antes la bienvenida para crear cuenta)
-  if (!Game.S.stats.kills && Game.S.unlocked === 1 && (Game.account.session || Game.S.username)) {
-    UI.toast('⚔️ ¡Bienvenido, guerrero! Pulsa JUGAR para empezar tu aventura');
-  }
+  // Portada: se toca para empezar (y así también se activa el sonido)
+  const started = UI.title();
+  started.then(() => {
+    // (sin cuenta ni nombre se muestra antes la bienvenida para crear cuenta)
+    if (!Game.S.stats.kills && Game.S.unlocked === 1 && (Game.account.session || Game.S.username)) {
+      UI.toast('⚔️ ¡Bienvenido, guerrero! Pulsa JUGAR para empezar tu aventura');
+    }
+  });
   // Guarda también al salir o cambiar de pestaña (en el navegador y en la cuenta)
   const flush = () => { Game.save(true); Game.cloudWrite(); };
   window.addEventListener('pagehide', flush);
   document.addEventListener('visibilitychange', () => { if (document.hidden) flush(); });
   // Conecta con la cuenta (usuario y contraseña, o la de Claude) y, si no hay, ofrece crear una
-  Game.connectCloud(UI.onCloud).finally(() => setTimeout(() => {
+  Promise.all([Game.connectCloud(UI.onCloud).catch(() => {}), started]).then(() => setTimeout(() => {
     const free = UI.current !== 'battle' && document.getElementById('modal').hidden;
     if (!Game.account.session && !Game.S.username && free) UI.askAccount();
     else if (free) UI.loginModal(true);   // premio diario

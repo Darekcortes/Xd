@@ -614,9 +614,11 @@ const Game = (() => {
   const levelMult = lvl => 1 + ITEM_LEVEL_BONUS * (lvl - 1);
 
   function itemStats(id, lvl) {
-    const it = ITEMS[id], m = levelMult(lvl || (S.items[id] ? S.items[id].lvl : 1));
-    if (it.type === 'weapon') return { dmg: Math.round(it.dmg * m), spd: it.spd || 0, crit: it.crit || 0 };
-    return { def: Math.round(it.def * m), hp: Math.round(it.hp * m) };
+    const L = lvl || (S.items[id] ? S.items[id].lvl : 1), it = ITEMS[id], m = levelMult(L);
+    // Cada nivel sube al menos 1 punto (antes los objetos débiles no mejoraban al redondear)
+    const up = (base, step) => base ? Math.max(Math.round(base * m), base + (L - 1) * step) : 0;
+    if (it.type === 'weapon') return { dmg: up(it.dmg, 1), spd: it.spd || 0, crit: it.crit || 0 };
+    return { def: up(it.def, 1), hp: up(it.hp, 2) };
   }
 
   function stats() {
