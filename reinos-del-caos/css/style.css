@@ -659,3 +659,7 @@ button.power-chip { cursor: pointer; color: inherit; font: inherit; }
 .tower-card .tower-art { font-size: 3.2rem; filter: drop-shadow(0 6px 14px #a855f7aa); }
 .tower-card p { margin: 6px 0 10px; }
 .tower-card .info-rows { text-align: left; margin-bottom: 12px; }
+.cloud-ico.saving { display: inline-block; animation: spinSlow 1.2s linear infinite; }
+@keyframes spinSlow { to { transform: rotate(360deg); } }
+.rank-sep { text-align: center; color: var(--muted); }
+.rank-time { text-align: center; margin: 4px 0 0; }

@@ -285,31 +285,68 @@ const Game = (() => {
       if (loaded) S.savedAt = doc.savedAt || 0;
       onChange(loaded);
       if (!loaded && (S.savedAt || 0) > (doc.savedAt || 0)) accountWrite();
-    } catch (e) { Acc.status = 'error'; onChange(false); }
+    } catch (e) { Acc.status = 'error'; Acc.lastError = (e && e.code) || 'error'; onChange(false); }
   }
 
   function scheduleAccount() {
     if (Acc.status !== 'ok') return;
     clearTimeout(Acc.timer);
-    Acc.timer = setTimeout(accountWrite, 2500);
+    Acc.timer = setTimeout(accountWrite, 1500);
   }
-  async function accountWrite() {
+  /** ¿Hay progreso local que todavía no está en la cuenta? */
+  const accountPending = () => !!Acc.session && (S.savedAt || 0) > Acc.syncedAt;
+  /** Sube la partida cifrada a la cuenta. Si falla, lo reintenta solo (3 s, 6 s, 12 s… hasta 1 min). */
+  async function accountWrite(force) {
     const sess = Acc.session;
-    if (!sess || Acc.status !== 'ok') return;
-    if ((S.savedAt || 0) <= Acc.syncedAt) return;   // nada nuevo que subir
-    if (Acc.writing) { Acc.again = true; return; }   // una escritura a la vez
-    Acc.writing = true;
+    if (!sess || Acc.status !== 'ok') return false;
+    if (!force && !accountPending()) return true;   // nada nuevo que subir
+    if (Acc.writing) { Acc.again = true; return false; }   // una escritura a la vez
+    Acc.writing = true; clearTimeout(Acc.retry);
+    let ok = false;
     try {
       const db = await accountDb();
+      if (!db) throw Object.assign(new Error('sin conexión'), { code: 'unavailable' });
       const box = await seal(sess.keyRaw, S);
       const at = S.savedAt || Date.now();
       await db.doc('accounts/' + sess.id).update({ iv: box.iv, data: box.data, savedAt: at, name: sess.name });
       Acc.lastSync = Date.now(); Acc.syncedAt = Math.max(Acc.syncedAt, at);
+      Acc.fails = 0; Acc.lastError = null; ok = true;
       submitScore();
-    } catch (e) { Acc.status = writeDenied(e) ? 'denied' : 'error'; if (Acc.onChange) Acc.onChange(false); }
+    } catch (e) {
+      Acc.lastError = (e && e.code) || 'error';
+      if (writeDenied(e) && e.code !== 'invalid_argument') Acc.status = 'denied';
+      else {
+        // Fallo pasajero (conexión, límite de peticiones…): se reintenta sin perder nada
+        Acc.fails = (Acc.fails || 0) + 1;
+        const wait = Math.min(60000, 3000 * Math.pow(2, Acc.fails - 1));
+        Acc.retry = setTimeout(() => accountWrite(true), wait);
+        if (Acc.fails >= 4 && e && e.code === 'invalid_argument') Acc.status = 'denied';
+      }
+      if (typeof console !== 'undefined') console.warn('No se pudo guardar en la cuenta:', Acc.lastError);
+    }
     Acc.writing = false;
+    if (Acc.onChange) Acc.onChange(false);
     if (Acc.again) { Acc.again = false; accountWrite(); }
+    return ok;
   }
+  /** Guardar ahora (botón de Ajustes). */
+  async function syncNow() {
+    save(true);
+    if (!Acc.session) { await cloudWrite(); return Cloud.status === 'cloud'; }
+    if (Acc.status !== 'ok') { await resumeAccount(Acc.onChange || (() => {})); if (Acc.status !== 'ok') return false; }
+    return accountWrite(true);
+  }
+  // Vigilante: cada 20 s sube lo pendiente y, si se perdió la conexión, vuelve a conectar
+  let resuming = false;
+  setInterval(async () => {
+    if (!Acc.session || resuming || Acc.writing) return;
+    if (Acc.status === 'ok') { if (accountPending()) accountWrite(); else submitScore(); return; }
+    if (['offline', 'error', 'connecting'].includes(Acc.status) && Acc.onChange) {
+      resuming = true;
+      try { await resumeAccount(Acc.onChange); } finally { resuming = false; }
+    }
+  }, 20000);
+  if (typeof window !== 'undefined') window.addEventListener('online', () => { if (Acc.session && Acc.status === 'ok') accountWrite(true); });
 
   /** Cierra sesión: guarda por última vez y deja el dispositivo con una partida nueva. */
   async function logout() {
@@ -329,16 +366,35 @@ const Game = (() => {
              tower: S.tower.best || 0, combo: S.stats.bestCombo || 0,
              bosses: Object.values(S.bossKills).reduce((a, b) => a + b, 0), rank: rankOf(S.level) };
   }
-  async function submitScore() {
+  async function submitScore(force) {
     const sess = Acc.session;
     if (!sess || Acc.status !== 'ok') return;
     const entry = scoreEntry(), print = JSON.stringify(entry);
-    if (print === lastScore) return;
+    if (print === lastScore && !force) return;
     try {
       const db = await accountDb();
       await db.doc('leaderboard/' + sess.id).set(Object.assign(entry, { at: Date.now() }));
       lastScore = print;
     } catch (e) { /* sin permiso o sin conexión: se reintenta en el próximo guardado */ }
+  }
+  /** Ranking en vivo: avisa cada vez que alguien sube su marca. Devuelve la función para dejar de escuchar. */
+  async function watchLeaderboard(field, cb) {
+    const db = await accountDb();
+    if (!db) { cb(null); return () => {}; }
+    const q = db.collection('leaderboard').orderBy(field, 'desc').limit(30);
+    const toList = snap => snap.docs.map(d => Object.assign({ id: d.id }, d.data()));
+    if (typeof q.onSnapshot === 'function') {
+      try { return q.onSnapshot(snap => cb(toList(snap)), () => fetchLeaderboard(field).then(cb)); } catch (e) { /* sigue abajo */ }
+    }
+    fetchLeaderboard(field).then(cb);
+    const t = setInterval(() => fetchLeaderboard(field).then(cb), 15000);
+    return () => clearInterval(t);
+  }
+  /** Mi propia marca guardada en el ranking (para mostrar mi puesto aunque no esté entre los 30). */
+  async function myScore() {
+    const db = await accountDb(), sess = Acc.session;
+    if (!db || !sess) return null;
+    try { const snap = await db.doc('leaderboard/' + sess.id).get(); return snap.exists ? Object.assign({ id: sess.id }, snap.data()) : null; } catch (e) { return null; }
   }
   /** Los 30 mejores según el campo (power, level, tower, combo). null si no hay conexión. */
   async function fetchLeaderboard(field) {
@@ -649,9 +705,9 @@ const Game = (() => {
     giveItem, giveSkill, grant, prizeLabel, addXp, completeStage, highestWorld, rollChest,
     addShards, streakBonus, ensureDaily, track, missionText,
     connectCloud, cloudWrite, exportCode, importCode, get cloud() { return Cloud; },
-    createAccount, login, logout, accountsBlocked, get account() { return Acc; },
+    createAccount, login, logout, accountsBlocked, syncNow, accountPending, get account() { return Acc; },
     rank: () => rankOf(S.level),
     loginStatus, claimLogin, achState, achClaimable, claimAchievement, givePet, petGainXp,
-    enchantWeapon, cosmeticUnlocked, buyCosmetic, wearCosmetic, submitScore, fetchLeaderboard,
+    enchantWeapon, cosmeticUnlocked, buyCosmetic, wearCosmetic, submitScore, fetchLeaderboard, watchLeaderboard, myScore,
   };
 })();

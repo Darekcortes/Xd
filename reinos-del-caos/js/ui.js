@@ -28,6 +28,7 @@ const UI = (() => {
   /* ---------- Navegación ---------- */
   function show(id) {
     if (current === 'battle' && id !== 'battle') { Battle.stop(); $('rotate-hint').hidden = true; pausedByHint = false; }
+    if (id !== 'trophies') stopRanking();
     current = id;
     document.querySelectorAll('.screen').forEach(s => s.classList.toggle('active', s.id === 'scr-' + id));
     $('topbar').hidden = id === 'battle';
@@ -228,13 +229,18 @@ const UI = (() => {
   /* ---------- Cuenta: nombre de usuario y guardado ---------- */
   function cloudIcon() {
     const A = Game.account;
-    if (A.session) return A.status === 'ok' ? '<span class="cloud-ico" title="Guardado en tu cuenta">🔐</span>' : A.status === 'connecting' ? '<span class="cloud-ico" title="Conectando con tu cuenta">⏳</span>' : '<span class="cloud-ico" title="Sin conexión con la cuenta">⚠️</span>';
+    if (A.session) {
+      if (A.status === 'ok' && A.lastError) return '<span class="cloud-ico" title="Reintentando guardar en tu cuenta">⚠️</span>';
+      if (A.status === 'ok') return Game.accountPending() || A.writing ? '<span class="cloud-ico saving" title="Guardando en tu cuenta">⏳</span>' : '<span class="cloud-ico" title="Guardado en tu cuenta">☁️</span>';
+      return A.status === 'connecting' ? '<span class="cloud-ico" title="Conectando con tu cuenta">⏳</span>' : '<span class="cloud-ico" title="Sin conexión con la cuenta">⚠️</span>';
+    }
     const st = Game.cloud.status;
     return st === 'cloud' ? '<span class="cloud-ico" title="Guardado en tu cuenta">☁️</span>' : st === 'connecting' ? '<span class="cloud-ico" title="Conectando con tu cuenta">⏳</span>' : '';
   }
   function accountText() {
     const A = Game.account, when = t => new Date(t).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' });
-    if (A.status === 'ok') return `🔐 Sesión iniciada. Tu progreso se guarda en tu cuenta${A.lastSync ? ` · último guardado ${when(A.lastSync)}` : ''}. Entra con tu usuario y contraseña en cualquier dispositivo para seguir jugando.`;
+    if (A.status === 'ok' && A.lastError) return `⚠️ No se pudo guardar en la cuenta (${A.lastError}); se reintenta solo cada pocos segundos. Tu progreso está a salvo en este dispositivo${A.lastSync ? ` · último guardado en la cuenta ${when(A.lastSync)}` : ''}.`;
+    if (A.status === 'ok') return `🔐 Sesión iniciada. Tu progreso se guarda solo en tu cuenta después de cada combate y cada pocos segundos${A.lastSync ? ` · último guardado ${when(A.lastSync)}` : ''}. Entra con tu usuario y contraseña en cualquier dispositivo para seguir jugando.`;
     if (A.status === 'connecting') return '⏳ Conectando con tu cuenta…';
     if (A.status === 'denied') return '⚠️ Tu acceso a esta página no permite guardar (pide al dueño acceso de Colaborador). Se guarda en este dispositivo.';
     if (A.status === 'offline') return '📱 Aquí no hay conexión con las cuentas (solo funcionan en el enlace de Claude). Se guarda en este dispositivo y se subirá a tu cuenta al abrirlo allí.';
@@ -340,7 +346,10 @@ const UI = (() => {
   /** Se llama cuando cambia el estado de la cuenta (o llega una partida guardada en ella). */
   function onCloud(loaded) {
     if (loaded) toast('☁️ Progreso recuperado de tu cuenta');
-    if (current !== 'battle' && $('modal').hidden && RENDER[current]) RENDER[current]();
+    // Tras cada guardado solo se actualiza el icono (sin redibujar la pantalla entera)
+    if (!loaded && current !== 'settings') {
+      document.querySelectorAll('.cloud-ico').forEach(el => { el.outerHTML = cloudIcon() || '<span class="cloud-ico"></span>'; });
+    } else if (current !== 'battle' && $('modal').hidden && RENDER[current]) RENDER[current]();
     refreshTop();
   }
   function saveCodeModal() {
@@ -641,7 +650,7 @@ const UI = (() => {
     s.rank = Math.max(s.rank, rankNow);
     const newSkills = SKILL_ORDER.filter(id => !skillsBefore[id] && s.skills[id]);
     const newItems = Object.keys(s.items).filter(id => !itemsBefore.has(id));
-    Game.save(); Game.submitScore();
+    Game.save(true); Game.cloudWrite();   // al terminar cada combate se sube enseguida a la cuenta
     if (ups) Sfx.play('levelup');
     showResults({ r, mats, coins, xp, first, gems, gifts, extra, made, ups, rankUp, newSkills, newItems, done, bonus, lostStreak });
   }
@@ -1219,24 +1228,44 @@ const UI = (() => {
         <button class="tab ${tab === 'rank' ? 'active' : ''}" data-act="trophy-tab" data-tab="rank">🏆 Ranking</button>
       </div>
       <div class="cards ach-list">${body}</div>`;
-    if (tab === 'rank') loadRanking(view.rankField || 'power');
+    if (tab === 'rank') loadRanking(view.rankField || 'power'); else stopRanking();
   };
-  let rankReq = 0;
+  let rankUnsub = null, rankReq = 0;
+  function stopRanking() { if (rankUnsub) { try { rankUnsub(); } catch (e) {} rankUnsub = null; } }
   async function loadRanking(field) {
+    stopRanking();
     const req = ++rankReq;
-    Game.submitScore();
-    const list = await Game.fetchLeaderboard(field);
-    if (req !== rankReq || current !== 'trophies') return;
+    await Game.submitScore(true);               // primero sube tu marca actual
+    if (req !== rankReq) return;
+    const mine = await Game.myScore();
+    const unsub = await Game.watchLeaderboard(field, list => {
+      if (req !== rankReq || current !== 'trophies') return;
+      renderRanking(field, list, mine);
+    });
+    if (req !== rankReq) { try { unsub(); } catch (e) {} return; }
+    rankUnsub = unsub;
+  }
+  function renderRanking(field, list, mine) {
     const box = $('rank-list');
     if (!box) return;
     if (!list) { box.innerHTML = '<p class="hint">El ranking solo está disponible abriendo el juego desde su enlace de Claude con tu sesión iniciada.</p>'; return; }
-    if (!list.length) { box.innerHTML = '<p class="hint">Todavía no hay nadie en el ranking. ¡Sé el primero!</p>'; return; }
     const me = Game.account.session && Game.account.session.id;
+    // Tu fila siempre muestra tus datos actuales
+    if (me) {
+      const cur = Object.assign({ id: me }, mine || {}, { name: S().username, level: S().level, power: Game.stats().power, tower: S().tower.best, combo: S().stats.bestCombo, rank: Game.rank() });
+      list = list.filter(r => r.id !== me).concat([cur]);
+    }
+    const key = field;
+    list.sort((a, b) => (b[key] || 0) - (a[key] || 0));
+    if (!list.length) { box.innerHTML = '<p class="hint">Todavía no hay nadie en el ranking. ¡Sé el primero!</p>'; return; }
     const val = r => field === 'power' ? `💥 ${fmt(r.power || 0)}` : field === 'level' ? `⭐ Nv ${r.level || 1}` : field === 'tower' ? `🏰 Piso ${r.tower || 0}` : `🔥 x${r.combo || 0}`;
-    box.innerHTML = list.map((r, i) => `<div class="rank-row ${r.id === me ? 'me' : ''}">
+    const row = (r, i) => `<div class="rank-row ${r.id === me ? 'me' : ''}">
       <span class="pos">${i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</span>
-      <span class="who"><b>${esc(String(r.name || 'Guerrero').slice(0, 16))}</b><small style="color:${(RANKS[r.rank] || RANKS[0]).color}">${(RANKS[r.rank] || RANKS[0]).name}</small></span>
-      <span class="val">${val(r)}</span></div>`).join('');
+      <span class="who"><b>${esc(String(r.name || 'Guerrero').slice(0, 16))}${r.id === me ? ' (tú)' : ''}</b><small style="color:${(RANKS[r.rank] || RANKS[0]).color}">${(RANKS[r.rank] || RANKS[0]).name}</small></span>
+      <span class="val">${val(r)}</span></div>`;
+    const top = list.slice(0, 30), myIdx = list.findIndex(r => r.id === me);
+    box.innerHTML = top.map(row).join('') + (myIdx >= 30 ? `<div class="rank-sep">…</div>${row(list[myIdx], myIdx)}` : '')
+      + `<p class="hint rank-time">🔄 Se actualiza solo · ${new Date().toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>`;
   }
 
   /* ---------- Mascotas y apariencia ---------- */
@@ -1321,7 +1350,7 @@ const UI = (() => {
     const petUp = Game.petGainXp(r.kills || 0);
     const ups = Game.addXp(xp);
     Game.track('kill', r.kills || 0); Game.track('combo', r.maxCombo || 0); Game.track('elite', r.elites || 0); Game.track('coins', coins);
-    Game.save(); Game.submitScore();
+    Game.save(true); Game.cloudWrite();
     if (ups) Sfx.play('levelup');
     openModal(`
       <div class="reward-title ${record ? 'boss' : ''}">${record ? '🏆 ¡Nuevo récord!' : '🏰 Fin de la escalada'}</div>
@@ -1363,7 +1392,7 @@ const UI = (() => {
           : `<div class="setting" style="padding:0;margin:0"><div><b>👤 ${s.username ? esc(s.username) : 'Sin cuenta'}</b><div class="item-meta">Jugando sin cuenta</div></div><button class="btn small ghost" data-act="name">✏️ Nombre</button></div>
              <div class="acc-btns"><button class="btn small" data-act="acc-create">🆕 Crear cuenta</button><button class="btn small ghost" data-act="acc-login">🔑 Iniciar sesión</button></div>`}
         <p class="hint" style="margin:10px 0 8px">${cloudText()}</p>
-        <button class="btn small ghost" data-act="save-code">💾 Código de guardado</button>
+        <div class="acc-btns"><button class="btn small" data-act="save-now">☁️ Guardar ahora</button><button class="btn small ghost" data-act="save-code">💾 Código de guardado</button></div>
       </div>
       <div class="card setting"><div><b>⛶ Pantalla completa</b><div class="item-meta">${canFullscreen() ? 'Activa o desactiva la pantalla completa' : 'No disponible aquí: abre el archivo descargado en Chrome'}</div></div><button class="btn small ghost" data-act="fullscreen">${isFullscreen() ? 'Salir' : 'Activar'}</button></div>
       <div class="card setting"><div><b>📱 Horizontal y pantalla completa</b><div class="item-meta">Pantalla completa al tocar y pide girar el teléfono al combatir</div></div><button class="switch ${s.settings.landscape ? 'on' : ''}" data-act="toggle" data-key="landscape" aria-label="Combate en horizontal"></button></div>
@@ -1431,6 +1460,12 @@ const UI = (() => {
     'cos-buy': d => { if (Game.buyCosmetic(d.id)) { Sfx.play('chest'); Game.wearCosmetic(d.id); toast(`✨ ${COSMETICS[d.id].name}`); RENDER.pets(); refreshTop(); } },
     'cos-wear': d => { Game.wearCosmetic(d.id); RENDER.pets(); },
     'tower-go': () => startTower(),
+    'save-now': async (d, el) => {
+      if (el) { el.disabled = true; el.textContent = '⏳ Guardando…'; }
+      const ok = await Game.syncNow();
+      toast(ok ? '☁️ Progreso guardado en tu cuenta' : (Game.account.session || Game.cloud.ready ? '⚠️ No se pudo guardar ahora; se reintentará solo' : '💾 Guardado en este dispositivo'), !ok && (Game.account.session || Game.cloud.ready));
+      if (current === 'settings') RENDER.settings();
+    },
     'login-open': () => loginModal(false),
     'login-claim': () => {
       const r = Game.claimLogin();
