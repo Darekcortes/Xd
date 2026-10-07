@@ -80,17 +80,24 @@ const Sprites = (() => {
   }
 
   /* ---------- Arte ilustrado (atlas assets/sprites.webp) ----------
-     Cada cuadro: [x, y, ancho, alto, anclaX, anclaY] — el ancla son los pies.
+     Cuadros generados a partir del diseño con un esqueleto (caderas,
+     rodillas, hombros, codos y manos): 8 pasos de caminata por personaje
+     y 2 de ataque (preparación y golpe), más los golpes del caballero.
+     Cada cuadro: [x, y, ancho, alto, anclaX, anclaY, escala] — el ancla son
+     los pies y la escala es la del cuadro respecto al dibujo original.
      Si la imagen no carga (o se eligen gráficos clásicos) se usa el dibujo
      vectorial de siempre.                                              */
   const ART = {
-    frames: {"k_idle":[547,218,113,159,72.3,158.2],"k_slash1":[738,0,178,179,110.1,176.2],"k_slash2":[465,0,172,196,100.2,193.5],"k_slash3":[0,397,124,141,75.9,139.5],"k_thrust1":[550,397,163,128,44.8,127.5],"k_thrust2":[381,397,167,130,45.7,126.8],"k_thrust3":[715,397,182,125,49.4,124.5],"k_raise":[136,0,145,202,63.3,201.0],"k_smash1":[283,0,180,200,60.7,199.5],"k_smash2":[0,0,134,216,62.0,213.0],"k_smash3":[662,218,118,158,60.7,155.2],"hood":[922,218,85,144,56.3,144.0],"mummy":[221,397,79,136,44.6,135.0],"archer":[126,397,93,141,60.3,141.0],"iceknight":[639,0,97,194,47.8,194.2],"demon":[418,218,127,162,64.2,161.2],"darkknight":[286,218,130,166,56.7,165.0],"wizard":[918,0,106,177,73.0,174.0],"slime":[899,397,82,89,41.3,85.5],"icegolem":[782,218,138,156,71.2,156.0],"lavagolem":[144,218,140,174,79.7,174.0],"flame":[302,397,77,136,39.1,133.5],"darkking":[0,218,142,177,70.4,174.8]},
+    frames: {"k_slash1":[639,0,178,179,110.1,176.2,0.75],"k_slash2":[465,0,172,196,100.2,193.5,0.75],"k_slash3":[416,375,124,141,75.9,139.5,0.75],"k_thrust1":[0,659,163,128,44.8,127.5,0.75],"k_thrust2":[1361,519,167,130,45.7,126.8,0.75],"k_thrust3":[1606,659,182,125,49.4,124.5,0.75],"k_raise":[136,0,145,202,63.3,201.0,0.75],"k_smash1":[283,0,180,200,60.7,199.5,0.75],"k_smash2":[0,0,134,216,62.0,213.0,0.75],"k_smash3":[937,0,118,158,60.7,155.2,0.75],"slime_w0":[701,916,66,71,33.0,68.4,0.6],"flame_w0":[0,916,62,109,31.3,106.8,0.6],"k_w0":[1295,0,118,157,72.3,158.2,0.75],"k_w1":[1697,0,115,155,65.5,159.0,0.75],"k_w2":[82,218,118,154,67.0,159.0,0.75],"k_w3":[1814,0,115,155,65.5,159.0,0.75],"k_w4":[1415,0,118,157,72.3,158.2,0.75],"k_w5":[1057,0,117,158,75.3,156.0,0.75],"k_w6":[819,0,116,159,76.0,155.2,0.75],"k_w7":[1176,0,117,158,75.3,156.0,0.75],"hood_w0":[358,789,73,116,48.6,115.8,0.6],"hood_w1":[730,789,66,114,41.4,114.6,0.6],"hood_w2":[798,789,64,113,38.4,114.6,0.6],"hood_w3":[583,789,66,115,41.4,115.2,0.6],"hood_w4":[433,789,73,116,48.6,115.8,0.6],"hood_w5":[1285,789,82,112,54.6,115.2,0.6],"hood_w6":[864,789,87,113,57.6,115.8,0.6],"hood_w7":[953,789,82,113,54.6,115.8,0.6],"hood_a0":[508,789,73,116,50.4,114.6,0.6],"hood_a1":[1037,789,92,113,63.6,114.6,0.6],"mummy_w0":[64,916,65,109,37.4,108.0,0.6],"mummy_w1":[449,916,55,107,28.4,107.4,0.6],"mummy_w2":[506,916,58,106,30.2,106.8,0.6],"mummy_w3":[566,916,55,106,28.4,106.8,0.6],"mummy_w4":[131,916,65,109,37.4,108.0,0.6],"mummy_w5":[1769,789,80,110,45.8,108.6,0.6],"mummy_w6":[1851,789,88,110,48.8,108.6,0.6],"mummy_w7":[198,916,80,109,45.8,108.0,0.6],"mummy_a0":[280,916,86,109,57.8,108.6,0.6],"mummy_a1":[623,916,76,106,45.8,105.6,0.6],"archer_w0":[1131,789,75,113,47.6,112.8,0.6],"archer_w1":[1369,789,77,112,47.6,112.2,0.6],"archer_w2":[1527,789,80,111,48.2,111.0,0.6],"archer_w3":[1609,789,77,111,47.6,111.0,0.6],"archer_w4":[1208,789,75,113,47.6,112.8,0.6],"archer_w5":[1448,789,77,112,48.2,113.4,0.6],"archer_w6":[1688,789,79,111,48.8,112.8,0.6],"archer_w7":[1941,789,77,110,48.2,112.2,0.6],"archer_a0":[651,789,77,115,52.4,114.6,0.6],"archer_a1":[368,916,79,108,49.4,109.8,0.6],"iceknight_w0":[1535,0,79,156,37.6,156.0,0.6],"iceknight_w1":[1931,0,80,155,38.8,154.8,0.6],"iceknight_w2":[296,218,82,153,40.6,153.0,0.6],"iceknight_w3":[0,218,80,155,38.8,154.8,0.6],"iceknight_w4":[1616,0,79,156,37.6,156.0,0.6],"iceknight_w5":[380,218,94,153,45.4,155.4,0.6],"iceknight_w6":[572,218,102,152,49.0,154.2,0.6],"iceknight_w7":[476,218,94,153,45.4,155.4,0.6],"iceknight_a0":[832,218,104,145,64.6,144.6,0.6],"iceknight_a1":[202,218,92,154,48.4,154.2,0.6],"demon_w0":[1530,519,105,130,53.2,129.0,0.6],"demon_w1":[1867,519,101,129,46.6,128.4,0.6],"demon_w2":[165,659,98,128,44.2,127.8,0.6],"demon_w3":[265,659,101,128,46.6,127.8,0.6],"demon_w4":[1637,519,105,130,53.2,129.0,0.6],"demon_w5":[368,659,117,128,59.8,130.2,0.6],"demon_w6":[487,659,121,128,61.0,130.2,0.6],"demon_w7":[610,659,117,128,59.8,129.6,0.6],"demon_a0":[780,519,111,131,60.4,130.2,0.6],"demon_a1":[1790,659,112,125,56.2,125.4,0.6],"darkknight_w0":[893,519,106,131,49.6,131.4,0.6],"darkknight_w1":[588,519,94,134,40.0,130.8,0.6],"darkknight_w2":[495,519,91,135,35.8,130.2,0.6],"darkknight_w3":[684,519,94,133,40.0,130.2,0.6],"darkknight_w4":[1001,519,106,131,49.6,131.4,0.6],"darkknight_w5":[1109,519,121,131,58.6,132.0,0.6],"darkknight_w6":[1232,519,127,131,62.2,132.0,0.6],"darkknight_w7":[1744,519,121,130,58.6,131.4,0.6],"darkknight_a0":[232,519,128,136,68.8,135.0,0.6],"darkknight_a1":[1904,659,131,125,71.2,127.2,0.6],"wizard_w0":[1353,218,83,144,54.8,141.6,0.6],"wizard_w1":[542,375,90,141,59.0,138.6,0.6],"wizard_w2":[871,375,94,140,62.0,137.4,0.6],"wizard_w3":[634,375,90,141,59.0,138.6,0.6],"wizard_w4":[1438,218,83,144,54.8,141.6,0.6],"wizard_w5":[938,218,83,145,50.6,144.0,0.6],"wizard_w6":[1023,218,83,145,48.8,144.6,0.6],"wizard_w7":[1108,218,83,145,50.6,144.0,0.6],"wizard_a0":[757,218,73,146,45.8,144.0,0.6],"wizard_a1":[676,218,79,147,45.8,145.8,0.6],"darkking_w0":[967,375,115,140,60.5,139.8,0.6],"darkking_w1":[1523,218,112,142,55.7,139.2,0.6],"darkking_w2":[1637,218,113,142,55.7,138.6,0.6],"darkking_w3":[1752,218,112,142,55.7,139.2,0.6],"darkking_w4":[1084,375,115,140,60.5,139.8,0.6],"darkking_w5":[1866,218,131,142,67.7,140.4,0.6],"darkking_w6":[0,375,137,142,70.1,140.4,0.6],"darkking_w7":[139,375,131,142,67.7,140.4,0.6],"darkking_a0":[1193,218,158,145,98.3,142.8,0.6],"darkking_a1":[272,375,142,142,81.5,139.2,0.6],"icegolem_w0":[0,789,115,125,60.0,124.8,0.6],"icegolem_w1":[729,659,110,128,56.4,124.2,0.6],"icegolem_w2":[980,659,109,127,55.2,123.0,0.6],"icegolem_w3":[1091,659,110,127,56.4,123.0,0.6],"icegolem_w4":[117,789,115,125,60.0,124.8,0.6],"icegolem_w5":[1203,659,130,127,69.0,126.0,0.6],"icegolem_w6":[841,659,137,128,72.6,126.0,0.6],"icegolem_w7":[1335,659,130,127,69.0,125.4,0.6],"icegolem_a0":[1467,659,137,127,93.0,126.0,0.6],"icegolem_a1":[234,789,122,122,68.4,121.2,0.6],"lavagolem_w0":[1336,375,116,139,67.3,139.2,0.6],"lavagolem_w1":[1849,375,113,138,61.9,138.0,0.6],"lavagolem_w2":[0,519,115,138,61.9,137.4,0.6],"lavagolem_w3":[117,519,113,137,61.9,137.4,0.6],"lavagolem_w4":[1454,375,116,139,67.3,139.2,0.6],"lavagolem_w5":[1201,375,133,140,76.3,140.4,0.6],"lavagolem_w6":[1572,375,140,139,79.3,140.4,0.6],"lavagolem_w7":[1714,375,133,139,76.3,139.8,0.6],"lavagolem_a0":[726,375,143,141,100.9,140.4,0.6],"lavagolem_a1":[362,519,131,136,75.7,135.0,0.6]},
+    // Altura del dibujo original de cada personaje (en píxeles del atlas a escala 1)
+    base: {"k":212,"hood":192,"mummy":181,"archer":188,"iceknight":259,"demon":216,"darkknight":221,"wizard":236,"slime":119,"icegolem":208,"lavagolem":232,"flame":181,"darkking":236},
     // Altura en pantalla de cada enemigo, relativa a su tamaño (e.size)
     height: { hood: 1.3, mummy: 1.25, archer: 1.3, iceknight: 1.55, demon: 1.35, darkknight: 1.35, wizard: 1.45,
               slime: 0.85, icegolem: 1.15, lavagolem: 1.2, flame: 1.25, darkking: 1.3 },
     img: null, red: null, white: null, ready: false,
   };
-  const KNIGHT_H = 62 / 158;   // escala del caballero: el cuadro de reposo mide 62 unidades
+  const KNIGHT_PX = 62;   // altura del caballero en reposo (unidades del juego)
+  const WALK_FRAMES = 8;
   function tinted(img, color) {
     const cv = document.createElement('canvas');
     cv.width = img.width; cv.height = img.height;
@@ -106,22 +113,26 @@ const Sprites = (() => {
     img.onload = () => {
       ART.img = img;
       ART.red = tinted(img, 'rgba(255,50,50,.6)');
-      ART.white = tinted(img, 'rgba(255,255,255,.75)');
+      ART.white = tinted(img, 'rgba(255,255,255,.7)');
       ART.ready = true;
       if (onReady) onReady();
     };
     img.src = 'assets/sprites.webp';
   }
   const artOn = () => ART.ready && !(typeof Game !== 'undefined' && Game.S && Game.S.settings && Game.S.settings.classic);
-  function blit(c, key, src, k) {
+  /** Dibuja un cuadro con los pies en (0,0); unit = unidades de pantalla por píxel del dibujo original. */
+  function blit(c, key, src, unit) {
     const f = ART.frames[key];
+    if (!f) return;
+    const k = unit / f[6];
     c.drawImage(src || ART.img, f[0], f[1], f[2], f[3], -f[4] * k, -f[5] * k, f[2] * k, f[3] * k);
   }
+  const walkIndex = w => Math.floor((((w / (Math.PI * 2)) % 1) + 1) % 1 * WALK_FRAMES) % WALK_FRAMES;
 
-  /** Cuadro del caballero según el golpe: tajo, estocada o golpe fuerte. */
+  /** Cuadro del caballero: caminata, tajo, estocada o golpe fuerte. */
   function knightFrame(o) {
     const t = o.swing;
-    if (t < 0) return 'k_idle';
+    if (t < 0) return 'k_w' + (o.walk ? walkIndex(o.walk) : 0);
     const style = o.style || (o.heavy ? 'smash' : 'slash');
     if (style === 'thrust') return t < 0.3 ? 'k_thrust1' : t < 0.65 ? 'k_thrust2' : 'k_thrust3';
     if (style === 'smash') return t < 0.24 ? 'k_raise' : t < 0.45 ? 'k_smash1' : t < 0.72 ? 'k_smash2' : 'k_smash3';
@@ -130,43 +141,35 @@ const Sprites = (() => {
   function knightArt(c, x, y, s, o) {
     const t = o.time || 0;
     const idle = !o.walk && o.swing < 0;
-    const bob = idle ? Math.sin(t * 2.2) * 0.5 : o.swing < 0 ? -Math.abs(Math.sin(o.walk)) * 2 : 0;
-    const k = KNIGHT_H * s;
     c.save();
-    c.translate(x, y + bob * s);
+    c.translate(x, y);
     c.scale(o.face, 1);
-    if (o.swing < 0 && o.walk) c.rotate(0.05 + Math.sin(o.walk * 2) * 0.03);   // inclinado al caminar
-    if (idle) c.scale(1, 1 + Math.sin(t * 2.2) * 0.01);
-    blit(c, knightFrame(o), o.flash ? ART.red : null, k);
+    if (idle) c.scale(1 + Math.sin(t * 2.2) * 0.006, 1 + Math.sin(t * 2.2) * 0.012);   // respira
+    blit(c, knightFrame(o), o.flash ? ART.red : null, KNIGHT_PX * s / ART.base.k);
     c.restore();
   }
 
-  /** Enemigo ilustrado con animación sencilla: paso, respiración, carga y embestida. */
+  /** Enemigo ilustrado: camina moviendo piernas y brazos, prepara el golpe y ataca. */
   function enemyArt(c, x, y, size, o, sp) {
-    const key = sp.art, f = ART.frames[key];
-    if (!f) return false;
+    const key = sp.art;
+    if (!ART.base[key]) return false;
     const t = o.time || 0, seed = o.seed || 0;
-    const k = size * (ART.height[key] || 1.25) / f[3];
+    const unit = size * (ART.height[key] || 1.25) / ART.base[key];
     shadow(c, x, y, size * (key === 'slime' ? 0.42 : 0.36));
-    let rot = 0, sx = 1, sy = 1, dy = 0;
+    let frame = key + '_w0', sx = 1, sy = 1, dy = 0;
     if (key === 'slime') {
       const b = Math.abs(Math.sin(o.walk * 1.4));
       sx = 1 + (1 - b) * 0.12; sy = 1 - (1 - b) * 0.1; dy = -b * size * 0.12;
     } else if (key === 'flame') {
       sy = 1 + Math.sin(t * 9 + seed) * 0.05; sx = 1 - Math.sin(t * 9 + seed) * 0.03; dy = -size * 0.08 + Math.sin(t * 3 + seed) * 2;
-    } else {
-      dy = -Math.abs(Math.sin(o.walk)) * size * 0.05;
-      rot = Math.sin(o.walk) * 0.035;
-      sy = 1 + Math.sin(t * 2.5 + seed) * 0.012;
-    }
-    if (o.atk > 0) { rot -= 0.16 * o.atk; sx *= 1 - 0.05 * o.atk; sy *= 1 + 0.04 * o.atk; }   // se echa atrás al cargar
-    if (o.recover > 0 || o.dash) rot += 0.18;                                                 // embestida
+    } else if (o.atk > 0) frame = key + '_a0';                            // prepara el golpe
+    else if (o.recover > 0 || o.dash) frame = key + '_a1';               // golpea / embiste
+    else if (o.moving) frame = key + '_w' + walkIndex(o.walk);
+    else sy = 1 + Math.sin(t * 2.5 + seed) * 0.012;                      // respira quieto
     c.save();
     c.translate(x, y + dy);
-    c.scale(-o.face, 1);            // los dibujos miran a la izquierda
-    c.rotate(-rot);
-    c.scale(sx, sy);
-    blit(c, key, o.flash ? ART.white : null, k);
+    c.scale(-o.face * sx, sy);     // los dibujos miran a la izquierda
+    blit(c, frame, o.flash ? ART.white : null, unit);
     c.restore();
     return true;
   }
@@ -950,7 +953,9 @@ const Sprites = (() => {
   function enemy(c, e, time) {
     const sp = e.def.sprite;
     const z = e.z || 0;
+    if (e.walk !== e.artWalk) { e.artWalk = e.walk; e.artMoveT = time; }
     const o = { face: e.face, walk: e.walk, flash: e.flash > 0, atk: e.windup > 0 ? e.windup / e.windupMax : 0,
+                moving: time - (e.artMoveT === undefined ? -9 : e.artMoveT) < 0.15,
                 recover: e.recover, time, seed: e.seed, dash: e.state === 'dash', breath: e.breath };
     if (e.elite) {
       c.fillStyle = `rgba(250,204,21,${0.22 + Math.sin(time * 6) * 0.08})`;
