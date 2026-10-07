@@ -213,13 +213,30 @@ const Game = (() => {
     Acc.session = sess;
     try { if (sess) localStorage.setItem(ACC_KEY, JSON.stringify(sess)); else localStorage.removeItem(ACC_KEY); } catch (e) { /* sin almacenamiento */ }
   }
+  /** ¿Quien abre el enlace puede guardar en línea? true / false / null (no se sabe).
+      Claude solo deja guardar datos de la página a las personas de la organización del dueño
+      (o con acceso de Colaborador); el resto juega y guarda en su navegador. */
+  let canOnline;
+  async function canSaveOnline() {
+    if (canOnline !== undefined) return canOnline;
+    const db = await accountDb();
+    if (!db || !hasCrypto()) return (canOnline = false);
+    try {
+      const user = window.claude && await window.claude.use('user');
+      const r = user && typeof user.can === 'function' ? await user.can('data.write') : null;
+      canOnline = r === false ? false : r === true ? true : null;
+    } catch (e) { canOnline = null; }
+    return canOnline;
+  }
   /** Motivo por el que no se pueden usar cuentas aquí (o null si se puede). */
   async function accountsBlocked() {
     if (!hasCrypto()) return 'Este navegador no permite cuentas seguras.';
     const db = await accountDb();
     if (!db) return 'Las cuentas solo funcionan abriendo el juego desde su enlace de Claude con tu sesión iniciada.';
+    if (await canSaveOnline() === false) return GUEST_MSG;
     return null;
   }
+  const GUEST_MSG = 'Este enlace no permite crear cuentas para ti, pero puedes jugar igual: tu progreso se guarda en este navegador.';
   const writeDenied = e => e && (e.code === 'invalid_argument' || e.code === 'revoked' || e.code === 'not_granted');
   const DENIED_MSG = 'Tu acceso a esta página no permite guardar (pide al dueño acceso de Colaborador).';
 
@@ -241,7 +258,7 @@ const Game = (() => {
       Acc.status = 'ok'; Acc.lastSync = Date.now(); Acc.syncedAt = S.savedAt;
       writeLocal();
       return null;
-    } catch (e) { return writeDenied(e) ? DENIED_MSG : 'No se pudo crear la cuenta. Revisa tu conexión e inténtalo de nuevo.'; }
+    } catch (e) { if (writeDenied(e)) { canOnline = false; return GUEST_MSG; } return 'No se pudo crear la cuenta. Revisa tu conexión e inténtalo de nuevo.'; }
   }
 
   /** Entra en una cuenta y carga su progreso. Devuelve null o un mensaje de error. */
@@ -705,7 +722,8 @@ const Game = (() => {
     giveItem, giveSkill, grant, prizeLabel, addXp, completeStage, highestWorld, rollChest,
     addShards, streakBonus, ensureDaily, track, missionText,
     connectCloud, cloudWrite, exportCode, importCode, get cloud() { return Cloud; },
-    createAccount, login, logout, accountsBlocked, syncNow, accountPending, get account() { return Acc; },
+    createAccount, login, logout, accountsBlocked, canSaveOnline, syncNow, accountPending, get account() { return Acc; },
+    get online() { return canOnline; },
     rank: () => rankOf(S.level),
     loginStatus, claimLogin, achState, achClaimable, claimAchievement, givePet, petGainXp,
     enchantWeapon, cosmeticUnlocked, buyCosmetic, wearCosmetic, submitScore, fetchLeaderboard, watchLeaderboard, myScore,

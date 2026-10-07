@@ -253,7 +253,7 @@ const UI = (() => {
     const c = Game.cloud;
     if (c.status === 'cloud') return `☁️ Tu progreso se guarda en tu cuenta de Claude${c.lastSync ? ` · último guardado ${new Date(c.lastSync).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}` : ''}. Si cambias de teléfono o borras el navegador, lo recuperas al abrir el juego aquí con tu cuenta.`;
     if (c.status === 'connecting') return '⏳ Conectando con tu cuenta…';
-    if (c.status === 'denied') return '📱 Tu cuenta no tiene permiso para guardar en este juego (pide acceso de Colaborador al dueño). Se guarda en este dispositivo; usa el código de guardado para no perderlo.';
+    if (c.status === 'denied' || Game.online === false) return '🎮 Juegas como invitado: tu progreso se guarda automáticamente en este navegador. Para pasarlo a otro dispositivo usa el código de guardado.';
     if (c.status === 'error') return '⚠️ No se pudo guardar en la cuenta ahora mismo; se reintentará. Mientras tanto está guardado en este dispositivo.';
     return '📱 Se guarda solo en este dispositivo. Para guardarlo en tu cuenta, abre el juego en Claude con tu sesión iniciada, o usa el código de guardado.';
   }
@@ -262,14 +262,14 @@ const UI = (() => {
     const s = S();
     if (s.username && !force) return;
     openModal(`
-      <h2>${s.username ? '✏️ Cambiar nombre' : '⚔️ ¿Cómo te llamas, guerrero?'}</h2>
-      <p class="sub">Tu nombre aparece en el menú y se guarda con tu progreso${Game.cloud.status === 'cloud' ? ' en tu cuenta' : ''}.</p>
+      <h2>${s.username ? '✏️ Cambiar nombre' : '⚔️ ¡Bienvenido a Reinos del Caos!'}</h2>
+      <p class="sub">${s.username ? 'Tu nombre aparece en el menú.' : '¿Cómo te llamas, guerrero? Tu progreso se guarda solo en este navegador.'}</p>
       <form id="name-form" class="name-form">
         <input id="name-input" maxlength="16" autocomplete="nickname" placeholder="Tu nombre (3-16 letras)" value="${esc(s.username || '')}">
         <div class="hint" id="name-err"></div>
         <div class="modal-actions">
-          <button class="btn" type="submit">✅ Guardar nombre</button>
-          ${s.username ? '<button class="btn ghost" type="button" data-act="close">Cancelar</button>' : ''}
+          <button class="btn" type="submit">${s.username ? '✅ Guardar nombre' : '⚔️ ¡A jugar!'}</button>
+          ${s.username ? '<button class="btn ghost" type="button" data-act="close">Cancelar</button>' : '<button class="btn ghost" type="button" data-act="guest-skip">Jugar sin nombre</button>'}
         </div>
       </form>`);
     const input = $('name-input');
@@ -287,8 +287,10 @@ const UI = (() => {
   }
   /* ---------- Cuenta con usuario y contraseña ---------- */
   /** Bienvenida: entrar, crear cuenta o jugar sin cuenta. */
-  function askAccount() {
+  async function askAccount() {
     if (Game.account.session) return;
+    if (await Game.canSaveOnline() === false) { askUsername(); return; }   // invitado: directo a jugar
+    if (!$('modal').hidden) return;
     openModal(`
       <h2>⚔️ Reinos del Caos</h2>
       <p class="sub">Crea una cuenta con usuario y contraseña para guardar tu progreso y recuperarlo en cualquier dispositivo.</p>
@@ -1220,7 +1222,7 @@ const UI = (() => {
       const fields = { power: '💥 Poder', level: '⭐ Nivel', tower: '🏰 Torre', combo: '🔥 Combo' };
       body = `<div class="tabs small">${Object.keys(fields).map(f => `<button class="tab ${f === field ? 'active' : ''}" data-act="rank-field" data-f="${f}">${fields[f]}</button>`).join('')}</div>
         <div id="rank-list" class="rank-list"><p class="hint">Cargando ranking…</p></div>
-        <p class="hint">${Game.account.session ? `Apareces como <b>${esc(Game.account.session.name)}</b>. Tu marca se actualiza al guardar.` : 'Para aparecer en el ranking crea una cuenta con usuario y contraseña (en ⚙️ Ajustes).'}</p>`;
+        <p class="hint">${Game.account.session ? `Apareces como <b>${esc(Game.account.session.name)}</b>. Tu marca se actualiza al guardar.` : Game.online === false ? 'Como invitado puedes ver el ranking, pero solo aparecen los jugadores con cuenta.' : 'Para aparecer en el ranking crea una cuenta con usuario y contraseña (en ⚙️ Ajustes).'}</p>`;
     }
     $('scr-trophies').innerHTML = `${head('🏆 Logros')}
       <div class="tabs">
@@ -1390,7 +1392,7 @@ const UI = (() => {
         ${Game.account.session
           ? `<div class="setting" style="padding:0;margin:0"><div><b>🔐 ${esc(Game.account.session.name)}</b><div class="item-meta">Cuenta con contraseña</div></div><button class="btn small ghost" data-act="acc-logout">🚪 Cerrar sesión</button></div>`
           : `<div class="setting" style="padding:0;margin:0"><div><b>👤 ${s.username ? esc(s.username) : 'Sin cuenta'}</b><div class="item-meta">Jugando sin cuenta</div></div><button class="btn small ghost" data-act="name">✏️ Nombre</button></div>
-             <div class="acc-btns"><button class="btn small" data-act="acc-create">🆕 Crear cuenta</button><button class="btn small ghost" data-act="acc-login">🔑 Iniciar sesión</button></div>`}
+             ${Game.online === false ? '' : '<div class="acc-btns"><button class="btn small" data-act="acc-create">🆕 Crear cuenta</button><button class="btn small ghost" data-act="acc-login">🔑 Iniciar sesión</button></div>'}`}
         <p class="hint" style="margin:10px 0 8px">${cloudText()}</p>
         <div class="acc-btns"><button class="btn small" data-act="save-now">☁️ Guardar ahora</button><button class="btn small ghost" data-act="save-code">💾 Código de guardado</button></div>
       </div>
@@ -1495,6 +1497,7 @@ const UI = (() => {
     'acc-create': () => accountForm('create'),
     'acc-login': () => accountForm('login'),
     'acc-guest': () => { closeModal(); askUsername(); },
+    'guest-skip': () => { S().username = 'Guerrero'; Game.save(true); closeModal(); if (RENDER[current]) RENDER[current](); },
     'acc-logout': () => confirmLogout(),
     'acc-logout-ok': async () => { closeModal(); await Game.logout(); toast('🚪 Sesión cerrada'); refreshTop(); show('menu'); setTimeout(askAccount, 300); },
     'save-code': () => saveCodeModal(),
