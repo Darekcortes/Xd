@@ -213,12 +213,133 @@ const Game = (() => {
     Acc.session = sess;
     try { if (sess) localStorage.setItem(ACC_KEY, JSON.stringify(sess)); else localStorage.removeItem(ACC_KEY); } catch (e) { /* sin almacenamiento */ }
   }
+  /* ---------- Servidor de cuentas propio (Supabase) ----------
+     Si el juego puede llegar al servidor (p. ej. publicado en GitHub Pages),
+     cualquier jugador crea su cuenta con usuario y contraseña. Si no (p. ej.
+     dentro de Claude, que bloquea conexiones externas), se usa el sistema de
+     cuentas de Claude.                                                      */
+  const Supa = {
+    ready: null,
+    hdr(token, extra) {
+      return Object.assign({ apikey: ONLINE.key, 'Content-Type': 'application/json' }, token ? { Authorization: 'Bearer ' + token } : {}, extra || {});
+    },
+    async call(path, opts = {}, ms = 9000) {
+      const ctl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const t = ctl && setTimeout(() => ctl.abort(), ms);
+      try {
+        const res = await fetch(ONLINE.url + path, Object.assign({}, opts, ctl ? { signal: ctl.signal } : {}));
+        const txt = await res.text();
+        let body = null; try { body = txt ? JSON.parse(txt) : null; } catch (e) { body = txt; }
+        if (!res.ok) throw Object.assign(new Error((body && (body.msg || body.message || body.error_description || body.error)) || res.status), { status: res.status, body, code: (body && (body.error_code || body.code)) || 'http_' + res.status });
+        return body;
+      } catch (e) {
+        if (!e.status) e.code = e.code && e.code !== 'ABORT_ERR' && e.name !== 'AbortError' ? e.code : 'unavailable';
+        throw e;
+      } finally { if (t) clearTimeout(t); }
+    },
+    email: name => accountId(name).replace(/^[.]+|[.]+$/g, '').replace(/\.{2,}/g, '.') + '@' + ONLINE.emailDomain,
+  };
+  /** ¿Se puede usar el servidor de cuentas desde aquí? (se comprueba una vez) */
+  function supaReady() {
+    if (Supa.ready) return Supa.ready;
+    if (typeof ONLINE === 'undefined' || !ONLINE.url || typeof fetch !== 'function') return (Supa.ready = Promise.resolve(false));
+    Supa.ready = Supa.call('/auth/v1/settings', { headers: Supa.hdr() }, 5000).then(() => true, () => false);
+    return Supa.ready;
+  }
+  function supaSession(body, name) {
+    return { provider: 'supa', id: body.user.id, name, access: body.access_token, refresh: body.refresh_token,
+             exp: Date.now() + (body.expires_in || 3600) * 1000 };
+  }
+  /** Token válido (lo renueva si está por caducar). */
+  async function supaToken() {
+    const sess = Acc.session;
+    if (Date.now() < sess.exp - 60000) return sess.access;
+    try {
+      const body = await Supa.call('/auth/v1/token?grant_type=refresh_token', { method: 'POST', headers: Supa.hdr(), body: JSON.stringify({ refresh_token: sess.refresh }) });
+      rememberSession(supaSession(body, sess.name));
+      return Acc.session.access;
+    } catch (e) {
+      if (e.status === 400 || e.status === 401) { Acc.status = 'expired'; rememberSession(null); }
+      throw e;
+    }
+  }
+  const supaAuthError = e => {
+    const c = String(e.code || ''), m = String(e.message || '').toLowerCase();
+    if (c === 'user_already_exists' || m.includes('already registered')) return 'Ese usuario ya existe. Elige otro o inicia sesión.';
+    if (c === 'invalid_credentials' || m.includes('invalid login')) return 'Usuario o contraseña incorrectos.';
+    if (c === 'weak_password' || m.includes('password')) return 'La contraseña es muy débil (usa al menos 6 caracteres).';
+    if (c === 'email_not_confirmed') return 'Falta desactivar «Confirm email» en Supabase (Authentication → Sign In / Providers → Email).';
+    if (c === 'over_request_rate_limit' || e.status === 429) return 'Demasiados intentos. Espera un momento y vuelve a probar.';
+    if (c === 'unavailable') return 'No hay conexión con el servidor de cuentas. Revisa tu internet.';
+    if (/PGRST|42P01|relation/.test(c + m)) return 'Falta preparar la base de datos (ejecuta supabase.sql en Supabase).';
+    return 'No se pudo completar. Inténtalo de nuevo.';
+  };
+  async function supaPutSave(access) {
+    const sess = Acc.session, at = S.savedAt || Date.now();
+    await Supa.call('/rest/v1/saves?on_conflict=user_id', { method: 'POST', headers: Supa.hdr(access, { Prefer: 'resolution=merge-duplicates,return=minimal' }),
+      body: JSON.stringify({ user_id: sess.id, username: sess.name, data: S, saved_at: at, updated_at: new Date().toISOString() }) });
+    return at;
+  }
+  async function supaCreate(name, password) {
+    try {
+      const body = await Supa.call('/auth/v1/signup', { method: 'POST', headers: Supa.hdr(), body: JSON.stringify({ email: Supa.email(name), password, data: { username: name } }) });
+      if (!body || !body.access_token) return supaAuthError({ code: 'email_not_confirmed' });
+      S.username = name; S.savedAt = Date.now();
+      rememberSession(supaSession(body, name));
+      Acc.status = 'ok';
+      writeLocal();
+      // La cuenta ya existe: si la primera subida falla, el guardado automático la reintenta
+      try { const at = await supaPutSave(body.access_token); Acc.lastSync = Date.now(); Acc.syncedAt = at; submitScore(true); }
+      catch (e) { Acc.lastError = e.code || 'error'; accountWrite(true); }
+      return null;
+    } catch (e) { return supaAuthError(e); }
+  }
+  async function supaLogin(name, password) {
+    try {
+      const body = await Supa.call('/auth/v1/token?grant_type=password', { method: 'POST', headers: Supa.hdr(), body: JSON.stringify({ email: Supa.email(name), password }) });
+      const meta = body.user && body.user.user_metadata;
+      const display = (meta && meta.username) || name;
+      rememberSession(supaSession(body, display));
+      const rows = await Supa.call(`/rest/v1/saves?user_id=eq.${body.user.id}&select=data,saved_at,username`, { headers: Supa.hdr(body.access_token) });
+      if (rows && rows[0] && rows[0].data) { applyData(rows[0].data); S.savedAt = rows[0].saved_at || 0; }
+      S.username = display;
+      Acc.status = 'ok'; Acc.lastSync = Date.now(); Acc.syncedAt = rows && rows[0] ? rows[0].saved_at || 0 : 0;
+      writeLocal();
+      if (!rows || !rows[0]) { S.savedAt = Date.now(); accountWrite(true); }
+      return null;
+    } catch (e) { if (e.status !== 400 && Acc.session) rememberSession(null); return supaAuthError(e); }
+  }
+  async function supaResume(onChange) {
+    if (!(await supaReady())) { Acc.status = 'offline'; onChange(false); return; }
+    Acc.status = 'connecting'; onChange(false);
+    try {
+      const token = await supaToken();
+      const rows = await Supa.call(`/rest/v1/saves?user_id=eq.${Acc.session.id}&select=data,saved_at,username`, { headers: Supa.hdr(token) });
+      const row = rows && rows[0];
+      let loaded = false;
+      if (row && row.data && ((row.saved_at || 0) > (S.savedAt || 0) || isFresh(S))) { applyData(row.data); S.savedAt = row.saved_at || 0; writeLocal(); loaded = true; }
+      S.username = Acc.session.name;
+      Acc.status = 'ok'; Acc.lastSync = row ? row.saved_at || 0 : 0; Acc.syncedAt = row ? row.saved_at || 0 : 0; Acc.lastError = null;
+      onChange(loaded);
+      if (!loaded && (!row || (S.savedAt || 0) > (row.saved_at || 0))) accountWrite(true);
+    } catch (e) {
+      if (Acc.status !== 'expired') { Acc.status = 'error'; Acc.lastError = e.code || 'error'; }
+      onChange(false);
+    }
+  }
+  async function supaBoard(field) {
+    const cols = { power: 'power', level: 'level', tower: 'tower', combo: 'combo' };
+    const rows = await Supa.call(`/rest/v1/leaderboard?select=user_id,name,level,power,tower,combo,bosses,rank&order=${cols[field] || 'power'}.desc&limit=30`, { headers: Supa.hdr() });
+    return (rows || []).map(r => Object.assign({ id: r.user_id }, r));
+  }
+
   /** ¿Quien abre el enlace puede guardar en línea? true / false / null (no se sabe).
       Claude solo deja guardar datos de la página a las personas de la organización del dueño
       (o con acceso de Colaborador); el resto juega y guarda en su navegador. */
   let canOnline;
   async function canSaveOnline() {
     if (canOnline !== undefined) return canOnline;
+    if (await supaReady()) return (canOnline = true);
     const db = await accountDb();
     if (!db || !hasCrypto()) return (canOnline = false);
     try {
@@ -230,6 +351,7 @@ const Game = (() => {
   }
   /** Motivo por el que no se pueden usar cuentas aquí (o null si se puede). */
   async function accountsBlocked() {
+    if (await supaReady()) return null;
     if (!hasCrypto()) return 'Este navegador no permite cuentas seguras.';
     const db = await accountDb();
     if (!db) return 'Las cuentas solo funcionan abriendo el juego desde su enlace de Claude con tu sesión iniciada.';
@@ -242,6 +364,7 @@ const Game = (() => {
 
   /** Crea una cuenta nueva con el progreso actual. Devuelve null o un mensaje de error. */
   async function createAccount(name, password) {
+    if (await supaReady()) return supaCreate(name, password);
     const blocked = await accountsBlocked(); if (blocked) return blocked;
     const db = await accountDb(), id = accountId(name);
     if (id.length < 3) return 'Ese nombre no sirve como usuario.';
@@ -263,6 +386,7 @@ const Game = (() => {
 
   /** Entra en una cuenta y carga su progreso. Devuelve null o un mensaje de error. */
   async function login(name, password) {
+    if (await supaReady()) return supaLogin(name, password);
     const blocked = await accountsBlocked(); if (blocked) return blocked;
     const db = await accountDb(), id = accountId(name);
     try {
@@ -285,6 +409,7 @@ const Game = (() => {
   /** Al abrir el juego con la sesión recordada: trae el progreso más nuevo de la cuenta. */
   async function resumeAccount(onChange) {
     const sess = Acc.session;
+    if (sess.provider === 'supa') return supaResume(onChange);
     const db = await accountDb();
     if (!db || !hasCrypto()) { Acc.status = 'offline'; onChange(false); return; }
     Acc.status = 'connecting'; onChange(false);
@@ -321,11 +446,15 @@ const Game = (() => {
     Acc.writing = true; clearTimeout(Acc.retry);
     let ok = false;
     try {
-      const db = await accountDb();
-      if (!db) throw Object.assign(new Error('sin conexión'), { code: 'unavailable' });
-      const box = await seal(sess.keyRaw, S);
-      const at = S.savedAt || Date.now();
-      await db.doc('accounts/' + sess.id).update({ iv: box.iv, data: box.data, savedAt: at, name: sess.name });
+      let at;
+      if (sess.provider === 'supa') at = await supaPutSave(await supaToken());
+      else {
+        const db = await accountDb();
+        if (!db) throw Object.assign(new Error('sin conexión'), { code: 'unavailable' });
+        const box = await seal(sess.keyRaw, S);
+        at = S.savedAt || Date.now();
+        await db.doc('accounts/' + sess.id).update({ iv: box.iv, data: box.data, savedAt: at, name: sess.name });
+      }
       Acc.lastSync = Date.now(); Acc.syncedAt = Math.max(Acc.syncedAt, at);
       Acc.fails = 0; Acc.lastError = null; ok = true;
       submitScore();
@@ -389,13 +518,25 @@ const Game = (() => {
     const entry = scoreEntry(), print = JSON.stringify(entry);
     if (print === lastScore && !force) return;
     try {
-      const db = await accountDb();
-      await db.doc('leaderboard/' + sess.id).set(Object.assign(entry, { at: Date.now() }));
+      if (sess.provider === 'supa') {
+        await Supa.call('/rest/v1/leaderboard?on_conflict=user_id', { method: 'POST', headers: Supa.hdr(await supaToken(), { Prefer: 'resolution=merge-duplicates,return=minimal' }),
+          body: JSON.stringify(Object.assign({ user_id: sess.id }, entry, { updated_at: new Date().toISOString() })) });
+      } else {
+        const db = await accountDb();
+        await db.doc('leaderboard/' + sess.id).set(Object.assign(entry, { at: Date.now() }));
+      }
       lastScore = print;
     } catch (e) { /* sin permiso o sin conexión: se reintenta en el próximo guardado */ }
   }
   /** Ranking en vivo: avisa cada vez que alguien sube su marca. Devuelve la función para dejar de escuchar. */
   async function watchLeaderboard(field, cb) {
+    if (await supaReady()) {
+      // Se consulta cada 8 s mientras se mira el ranking
+      const pull = () => supaBoard(field).then(cb, () => cb(null));
+      pull();
+      const t = setInterval(pull, 8000);
+      return () => clearInterval(t);
+    }
     const db = await accountDb();
     if (!db) { cb(null); return () => {}; }
     const q = db.collection('leaderboard').orderBy(field, 'desc').limit(30);
@@ -409,12 +550,15 @@ const Game = (() => {
   }
   /** Mi propia marca guardada en el ranking (para mostrar mi puesto aunque no esté entre los 30). */
   async function myScore() {
-    const db = await accountDb(), sess = Acc.session;
+    const sess = Acc.session;
+    if (sess && sess.provider === 'supa') return null;   // la fila propia se dibuja con los datos actuales
+    const db = await accountDb();
     if (!db || !sess) return null;
     try { const snap = await db.doc('leaderboard/' + sess.id).get(); return snap.exists ? Object.assign({ id: sess.id }, snap.data()) : null; } catch (e) { return null; }
   }
   /** Los 30 mejores según el campo (power, level, tower, combo). null si no hay conexión. */
   async function fetchLeaderboard(field) {
+    if (await supaReady()) { try { return await supaBoard(field); } catch (e) { return null; } }
     const db = await accountDb();
     if (!db) return null;
     try {
@@ -724,6 +868,7 @@ const Game = (() => {
     connectCloud, cloudWrite, exportCode, importCode, get cloud() { return Cloud; },
     createAccount, login, logout, accountsBlocked, canSaveOnline, syncNow, accountPending, get account() { return Acc; },
     get online() { return canOnline; },
+    supaReady,
     rank: () => rankOf(S.level),
     loginStatus, claimLogin, achState, achClaimable, claimAchievement, givePet, petGainXp,
     enchantWeapon, cosmeticUnlocked, buyCosmetic, wearCosmetic, submitScore, fetchLeaderboard, watchLeaderboard, myScore,

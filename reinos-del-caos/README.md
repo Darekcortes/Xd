@@ -73,6 +73,18 @@ En computadora también funciona con teclado: WASD o flechas, Espacio/J atacar, 
 Rarezas: ⚪ Común · 🟢 Poco común · 🔵 Raro · 🟣 Épico · 🟠 Legendario · 🔴 Mítico.
 Al vencer por primera vez a los tres primeros jefes se desbloquean las habilidades de fuego, hielo y rayo.
 
+## Cuentas para todos los jugadores (Supabase)
+
+Las cuentas con usuario y contraseña, la partida en la nube y el ranking compartido usan un servidor
+Supabase (configurado en `ONLINE` al final de `js/data.js`). Para prepararlo una sola vez:
+
+1. En Supabase → *SQL Editor* → *New query*, pega `supabase.sql` y pulsa *Run*.
+2. En *Authentication → Sign In / Providers → Email* desactiva **Confirm email**.
+
+Cada jugador solo puede leer y guardar su propia partida (reglas RLS); el ranking lo ven todos.
+Si el servidor no está disponible (por ejemplo, dentro de Claude, que bloquea conexiones externas),
+el juego usa las cuentas de Claude o guarda en el navegador.
+
 ## Instalar como app en el teléfono
 
 El juego incluye `manifest.webmanifest`, iconos y `sw.js` (funciona sin internet). Para instalarlo hay que

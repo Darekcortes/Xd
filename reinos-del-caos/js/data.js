@@ -569,3 +569,14 @@ function towerInfo(floor) {
     eliteChance: Math.min(0.2, 0.05 + floor * 0.004),
   });
 }
+
+/* ---------- Servidor de cuentas (Supabase) ----------
+   Cuentas con usuario y contraseña para cualquier jugador, partida guardada
+   y ranking compartido. La clave "publishable" es pública por diseño: las
+   reglas de seguridad (RLS) de la base de datos hacen que cada jugador solo
+   pueda leer y guardar su propia partida. Ver supabase.sql. */
+const ONLINE = {
+  url: 'https://texjrivlrvrejuynfwon.supabase.co',
+  key: 'sb_publishable_th04FG8XGA0v5oMflRGt_Q_7lLD-ExH',
+  emailDomain: 'jugadores.reinosdelcaos.app',   // el usuario se convierte en un correo interno (nadie recibe correos)
+};

@@ -243,7 +243,7 @@ const UI = (() => {
     if (A.status === 'ok') return `🔐 Sesión iniciada. Tu progreso se guarda solo en tu cuenta después de cada combate y cada pocos segundos${A.lastSync ? ` · último guardado ${when(A.lastSync)}` : ''}. Entra con tu usuario y contraseña en cualquier dispositivo para seguir jugando.`;
     if (A.status === 'connecting') return '⏳ Conectando con tu cuenta…';
     if (A.status === 'denied') return '⚠️ Tu acceso a esta página no permite guardar (pide al dueño acceso de Colaborador). Se guarda en este dispositivo.';
-    if (A.status === 'offline') return '📱 Aquí no hay conexión con las cuentas (solo funcionan en el enlace de Claude). Se guarda en este dispositivo y se subirá a tu cuenta al abrirlo allí.';
+    if (A.status === 'offline') return '📱 Ahora no hay conexión con el servidor de cuentas. Tu progreso se guarda en este dispositivo y se subirá solo a tu cuenta al recuperar la conexión.';
     if (A.status === 'missing') return '⚠️ Esta cuenta ya no existe. Cierra sesión y crea una nueva.';
     if (A.status === 'expired') return '🔑 La contraseña de la cuenta cambió. Vuelve a iniciar sesión.';
     return '⚠️ No se pudo guardar en la cuenta ahora mismo; se reintentará. Mientras tanto está guardado en este dispositivo.';
