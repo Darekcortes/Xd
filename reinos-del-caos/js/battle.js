@@ -83,7 +83,7 @@ const Battle = (() => {
     const total = waves.reduce((t, w) => t + w.length, 0);
     st = {
       info, world: info.world, stage: tower ? 0 : stage, time: 0, tower: tower ? { floor: 0, cleared: 0 } : null,
-      ult: 0, ultT: 0, potionsUsed: 0, sparks: [], pet: makePet(),
+      ult: 0, ultT: 0, potionsUsed: 0, sparks: [], pet: makePet(P),
       p: { x: W * 0.3, y: (fieldTop() + fieldBot()) / 2, hp: P.maxHp, maxHp: P.maxHp, dmg: P.dmg, def: P.def,
            spd: P.spd, crit: P.crit, face: 1, atkT: 0, swing: -1, heavy: false, walk: 0, flash: 0, invuln: 0,
            chain: 0, chainT: 0, dodgeT: 0, dodgeCd: 0, dx: 1, dy: 0, ghostT: 0 },
@@ -128,7 +128,7 @@ const Battle = (() => {
     if (T.cleared % TOWER.milestone === 0) {
       const prize = TOWER.milestonePrize(T.cleared);
       st.loot.tickets += prize.tickets || 0; st.loot.gems += prize.gems || 0;
-      heal(st.p.maxHp * 0.25);
+      heal(st.p.maxHp * 0.25); healPet(0.5);
       showBanner(`🏆 Piso ${T.cleared} superado`, `+${prize.tickets} 🎟️ · +${prize.gems} 💎 · vida +25%`, '#fde047', 2);
       Sfx.play('legendary');
     }
@@ -137,17 +137,45 @@ const Battle = (() => {
   }
 
   /* ---------- Mascota ---------- */
-  function makePet() {
+  /** La mascota tiene su propia vida: si cae, queda fuera de combate solo en esta partida (revive en la siguiente). */
+  function makePet(stats) {
     const id = Game.S.pets.active, o = id && Game.S.pets.owned[id];
     if (!o) return null;
     const P = PETS[id];
+    const maxHp = Math.round(stats.maxHp * 0.45 * (1 + 0.1 * (o.lvl - 1)));
     return { id, def: { sprite: { art: P.art } }, P, lvl: o.lvl, x: 40, y: 0, size: P.size, face: 1, walk: 0, seed: 3,
+             hp: maxHp, maxHp, petDef: stats.def * 0.6, invuln: 1, down: false, downT: 0, hpShow: 0,
              cd: 1, flash: 0, windup: 0, windupMax: 1, recover: 0, frozen: 0, state: 'move', elite: false, slowT: 0 };
+  }
+  const petAlive = () => st.pet && !st.pet.down;
+  function hurtPet(amount, fromBoss) {
+    const pet = st.pet;
+    if (!pet || pet.down || pet.invuln > 0 || st.ended) return false;
+    const cap = pet.maxHp * (fromBoss ? 0.35 : 0.25);
+    const dmg = Math.max(1, Math.round(Math.min(cap, amount * rand(0.9, 1.1) * 100 / (100 + pet.petDef))));
+    pet.hp = Math.max(0, pet.hp - dmg);
+    pet.flash = 0.18; pet.invuln = 0.5; pet.hpShow = 2.5;
+    burst(pet.x, pet.y - pet.size * 0.5, '#fca5a5', 7, 100);
+    addFloat(pet.x, pet.y - pet.size - 8, `-${dmg}`, '#fca5a5', 13);
+    if (pet.hp <= 0) {
+      pet.down = true; pet.downT = 1.2; pet.windup = 0;
+      burst(pet.x, pet.y - pet.size * 0.5, '#e5e7eb', 18, 140, -80);
+      addFloat(pet.x, pet.y - pet.size - 14, '💫 ¡Fuera de combate!', '#fde68a', 13, true);
+      Sfx.play('hurt');
+    } else Sfx.play('hit');
+    return true;
+  }
+  function healPet(frac) {
+    const pet = st.pet;
+    if (!pet || pet.down) return;
+    pet.hp = Math.min(pet.maxHp, pet.hp + pet.maxHp * frac); pet.hpShow = 2;
   }
   function updatePet(dt) {
     const pet = st.pet, p = st.p;
     if (!pet) return;
+    if (pet.down) { pet.downT -= dt; return; }
     if (!pet.y) { pet.x = p.x - p.face * 30; pet.y = p.y + 8; }
+    pet.invuln -= dt; pet.flash -= dt; pet.hpShow -= dt;
     pet.cd -= dt; pet.recover -= dt; pet.windup -= dt;
     const P = pet.P;
     const target = p.hp > 0 && !st.ended ? nearestEnemy(pet.x, pet.y, P.kind === 'melee' ? 150 : P.range) : null;
@@ -283,8 +311,7 @@ const Battle = (() => {
       p.dx = mv.x / (mv.m || 1); p.dy = mv.y / (mv.m || 1);
       if (st.trail && (st.trailT -= dt) <= 0) {
         st.trailT = 0.05;
-        const C = COSMETICS[st.trail];
-        if (C && st.parts.length < 450) st.parts.push({ x: p.x - p.face * 8 + rand(-5, 5), y: p.y - rand(2, 14), vx: -p.face * rand(10, 30), vy: rand(-40, -10), life: 0.55, max: 0.55, color: C.color, size: rand(2, 4), grav: st.trail === 'estela_hojas' ? 40 : -20 });
+        if (COSMETICS[st.trail] && st.parts.length < 450) st.parts.push(Sprites.trailPart(st.trail, p.x, p.y, p.face));
       }
     } else p.walk = 0;
     p.x = clamp(p.x, 16, W - 16);
@@ -586,8 +613,15 @@ const Battle = (() => {
     let slow = 1;
     if (e.frozen > 0) { e.frozen -= dt; if (!e.boss) return; slow = 0.4; }
     if (e.slowT > 0) { e.slowT -= dt; slow *= 0.5; if (Math.random() < dt * 6) st.parts.push({ x: e.x + rand(-10, 10), y: e.y - rand(5, e.size), vx: 0, vy: -10, life: 0.5, max: 0.5, color: '#bae6fd', size: 2, grav: 0 }); }
-    const p = st.p;
-    const dx = p.x - e.x, dy = p.y - e.y;
+    const p = st.p, pet = st.pet;
+    // A veces un enemigo cercano se fija en la mascota (los jefes siempre van por el caballero)
+    if (!e.boss && petAlive()) {
+      e.focusT = (e.focusT || rand(0.5, 2)) - dt;
+      if (e.focusT <= 0) { e.focusT = rand(3, 5); e.focusPet = gdist(e.x, e.y, pet.x, pet.y) < 220 && Math.random() < 0.35; }
+    } else e.focusPet = false;
+    const T = e.focusPet ? pet : p;
+    const tAlive = T === p ? p.hp > 0 : !pet.down;
+    const dx = T.x - e.x, dy = T.y - e.y;
     const onScreen = e.x > 6 && e.x < W - 6;
     if (e.boss && updateBoss(e, dt * slow)) { clampEnemy(e); return; }
     if (e.recover > 0) { e.recover -= dt; return; }
@@ -609,6 +643,7 @@ const Battle = (() => {
       e.walk += dt * 22;
       if (st.parts.length < 400) st.parts.push({ x: e.x - e.face * e.size * 0.3, y: e.y - 3, vx: -e.face * 40, vy: -20, life: 0.3, max: 0.3, color: '#d6d3d1', size: 3, grav: 0 });
       if (!e.dashHit && gdist(e.x, e.y, p.x, p.y) < e.size * 0.45 + 10) { if (hurtPlayer(e.atk * 1.3, e.boss)) e.dashHit = true; }
+      if (!e.dashHit && petAlive() && gdist(e.x, e.y, pet.x, pet.y) < e.size * 0.45 + 8) { if (hurtPet(e.atk * 1.3, e.boss)) e.dashHit = true; }
       if (e.stateT <= 0 || d < 6) { e.state = 'move'; e.recover = 0.6; e.specialCd = rand(2.8, 4.2); }
       clampEnemy(e);
       return;
@@ -625,25 +660,25 @@ const Battle = (() => {
       e.windup -= dt * slow;
       if (e.windup <= 0) {
         if (e.def.ai === 'ranged') shoot(e, e.def.proj, Math.atan2(dy, dx));
-        else if (Math.abs(dx) <= e.range + 18 && Math.abs(dy) < DEPTH + 6) hurtPlayer(e.atk, e.boss);
+        else if (Math.abs(dx) <= e.range + 18 && Math.abs(dy) < DEPTH + 6) { if (T === p) hurtPlayer(e.atk, e.boss); else hurtPet(e.atk); }
         e.recover = 0.3; e.atkT = e.def.atkCd * rand(0.9, 1.15);
       }
       return;
     }
 
-    const dist = gdist(e.x, e.y, p.x, p.y);
+    const dist = gdist(e.x, e.y, T.x, T.y);
     const ai = e.def.ai;
     // Habilidades especiales según tipo
-    if (ai === 'charger' && e.specialCd <= 0 && onScreen && dist > 70 && dist < 240 && p.hp > 0) {
+    if (ai === 'charger' && e.specialCd <= 0 && onScreen && dist > 70 && dist < 240 && tAlive) {
       e.state = 'aim'; e.stateT = 0.55;
       const ext = 40;
       const d = Math.hypot(dx, dy) || 1;
-      e.tx = clamp(p.x + dx / d * ext, 10, W - 10); e.ty = clamp(p.y + dy / d * ext * 0.5, fieldTop(), fieldBot());
+      e.tx = clamp(T.x + dx / d * ext, 10, W - 10); e.ty = clamp(T.y + dy / d * ext * 0.5, fieldTop(), fieldBot());
       st.lines.push({ e, t: 0.55 });
       Sfx.play('warn');
       return;
     }
-    if (ai === 'tank' && e.specialCd <= 0 && dist < 80 && p.hp > 0) {
+    if (ai === 'tank' && e.specialCd <= 0 && dist < 80 && tAlive) {
       e.state = 'slam'; e.stateT = 0.9;
       addZone(e.x, e.y, 62, 0.9, e.atk * 1.4, 'slam', false);
       Sfx.play('warn');
@@ -658,14 +693,14 @@ const Battle = (() => {
       else { my = e.strafe * 0.6; if (Math.random() < dt * 0.5) e.strafe *= -1; }
       e.x += mx * e.speed * slow * dt; e.y += my * e.speed * 0.7 * slow * dt;
       if (mx || my) e.walk += dt * 10;
-      if (dist <= e.range && onScreen && e.atkT <= 0 && p.hp > 0) { e.windupMax = 0.6; e.windup = 0.6; }
+      if (dist <= e.range && onScreen && e.atkT <= 0 && tAlive) { e.windupMax = 0.6; e.windup = 0.6; }
       clampEnemy(e, true);
       return;
     }
 
     // Cuerpo a cuerpo: se coloca a un lado del jugador, a la misma profundidad
-    const side = e.x < p.x ? -1 : 1;
-    const tx = p.x + side * (e.range * 0.8 + 6), ty = p.y;
+    const side = e.x < T.x ? -1 : 1;
+    const tx = T.x + side * (e.range * 0.8 + 6), ty = T.y;
     const mx = tx - e.x, my = ty - e.y, md = Math.hypot(mx, my);
     const wobble = e.def.float ? Math.sin(st.time * 3 + e.seed) * 20 : 0;
     if (md > 4) {
@@ -675,7 +710,7 @@ const Battle = (() => {
       e.walk += dt * 10;
     }
     e.face = Math.sign(dx) || e.face;
-    if (Math.abs(dx) <= e.range + 10 && Math.abs(dy) < DEPTH - 4 && onScreen && e.atkT <= 0 && p.hp > 0) {
+    if (Math.abs(dx) <= e.range + 10 && Math.abs(dy) < DEPTH - 4 && onScreen && e.atkT <= 0 && tAlive) {
       e.windupMax = e.boss ? 0.5 : 0.42; e.windup = e.windupMax;
     }
     clampEnemy(e);
@@ -866,6 +901,7 @@ const Battle = (() => {
           z.boom = 0.45;
           const nx = (p.x - z.x) / z.r, ny = (p.y - z.y) / (z.r * 0.5);
           if (nx * nx + ny * ny < 1.15) hurtPlayer(z.dmg, z.boss);
+          if (petAlive()) { const qx = (st.pet.x - z.x) / z.r, qy = (st.pet.y - z.y) / (z.r * 0.5); if (qx * qx + qy * qy < 1.15) hurtPet(z.dmg, z.boss); }
           const col = FX_COLORS[z.fx] || '#fde68a';
           burst(z.x, z.y - 4, col, 16, 150, -120);
           Sfx.play(z.fx === 'ice' ? 'ice' : 'boom');
@@ -1053,6 +1089,7 @@ const Battle = (() => {
       if (pr.hostile && pr.owner && pr.owner.dead) { pr.life = 0; burst(pr.x, pr.y - (pr.h || 24), '#9ca3af', 5, 60); continue; }
       if (pr.hostile) {
         if (gdist(pr.x, pr.y, p.x, p.y) < 14) { if (hurtPlayer(pr.dmg, pr.boss)) { pr.life = 0; burst(pr.x, pr.y - 24, '#fca5a5', 6, 80); } }
+        else if (petAlive() && gdist(pr.x, pr.y, st.pet.x, st.pet.y) < 11) { if (hurtPet(pr.dmg, pr.boss)) pr.life = 0; }
       } else {
         for (const e of st.enemies) {
           if (e.dead || (pr.hitSet && pr.hitSet.has(e))) continue;
@@ -1206,6 +1243,7 @@ const Battle = (() => {
       c.globalAlpha = 1;
     }
     for (const pt of st.parts) {
+      if (pt.shape) { Sprites.drawPart(c, pt); continue; }
       c.globalAlpha = Math.max(0, pt.life / pt.max);
       c.fillStyle = pt.color;
       c.fillRect(pt.x - pt.size / 2, pt.y - pt.size / 2, pt.size, pt.size);
@@ -1254,7 +1292,7 @@ const Battle = (() => {
     const S = Game.S;
     c.globalAlpha = alpha;
     Sprites.knight(c, x, y, 1.0, { face, walk: 0, swing: -1, heavy: false, time: st.time,
-      weaponColor: ITEMS[S.equip.weapon].color, armorColor: ITEMS[S.equip.armor].color, flash: false, helmet: S.settings.helmet, rank: Game.rank() });
+      weaponColor: ITEMS[S.equip.weapon].color, armorColor: ITEMS[S.equip.armor].color, flash: false, helmet: S.settings.helmet, rank: Game.rank(), ghost: true });
     c.globalAlpha = 1;
   }
 
@@ -1303,11 +1341,23 @@ const Battle = (() => {
   }
 
   function drawPet(c, pet) {
-    Sprites.enemy(c, pet, st.time);
-    // Nivel de la mascota
+    if (pet.down) {
+      // Se desvanece en chispas al caer; ya no vuelve en esta partida
+      if (pet.downT <= 0) return;
+      c.save(); c.globalAlpha = Math.max(0, pet.downT / 1.2);
+      Sprites.enemy(c, Object.assign({}, pet, { y: pet.y - (1.2 - pet.downT) * 18 }), st.time);
+      c.restore();
+      return;
+    }
+    if (pet.invuln > 0 && pet.flash > 0) { c.save(); c.globalAlpha = 0.6; Sprites.enemy(c, pet, st.time); c.restore(); }
+    else Sprites.enemy(c, pet, st.time);
+    // Nivel y vida de la mascota
     c.font = '800 9px system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
     c.lineWidth = 3; c.strokeStyle = '#000a'; c.strokeText(`Nv ${pet.lvl}`, pet.x, pet.y + 9);
     c.fillStyle = '#fde68a'; c.fillText(`Nv ${pet.lvl}`, pet.x, pet.y + 9);
+    const w = 26, x = pet.x - w / 2, y = pet.y + 15, k = pet.hp / pet.maxHp;
+    c.fillStyle = '#000a'; c.fillRect(x - 1, y - 1, w + 2, 5);
+    c.fillStyle = k > 0.5 ? '#4ade80' : k > 0.25 ? '#facc15' : '#ef4444'; c.fillRect(x, y, w * k, 3);
   }
 
   function drawDrop(c, d) {

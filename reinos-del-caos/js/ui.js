@@ -1164,17 +1164,32 @@ const UI = (() => {
 
   /** Anima al caballero en reposo dentro de un canvas mientras su pantalla esté visible. */
   const knightAnims = {};
-  function animateKnight(canvasId, screen, x, y, scale) {
+  /** Caballero animado en un lienzo. `look()` (opcional) devuelve { aura, trail } para la vista previa de apariencia. */
+  function animateKnight(canvasId, screen, x, y, scale, look) {
     cancelAnimationFrame(knightAnims[canvasId]);
     const cv = $(canvasId);
     if (!cv) return;
     const c = cv.getContext('2d'), s = S(), t0 = performance.now();
+    const parts = [];
+    let last = t0, walk = 0, spawn = 0;
     (function frame(t) {
       if (!document.body.contains(cv) || current !== screen) return;
+      const dt = Math.min(0.05, (t - last) / 1000); last = t;
+      const L = look ? look() : null, trail = L && L.trail;
       c.setTransform(1, 0, 0, 1, 0, 0);
       c.clearRect(0, 0, cv.width, cv.height);
-      Sprites.knight(c, x, y, scale, { face: 1, walk: 0, swing: -1, heavy: false, time: (t - t0) / 1000,
-        weaponColor: ITEMS[s.equip.weapon].color, armorColor: ITEMS[s.equip.armor].color, flash: false, helmet: s.settings.helmet, rank: Game.rank() });
+      // Con estela, el caballero "camina" en su sitio y las partículas se quedan atrás
+      if (trail) {
+        walk += dt * 11;
+        if ((spawn -= dt) <= 0 && parts.length < 160) { spawn = 0.035; parts.push(Sprites.trailPart(trail, x - 4 * scale, y, 1, scale * 0.8)); }
+      } else walk = 0;
+      for (const p of parts) { p.vy += p.grav * dt; p.x += (p.vx - 38 * scale) * dt; p.y += p.vy * dt; p.life -= dt; }
+      for (let i = parts.length - 1; i >= 0; i--) if (parts[i].life <= 0) parts.splice(i, 1);
+      for (const p of parts) Sprites.drawPart(c, p);
+      const o = { face: 1, walk, swing: -1, heavy: false, time: (t - t0) / 1000,
+        weaponColor: ITEMS[s.equip.weapon].color, armorColor: ITEMS[s.equip.armor].color, flash: false, helmet: s.settings.helmet, rank: Game.rank() };
+      if (L) o.aura = L.aura || '';
+      Sprites.knight(c, x, y, scale, o);
       knightAnims[canvasId] = requestAnimationFrame(frame);
     })(t0);
   }
@@ -1254,20 +1269,60 @@ const UI = (() => {
     const me = Game.account.session && Game.account.session.id;
     // Tu fila siempre muestra tus datos actuales
     if (me) {
-      const cur = Object.assign({ id: me }, mine || {}, { name: S().username, level: S().level, power: Game.stats().power, tower: S().tower.best, combo: S().stats.bestCombo, rank: Game.rank() });
+      const cur = Object.assign({ id: me }, mine || {}, { name: S().username, level: S().level, power: Game.stats().power, tower: S().tower.best, combo: S().stats.bestCombo, rank: Game.rank(),
+        bosses: Object.values(S().bossKills).reduce((a, b) => a + b, 0) });
       list = list.filter(r => r.id !== me).concat([cur]);
     }
     const key = field;
     list.sort((a, b) => (b[key] || 0) - (a[key] || 0));
     if (!list.length) { box.innerHTML = '<p class="hint">Todavía no hay nadie en el ranking. ¡Sé el primero!</p>'; return; }
     const val = r => field === 'power' ? `💥 ${fmt(r.power || 0)}` : field === 'level' ? `⭐ Nv ${r.level || 1}` : field === 'tower' ? `🏰 Piso ${r.tower || 0}` : `🔥 x${r.combo || 0}`;
-    const row = (r, i) => `<div class="rank-row ${r.id === me ? 'me' : ''}">
+    view.rankList = list;
+    const row = (r, i) => `<div class="rank-row clickable ${r.id === me ? 'me' : ''}" data-act="rank-profile" data-i="${i}">
       <span class="pos">${i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</span>
       <span class="who"><b>${esc(String(r.name || 'Guerrero').slice(0, 16))}${r.id === me ? ' (tú)' : ''}</b><small style="color:${(RANKS[r.rank] || RANKS[0]).color}">${(RANKS[r.rank] || RANKS[0]).name}</small></span>
       <span class="val">${val(r)}</span></div>`;
     const top = list.slice(0, 30), myIdx = list.findIndex(r => r.id === me);
     box.innerHTML = top.map(row).join('') + (myIdx >= 30 ? `<div class="rank-sep">…</div>${row(list[myIdx], myIdx)}` : '')
       + `<p class="hint rank-time">🔄 Se actualiza solo · ${new Date().toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</p>`;
+  }
+
+  /** Perfil básico de otro jugador (lo que publica en la clasificación). */
+  function rankProfile(i) {
+    const list = view.rankList || [], r = list[+i];
+    if (!r) return;
+    const R = RANKS[r.rank] || RANKS[0], me = Game.account.session && r.id === Game.account.session.id;
+    const name = esc(String(r.name || 'Guerrero').slice(0, 16));
+    const pos = list.slice().sort((a, b) => (b.power || 0) - (a.power || 0)).indexOf(r) + 1;
+    const when = r.updated_at ? new Date(r.updated_at) : null;
+    const ago = when && !isNaN(when) ? (() => {
+      const m = Math.max(0, Math.round((Date.now() - when) / 60000));
+      return m < 2 ? 'ahora mismo' : m < 60 ? `hace ${m} min` : m < 1440 ? `hace ${Math.round(m / 60)} h` : `hace ${Math.round(m / 1440)} días`;
+    })() : '';
+    openModal(`<div class="profile-card">
+      <canvas id="prof-cv" width="240" height="300" aria-label="Caballero de ${name}"></canvas>
+      <h2 style="margin:4px 0 0">${name}${me ? ' (tú)' : ''}</h2>
+      <div style="color:${R.color};font-weight:800">${R.icon || '🛡️'} ${R.name}</div>
+      <div class="profile-stats">
+        <div><b>⭐ ${r.level || 1}</b><small>Nivel</small></div>
+        <div><b>💥 ${fmt(r.power || 0)}</b><small>Poder${pos ? ` · #${pos}` : ''}</small></div>
+        <div><b>🏰 ${r.tower || 0}</b><small>Récord en la Torre</small></div>
+        <div><b>🔥 x${r.combo || 0}</b><small>Mejor combo</small></div>
+        <div><b>👑 ${r.bosses || 0}</b><small>Jefes vencidos</small></div>
+      </div>
+      ${ago ? `<p class="hint">Jugó por última vez ${ago}</p>` : ''}
+      <div class="modal-actions"><button class="btn ghost" data-act="close">Cerrar</button></div></div>`);
+    // Caballero con el rango del jugador (equipo básico: no se publica su inventario)
+    const cv = $('prof-cv');
+    if (!cv) return;
+    const c = cv.getContext('2d'), t0 = performance.now();
+    (function frame(t) {
+      if (!document.body.contains(cv)) return;
+      c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, cv.width, cv.height);
+      Sprites.knight(c, 120, 285, 3.4, { face: 1, walk: 0, swing: -1, heavy: false, time: (t - t0) / 1000, flash: false,
+        weaponColor: '#cbd5e1', aura: '', helmet: true, rank: r.rank || 0, plain: !me });
+      requestAnimationFrame(frame);
+    })(t0);
   }
 
   /* ---------- Mascotas y apariencia ---------- */
@@ -1296,11 +1351,14 @@ const UI = (() => {
           if (C.gems) how = `<button class="btn small" data-act="cos-buy" data-id="${id}" ${s.gems >= C.gems ? '' : 'disabled'}>💎 ${C.gems} Comprar</button>`;
           else { const a = ACHIEVEMENTS.find(x => x.id === C.ach[0]); how = `<div class="item-meta">🔒 Logro «${a.name}» ${MEDALS[C.ach[1]].icon}: ${a.text(a.goals[C.ach[1]])}</div>`; }
         } else how = `<button class="btn small ${worn ? 'ghost' : ''}" data-act="cos-wear" data-id="${id}">${worn ? '✅ Puesto (quitar)' : '✨ Ponerse'}</button>`;
-        return `<div class="card item-card ${unlocked ? '' : 'locked'}" style="--rc:${C.color}">
+        const viewing = view.previewCos === id;
+        return `<div class="card item-card ${unlocked ? '' : 'locked'} ${viewing ? 'previewing' : ''}" style="--rc:${C.color}">
           <div class="item-head"><div class="item-icon">${C.icon}</div><div><div class="item-name">${C.name}</div><div class="item-meta">${C.type === 'aura' ? 'Aura alrededor del caballero' : 'Estela al moverte en combate'}</div></div></div>
-          ${how}</div>`;
+          <div class="cos-btns"><button class="btn small ghost" data-act="cos-try" data-id="${id}">${viewing ? '👁️ Viendo' : '👁️ Probar'}</button>${how}</div></div>`;
       }).join('');
-      body = `<div class="style-preview"><canvas id="style-cv" width="240" height="300" aria-label="Vista previa"></canvas></div>
+      const P = view.previewCos && COSMETICS[view.previewCos];
+      const label = P ? `👁️ Probando: <b>${P.icon} ${P.name}</b>${Game.cosmeticUnlocked(view.previewCos) ? '' : ' <span class="pill">🔒 sin comprar</span>'}` : 'Así te ves ahora · toca «👁️ Probar» para verlo antes de comprar';
+      body = `<div class="style-preview"><canvas id="style-cv" width="240" height="300" aria-label="Vista previa"></canvas><div class="style-label">${label}</div></div>
         <p class="hint">Solo cambian el aspecto: no dan poder.</p><div class="cards">${cards}</div>`;
     }
     $('scr-pets').innerHTML = `${head('🐾 Compañeros')}
@@ -1309,7 +1367,10 @@ const UI = (() => {
         <button class="tab ${tab === 'style' ? 'active' : ''}" data-act="pet-tab" data-tab="style">🎨 Apariencia</button>
       </div>${body}`;
     drawPets();
-    if (tab === 'style') animateKnight('style-cv', 'pets', 120, 285, 3.4);
+    if (tab === 'style') animateKnight('style-cv', 'pets', 120, 285, 3.4, () => {
+      const P = view.previewCos && COSMETICS[view.previewCos], w = S().cosmetics;
+      return { aura: P && P.type === 'aura' ? view.previewCos : w.aura, trail: P && P.type === 'trail' ? view.previewCos : w.trail };
+    });
   };
   function drawPets() {
     document.querySelectorAll('canvas[data-pet]').forEach(cv => {
@@ -1456,7 +1517,9 @@ const UI = (() => {
       toast(`${MEDALS[r.medal].icon} ¡Medalla de ${MEDALS[r.medal].name.toLowerCase()}! +${r.gems} 💎`);
       RENDER.trophies(); refreshTop();
     },
-    'pet-tab': d => { view.petTab = d.tab; RENDER.pets(); },
+    'pet-tab': d => { view.petTab = d.tab; view.previewCos = null; RENDER.pets(); },
+    'rank-profile': d => rankProfile(d.i),
+    'cos-try': d => { view.previewCos = view.previewCos === d.id ? null : d.id; RENDER.pets(); const cv = $('style-cv'); if (cv) cv.scrollIntoView({ behavior: 'smooth', block: 'center' }); },
     'pets-open': d => { view.petTab = d.tab; show('pets'); },
     'pet-use': d => { S().pets.active = d.id; Game.save(); toast(`🐾 ${PETS[d.id].name} te acompaña`); RENDER.pets(); },
     'cos-buy': d => { if (Game.buyCosmetic(d.id)) { Sfx.play('chest'); Game.wearCosmetic(d.id); toast(`✨ ${COSMETICS[d.id].name}`); RENDER.pets(); refreshTop(); } },

@@ -217,24 +217,242 @@ const Sprites = (() => {
     const ri = it => (it ? RARITY_ORDER.indexOf(it.rarity) : 0);
     return { weapon: w, armor: a, wr: ri(w), ar: ri(a), aura: S.cosmetics && COSMETICS[S.cosmetics.aura] };
   }
-  /** Aura cosmética: resplandor y chispas que suben alrededor del caballero. */
-  function cosmeticAura(c, s, t, color) {
-    const n = parseInt(color.slice(1), 16), rgb = `${n >> 16},${(n >> 8) & 255},${n & 255}`;
-    const pulse = 0.28 + Math.sin(t * 3.2) * 0.08;
-    const g = c.createRadialGradient(0, -30 * s, 4 * s, 0, -30 * s, 38 * s);
-    g.addColorStop(0, `rgba(${rgb},${pulse})`); g.addColorStop(1, `rgba(${rgb},0)`);
-    c.fillStyle = g; c.beginPath(); c.ellipse(0, -30 * s, 30 * s, 40 * s, 0, 0, Math.PI * 2); c.fill();
-    c.fillStyle = `rgba(${rgb},.9)`;
-    for (let i = 0; i < 6; i++) {
-      const ph = (t * 0.8 + i / 6) % 1;
-      c.globalAlpha = (1 - ph) * 0.9;
-      c.beginPath(); c.arc(Math.sin(i * 2.1 + t * 1.5) * 15 * s, -ph * 62 * s, 1.5 * s, 0, Math.PI * 2); c.fill();
+  /* ---------- Auras y estelas cosméticas ---------- */
+  const rgbOf = hex => { const n = parseInt(hex.slice(1), 16); return [n >> 16, (n >> 8) & 255, n & 255]; };
+  const rgba = (k, a) => `rgba(${k[0]},${k[1]},${k[2]},${a})`;
+  const hash = i => { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };
+  const TAU = Math.PI * 2;
+  /** Destello de 4 puntas. */
+  function sparkle(c, x, y, r) {
+    c.beginPath();
+    c.moveTo(x, y - r); c.quadraticCurveTo(x, y, x + r, y); c.quadraticCurveTo(x, y, x, y + r);
+    c.quadraticCurveTo(x, y, x - r, y); c.quadraticCurveTo(x, y, x, y - r); c.fill();
+  }
+  /** Lengua de fuego que nace en (x, y) y sube h. */
+  function flameShape(c, x, y, w, h, lean) {
+    c.beginPath(); c.moveTo(x - w, y);
+    c.quadraticCurveTo(x - w * 1.1, y - h * 0.5, x + lean, y - h);
+    c.quadraticCurveTo(x + w * 1.1, y - h * 0.45, x + w, y);
+    c.quadraticCurveTo(x, y + w * 0.4, x - w, y); c.fill();
+  }
+  /** Cristal de hielo alargado con brillo. */
+  function crystal(c, x, y, r, rot) {
+    c.save(); c.translate(x, y); c.rotate(rot);
+    c.beginPath(); c.moveTo(0, -r * 1.6); c.lineTo(r * 0.6, 0); c.lineTo(0, r * 1.6); c.lineTo(-r * 0.6, 0); c.closePath(); c.fill();
+    c.fillStyle = 'rgba(255,255,255,.85)';
+    c.beginPath(); c.moveTo(0, -r * 1.6); c.lineTo(r * 0.25, -r * 0.2); c.lineTo(-r * 0.2, -r * 0.1); c.closePath(); c.fill();
+    c.restore();
+  }
+  /** Resplandor que envuelve el cuerpo. */
+  function bodyGlow(c, s, k, a, w = 34, h = 44) {
+    // Degradado circular estirado a elipse: el borde se desvanece sin cortes
+    c.save(); c.translate(0, -30 * s); c.scale(w / h, 1);
+    const g = c.createRadialGradient(0, 0, 3 * s, 0, 0, h * s);
+    g.addColorStop(0, rgba(k, a)); g.addColorStop(0.55, rgba(k, a * 0.45)); g.addColorStop(1, rgba(k, 0));
+    c.fillStyle = g; c.beginPath(); c.arc(0, 0, h * s, 0, TAU); c.fill(); c.restore();
+  }
+  /** Anillo mágico en el suelo, con runas que giran. */
+  function groundRing(c, s, t, k, r, spin) {
+    const pulse = 0.55 + Math.sin(t * 3) * 0.2;
+    const g = c.createRadialGradient(0, 0, r * 0.2 * s, 0, 0, r * s);
+    g.addColorStop(0, rgba(k, 0.32 * pulse)); g.addColorStop(1, rgba(k, 0));
+    c.fillStyle = g; c.beginPath(); c.ellipse(0, 0, r * s, r * 0.32 * s, 0, 0, TAU); c.fill();
+    c.strokeStyle = rgba(k, 0.75 * pulse); c.lineWidth = 1.3 * s;
+    c.beginPath(); c.ellipse(0, 0, r * 0.8 * s, r * 0.26 * s, 0, 0, TAU); c.stroke();
+    c.fillStyle = rgba(k, 0.9 * pulse);
+    for (let i = 0; i < 8; i++) {
+      const a = t * spin + i * TAU / 8;
+      c.fillRect(Math.cos(a) * r * 0.8 * s - s, Math.sin(a) * r * 0.26 * s - s, 2 * s, 2 * s);
     }
+  }
+  /**
+   * Cada aura tiene su propio efecto, en dos capas: 'back' (detrás del caballero)
+   * y 'front' (delante). Lo que orbita pasa por detrás y por delante según la profundidad.
+   */
+  const AURA_FX = {
+    aura_dorada(c, s, t, k, layer) {
+      if (layer === 'back') {
+        groundRing(c, s, t, k, 34, 0.8);
+        bodyGlow(c, s, k, 0.34 + Math.sin(t * 3.2) * 0.08);
+        // Rayos de luz que giran despacio
+        c.save(); c.translate(0, -32 * s); c.rotate(t * 0.35); c.globalCompositeOperation = 'lighter';
+        for (let i = 0; i < 12; i++) {
+          const a = i * TAU / 12, len = (38 + Math.sin(t * 2 + i * 1.7) * 9) * s, wd = 0.07;
+          const g = c.createLinearGradient(0, 0, Math.cos(a) * len, Math.sin(a) * len);
+          g.addColorStop(0, rgba(k, 0.32)); g.addColorStop(1, rgba(k, 0));
+          c.fillStyle = g; c.beginPath(); c.moveTo(0, 0);
+          c.lineTo(Math.cos(a - wd) * len, Math.sin(a - wd) * len); c.lineTo(Math.cos(a + wd) * len, Math.sin(a + wd) * len); c.fill();
+        }
+        c.restore();
+      } else {
+        c.save(); c.globalCompositeOperation = 'lighter';
+        for (let i = 0; i < 9; i++) {
+          const ph = (t * 0.45 + hash(i)) % 1, tw = Math.sin(t * 6 + i * 2.3) * 0.5 + 0.5;
+          c.globalAlpha = (1 - ph) * (0.4 + tw * 0.6);
+          c.fillStyle = i % 3 ? rgba(k, 1) : '#fffbe6';
+          sparkle(c, (hash(i + 9) - 0.5) * 46 * s + Math.sin(t + i) * 4 * s, -ph * 70 * s - 2 * s, (1.6 + tw * 2.4) * s);
+        }
+        c.restore();
+      }
+    },
+    aura_hielo(c, s, t, k, layer) {
+      if (layer === 'back') {
+        groundRing(c, s, t, k, 32, -0.6);
+        bodyGlow(c, s, k, 0.3 + Math.sin(t * 2.4) * 0.06);
+        // Escarcha en el suelo: puntas de hielo alrededor de los pies
+        c.fillStyle = rgba([224, 242, 254], 0.75);
+        for (let i = 0; i < 7; i++) {
+          const x = (i - 3) * 7 * s, h = (5 + hash(i) * 7 + Math.sin(t * 2 + i) * 1.2) * s;
+          c.beginPath(); c.moveTo(x - 2.4 * s, 1 * s); c.lineTo(x + (hash(i + 3) - 0.5) * 3 * s, -h); c.lineTo(x + 2.4 * s, 1 * s); c.fill();
+        }
+      } else {
+        // Copos que caen
+        c.fillStyle = '#f0f9ff';
+        for (let i = 0; i < 10; i++) {
+          const ph = (t * 0.3 + hash(i)) % 1;
+          c.globalAlpha = Math.sin(ph * Math.PI) * 0.85;
+          c.beginPath(); c.arc((hash(i + 4) - 0.5) * 52 * s + Math.sin(t * 1.5 + i) * 5 * s, (-74 + ph * 74) * s, (0.8 + hash(i + 7)) * s, 0, TAU); c.fill();
+        }
+        c.globalAlpha = 1;
+      }
+      // Cristales que orbitan alrededor del cuerpo
+      for (let i = 0; i < 5; i++) {
+        const a = t * 1.3 + i * TAU / 5, depth = Math.sin(a);
+        if ((depth > 0) !== (layer === 'front')) continue;
+        const x = Math.cos(a) * 25 * s, y = (-30 + Math.sin(t * 2 + i) * 9) * s + depth * 6 * s;
+        c.globalAlpha = 0.65 + depth * 0.3;
+        c.fillStyle = rgba(k, 0.9);
+        crystal(c, x, y, (2.4 + depth * 0.6) * s, Math.sin(t + i) * 0.4);
+      }
+      c.globalAlpha = 1;
+    },
+    aura_fuego(c, s, t, k, layer) {
+      if (layer === 'back') {
+        bodyGlow(c, s, [251, 146, 60], 0.36 + Math.sin(t * 9) * 0.05, 36, 46);
+        // Llamas que suben desde los pies, por detrás del cuerpo
+        c.save(); c.globalCompositeOperation = 'lighter';
+        for (let i = 0; i < 9; i++) {
+          const x = (i - 4) * 5.5 * s, fl = Math.sin(t * 11 + i * 1.9) * 0.18 + Math.sin(t * 7 + i) * 0.12;
+          const h = (26 + hash(i) * 26) * (1 + fl) * s * (1 - Math.abs(i - 4) * 0.08);
+          c.fillStyle = 'rgba(220,38,38,.55)'; flameShape(c, x, 2 * s, 5 * s, h, Math.sin(t * 5 + i) * 4 * s);
+          c.fillStyle = 'rgba(249,115,22,.6)'; flameShape(c, x, 2 * s, 3.6 * s, h * 0.75, Math.sin(t * 5 + i) * 3 * s);
+          c.fillStyle = 'rgba(253,224,71,.55)'; flameShape(c, x, 2 * s, 2 * s, h * 0.45, Math.sin(t * 5 + i) * 2 * s);
+        }
+        c.restore();
+      } else {
+        // Brasas que suben girando y llamitas delante de los pies
+        c.save(); c.globalCompositeOperation = 'lighter';
+        for (let i = 0; i < 4; i++) {
+          const x = (i - 1.5) * 9 * s, h = (8 + Math.sin(t * 12 + i * 2) * 3) * s;
+          c.fillStyle = 'rgba(249,115,22,.55)'; flameShape(c, x, 2 * s, 3 * s, h, 0);
+          c.fillStyle = 'rgba(254,240,138,.6)'; flameShape(c, x, 2 * s, 1.5 * s, h * 0.6, 0);
+        }
+        for (let i = 0; i < 12; i++) {
+          const ph = (t * 0.7 + hash(i)) % 1;
+          c.globalAlpha = 1 - ph;
+          c.fillStyle = ph < 0.4 ? '#fde68a' : ph < 0.7 ? '#fb923c' : '#ef4444';
+          const x = (hash(i + 2) - 0.5) * 40 * s + Math.sin(t * 3 + i * 1.3) * 7 * s * ph;
+          c.beginPath(); c.arc(x, -ph * 82 * s, (1.6 - ph) * s + 0.4, 0, TAU); c.fill();
+        }
+        c.restore();
+      }
+    },
+    aura_sombra(c, s, t, k, layer) {
+      if (layer === 'back') {
+        // Humo oscuro que se retuerce hacia arriba
+        for (let i = 0; i < 9; i++) {
+          const ph = (t * 0.35 + hash(i)) % 1;
+          const x = (hash(i + 5) - 0.5) * 30 * s + Math.sin(t * 1.4 + i * 2) * 10 * s * ph;
+          const r = (8 + ph * 16) * s;
+          const g = c.createRadialGradient(x, -ph * 70 * s, 0, x, -ph * 70 * s, r);
+          g.addColorStop(0, `rgba(30,10,50,${0.5 * Math.sin(ph * Math.PI)})`); g.addColorStop(1, 'rgba(30,10,50,0)');
+          c.fillStyle = g; c.beginPath(); c.arc(x, -ph * 70 * s, r, 0, TAU); c.fill();
+        }
+        bodyGlow(c, s, k, 0.3 + Math.sin(t * 2.6) * 0.08);
+        // Sombra que se extiende por el suelo con un círculo de runas
+        c.fillStyle = 'rgba(20,0,40,.45)'; c.beginPath(); c.ellipse(0, 0, 30 * s, 9 * s, 0, 0, TAU); c.fill();
+        groundRing(c, s, t, k, 30, 1.2);
+      } else {
+        // Chispazos violetas de vez en cuando
+        const z = Math.floor(t * 3), zp = t * 3 - z;
+        if (hash(z) > 0.55 && zp < 0.35) {
+          c.save(); c.globalCompositeOperation = 'lighter';
+          c.strokeStyle = `rgba(216,180,254,${1 - zp / 0.35})`; c.lineWidth = 1.2 * s;
+          let x = (hash(z + 1) - 0.5) * 34 * s, y = -66 * s;
+          c.beginPath(); c.moveTo(x, y);
+          for (let j = 1; j <= 5; j++) { x += (hash(z * 7 + j) - 0.5) * 12 * s; y += 11 * s; c.lineTo(x, y); }
+          c.stroke(); c.restore();
+        }
+      }
+      // Orbes oscuros con estela que giran alrededor
+      for (let i = 0; i < 3; i++) {
+        for (let j = 5; j >= 0; j--) {
+          const a = t * 2 + i * TAU / 3 - j * 0.12, depth = Math.sin(a);
+          if ((depth > 0) !== (layer === 'front')) continue;
+          const x = Math.cos(a) * 24 * s, y = (-34 + Math.sin(t * 1.6 + i * 2) * 12) * s + depth * 5 * s;
+          c.globalAlpha = (1 - j / 6) * (0.75 + depth * 0.25);
+          c.fillStyle = j ? rgba(k, 0.7) : '#f5d0fe';
+          c.beginPath(); c.arc(x, y, (j ? 2.6 - j * 0.3 : 2.4) * s, 0, TAU); c.fill();
+          if (!j) { c.fillStyle = rgba(k, 0.35); c.beginPath(); c.arc(x, y, 5 * s, 0, TAU); c.fill(); }
+        }
+      }
+      c.globalAlpha = 1;
+    },
+  };
+  /** Dibuja una capa del aura (por id de cosmético). */
+  function auraFx(c, s, t, id, layer) {
+    const C = id && typeof COSMETICS !== 'undefined' && COSMETICS[id];
+    if (!C || C.type !== 'aura') return;
+    const fx = AURA_FX[id];
+    c.save();
+    if (fx) fx(c, s, t, rgbOf(C.color), layer);
+    else if (layer === 'back') bodyGlow(c, s, rgbOf(C.color), 0.3);
+    c.restore();
+  }
+
+  /** Partícula de estela según el cosmético (hojas, destellos, brasas, remolinos). */
+  const TRAIL_SHAPE = { estela_luz: 'star', estela_hojas: 'leaf', estela_fuego: 'ember', estela_caos: 'swirl' };
+  function trailPart(id, x, y, face, k = 1) {
+    const C = COSMETICS[id], shape = TRAIL_SHAPE[id] || 'dot', r = Math.random;
+    const pal = { star: ['#fde68a', '#fffbeb', '#facc15'], leaf: ['#84cc16', '#4d7c0f', '#a3e635', '#65a30d'], ember: ['#fde047', '#fb923c', '#ef4444'], swirl: ['#f43f5e', '#a855f7', '#fb7185'] }[shape] || [C.color];
+    const p = { x: x - face * 8 * k + (r() - 0.5) * 10 * k, y: y - (2 + r() * 16) * k, vx: -face * (10 + r() * 25) * k, vy: -(10 + r() * 30) * k,
+                life: 0.7, max: 0.7, color: pal[Math.floor(r() * pal.length)], size: (2.5 + r() * 2.5) * k, grav: -20 * k, shape, rot: r() * TAU, spin: (r() - 0.5) * 8 };
+    if (shape === 'leaf') { p.grav = 45 * k; p.vy = -(20 + r() * 25) * k; p.life = p.max = 0.9; p.size *= 1.3; }
+    if (shape === 'ember') { p.grav = -70 * k; p.life = p.max = 0.6; }
+    if (shape === 'swirl') { p.spin = 10 * (r() < 0.5 ? -1 : 1); p.size *= 1.4; p.vy *= 0.4; }
+    if (shape === 'star') { p.life = p.max = 0.65; }
+    return p;
+  }
+  function drawPart(c, p) {
+    const a = Math.max(0, p.life / p.max), age = p.max - p.life, rot = (p.rot || 0) + age * (p.spin || 0);
+    c.globalAlpha = a; c.fillStyle = p.color;
+    if (p.shape === 'star') {
+      c.save(); c.globalCompositeOperation = 'lighter';
+      sparkle(c, p.x, p.y, p.size * (0.6 + Math.sin(age * 25) * 0.4 + 0.4));
+      c.globalAlpha = a * 0.35; c.beginPath(); c.arc(p.x, p.y, p.size * 1.6, 0, TAU); c.fill(); c.restore();
+    } else if (p.shape === 'leaf') {
+      c.save(); c.translate(p.x + Math.sin(age * 6 + p.rot) * 3, p.y); c.rotate(rot);
+      c.beginPath(); c.ellipse(0, 0, p.size, p.size * 0.45, 0, 0, TAU); c.fill();
+      c.strokeStyle = 'rgba(20,50,10,.5)'; c.lineWidth = 0.6; c.beginPath(); c.moveTo(-p.size, 0); c.lineTo(p.size, 0); c.stroke();
+      c.restore();
+    } else if (p.shape === 'ember') {
+      c.save(); c.globalCompositeOperation = 'lighter';
+      const r = p.size * (0.5 + a * 0.5);
+      c.globalAlpha = a * 0.4; c.beginPath(); c.arc(p.x, p.y, r * 2.2, 0, TAU); c.fill();
+      c.globalAlpha = a; c.fillStyle = a > 0.5 ? '#fef9c3' : p.color; c.beginPath(); c.arc(p.x, p.y, r * 0.7, 0, TAU); c.fill();
+      c.restore();
+    } else if (p.shape === 'swirl') {
+      c.save(); c.translate(p.x, p.y); c.rotate(rot); c.strokeStyle = p.color; c.lineWidth = 1.4;
+      c.beginPath();
+      for (let i = 0; i <= 14; i++) { const q = i / 14, ang = q * TAU * 1.4, rr = q * p.size * (1.4 - a * 0.4); i ? c.lineTo(Math.cos(ang) * rr, Math.sin(ang) * rr) : c.moveTo(0, 0); }
+      c.stroke(); c.restore();
+    } else c.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
     c.globalAlpha = 1;
   }
+
   function knightArt(c, x, y, s, o) {
     const unit = KNIGHT_PX * s / ART.base.k, tint = o.flash ? 'rgba(255,50,50,.6)' : null;
-    const G = gearLook(), t = o.time || 0;
+    const G = o.plain ? {} : gearLook(), t = o.time || 0;
     let key, style;
     if (o.swing >= 0) { style = o.style || (o.heavy ? 'smash' : 'slash'); key = knightSwing(o); }
     else key = o.walk ? 'k_w' + walkIndex(o.walk) : null;
@@ -242,7 +460,8 @@ const Sprites = (() => {
     c.save();
     c.translate(x, y);
     c.scale(o.face, 1);
-    if (G.aura) cosmeticAura(c, s, t, G.aura.color);
+    const auraId = o.aura !== undefined ? o.aura : (Game.S && Game.S.cosmetics && Game.S.cosmetics.aura);
+    if (auraId && !o.ghost) auraFx(c, s, t, auraId, 'back');
     // Arma épica o mejor: el caballero brilla con el color del arma
     if (G.wr >= 3 && G.weapon && !tint) {
       const glow = 0.35 + Math.sin(t * 4) * 0.12, off = 1.6 * s;
@@ -251,6 +470,7 @@ const Sprites = (() => {
     draw(tint);
     // Armadura rara o mejor: tinte del color de la armadura
     if (G.ar >= 2 && G.armor && !tint) draw(G.armor.color, 0.1 + 0.05 * (G.ar - 2));
+    if (auraId && !o.ghost) auraFx(c, s, t, auraId, 'front');
     if (o.swing >= 0) swingArc(c, style, o.swing, s, arcColor(o.weaponColor));
     c.restore();
   }
@@ -1287,5 +1507,5 @@ const Sprites = (() => {
     c.beginPath(); c.moveTo(x, base); c.lineTo(x, base - 36); c.moveTo(x, base - 22); c.lineTo(x - 12, base - 34); c.moveTo(x, base - 30); c.lineTo(x + 11, base - 42); c.stroke();
   }
 
-  return { loadArt, artFit, ART, knight, enemy, background, coin, gem, heart, prop, crown, THEMES, rrect, shade };
+  return { loadArt, artFit, ART, knight, trailPart, drawPart, enemy, background, coin, gem, heart, prop, crown, THEMES, rrect, shade };
 })();

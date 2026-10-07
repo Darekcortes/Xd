@@ -343,7 +343,7 @@ const Game = (() => {
   }
   async function supaBoard(field) {
     const cols = { power: 'power', level: 'level', tower: 'tower', combo: 'combo' };
-    const rows = await Supa.call(`/rest/v1/leaderboard?select=user_id,name,level,power,tower,combo,bosses,rank&order=${cols[field] || 'power'}.desc&limit=30`, { headers: Supa.hdr() });
+    const rows = await Supa.call(`/rest/v1/leaderboard?select=user_id,name,level,power,tower,combo,bosses,rank,updated_at&order=${cols[field] || 'power'}.desc&limit=30`, { headers: Supa.hdr() });
     return (rows || []).map(r => Object.assign({ id: r.user_id }, r));
   }
 
