@@ -60,7 +60,9 @@ const Battle = (() => {
   /* ---------- Inicio de etapa ---------- */
   function start(stage, cb) {
     const tower = stage === 'tower';
-    const info = tower ? towerInfo(1) : stageInfo(stage);
+    const D = tower ? DIFFICULTIES[0] : DIFFICULTIES[Game.S.diff || 0];
+    let info = tower ? towerInfo(1) : stageInfo(stage);
+    if (D.id) info = applyDiff(info, D);
     const P = Game.stats();
     onEnd = cb;
     resize();
@@ -83,7 +85,9 @@ const Battle = (() => {
     const total = waves.reduce((t, w) => t + w.length, 0);
     st = {
       info, world: info.world, stage: tower ? 0 : stage, time: 0, tower: tower ? { floor: 0, cleared: 0 } : null,
-      ult: 0, ultT: 0, potionsUsed: 0, sparks: [], pet: makePet(P),
+      ult: 0, ultT: 0, potionsUsed: 0, sparks: [], pet: makePet(P), diff: D,
+      bless: {}, blessList: [], base: { dmg: P.dmg, maxHp: P.maxHp, crit: P.crit }, moveMult: 1, shieldHits: 0, boltT: 4,
+      lava: [], meteorT: 3, darkness: 0, phoenixUsed: false,
       p: { x: W * 0.3, y: (fieldTop() + fieldBot()) / 2, hp: P.maxHp, maxHp: P.maxHp, dmg: P.dmg, def: P.def,
            spd: P.spd, crit: P.crit, face: 1, atkT: 0, swing: -1, heavy: false, walk: 0, flash: 0, invuln: 0,
            chain: 0, chainT: 0, dodgeT: 0, dodgeCd: 0, dx: 1, dy: 0, ghostT: 0 },
@@ -111,6 +115,8 @@ const Battle = (() => {
     updateHud(true);
   }
 
+  const lootQty = q => Math.max(1, Math.round(q * (st.diff ? st.diff.loot : 1) * rand(0.8, 1.2)));
+
   function stop() { cancelAnimationFrame(raf); raf = 0; st = null; if (typeof Music !== 'undefined') Music.play('menu'); }
 
   /* ---------- Torre del Caos ---------- */
@@ -134,6 +140,35 @@ const Battle = (() => {
     }
     st.waves.push(towerWave(T.floor + 1));
     st.waveT = 1.4;
+    const B = st.bless;
+    if (B.curacion) heal(st.p.maxHp * B.curacion / 100);
+    st.shieldHits = B.escudo || 0;
+    if (st.p.hp > 0) offerBlessing();
+  }
+  /* Mejoras de la Torre: al superar un piso se elige 1 de 3 (duran toda la escalada) */
+  function rollBlessings() {
+    const ids = Object.keys(BLESSINGS).filter(id => id !== 'mascota' || st.pet).sort(() => Math.random() - 0.5).slice(0, 3);
+    const epic = Math.min(30, 8 + st.tower.floor * 0.6), rare = 30;
+    return ids.map(id => { const r = Math.random() * 100; return { id, tier: r < epic ? 2 : r < epic + rare ? 1 : 0 }; });
+  }
+  function offerBlessing() {
+    const opts = rollBlessings();
+    paused = true; resetInput();
+    const pick = i => { if (!st) return; applyBlessing(opts[i] || opts[0]); paused = false; lastT = performance.now(); };
+    if (typeof UI !== 'undefined' && UI.blessingPick) UI.blessingPick(opts, st.blessList, pick); else pick(0);
+  }
+  function applyBlessing(o) {
+    const B = st.bless, Bd = BLESSINGS[o.id], v = Bd.vals[o.tier], p = st.p;
+    B[o.id] = (B[o.id] || 0) + v;
+    st.blessList.push(o);
+    if (o.id === 'fuerza') p.dmg = st.base.dmg * (1 + B.fuerza / 100);
+    if (o.id === 'vida') { const old = p.maxHp; p.maxHp = Math.round(st.base.maxHp * (1 + B.vida / 100)); p.hp = Math.min(p.maxHp, p.hp + (p.maxHp - old) + p.maxHp * 0.15); }
+    if (o.id === 'critico') p.crit = Math.min(0.85, st.base.crit + B.critico / 100);
+    if (o.id === 'rapidez') st.moveMult = 1 + B.rapidez / 100;
+    if (o.id === 'escudo') st.shieldHits = B.escudo;
+    showBanner(`${Bd.icon} ${Bd.name}`, `${BLESS_TIERS[o.tier].name} · ${Bd.desc(v)}`, BLESS_TIERS[o.tier].color, 1.6);
+    st.rings.push({ x: p.x, y: p.y, r: 10, max: 120, t: 0.6, life: 0.6, color: BLESS_TIERS[o.tier].color });
+    Sfx.play('levelup');
   }
 
   /* ---------- Mascota ---------- */
@@ -143,7 +178,7 @@ const Battle = (() => {
     if (!o) return null;
     const P = PETS[id];
     const maxHp = Math.round(stats.maxHp * 0.45 * (1 + 0.1 * (o.lvl - 1)));
-    return { id, def: { sprite: { art: P.art } }, P, lvl: o.lvl, x: 40, y: 0, size: P.size, face: 1, walk: 0, seed: 3,
+    return { id, def: { sprite: { art: P.art } }, P, custom: P.custom, lvl: o.lvl, x: 40, y: 0, size: P.size, face: 1, walk: 0, seed: 3,
              hp: maxHp, maxHp, petDef: stats.def * 0.6, invuln: 1, down: false, downT: 0, hpShow: 0,
              cd: 1, flash: 0, windup: 0, windupMax: 1, recover: 0, frozen: 0, state: 'move', elite: false, slowT: 0 };
   }
@@ -160,7 +195,8 @@ const Battle = (() => {
     if (pet.hp <= 0) {
       pet.down = true; pet.downT = 1.2; pet.windup = 0;
       burst(pet.x, pet.y - pet.size * 0.5, '#e5e7eb', 18, 140, -80);
-      addFloat(pet.x, pet.y - pet.size - 14, '💫 ¡Fuera de combate!', '#fde68a', 13, true);
+      if (pet.P.rebirth && !pet.reborn) { pet.rebirthT = 6; addFloat(pet.x, pet.y - pet.size - 14, '🔥 Renacerá de sus cenizas…', '#fdba74', 13, true); }
+      else addFloat(pet.x, pet.y - pet.size - 14, '💫 ¡Fuera de combate!', '#fde68a', 13, true);
       Sfx.play('hurt');
     } else Sfx.play('hit');
     return true;
@@ -173,7 +209,20 @@ const Battle = (() => {
   function updatePet(dt) {
     const pet = st.pet, p = st.p;
     if (!pet) return;
-    if (pet.down) { pet.downT -= dt; return; }
+    if (pet.down) {
+      pet.downT -= dt;
+      if (pet.rebirthT > 0 && !st.ended) {
+        pet.rebirthT -= dt;
+        if (pet.rebirthT <= 0) {
+          pet.down = false; pet.reborn = true; pet.hp = pet.maxHp; pet.invuln = 1.5; pet.cd = 0.5;
+          burst(pet.x, pet.y - 20, '#f97316', 34, 200, -160); burst(pet.x, pet.y - 20, '#fde047', 20, 150, -120);
+          st.rings.push({ x: pet.x, y: pet.y, r: 8, max: 90, t: 0.6, life: 0.6, color: '#fb923c' });
+          showBanner('', '🔥 ¡El Fénix renace de sus cenizas!', '#fdba74', 1.6);
+          Sfx.play('legendary');
+        }
+      }
+      return;
+    }
     if (!pet.y) { pet.x = p.x - p.face * 30; pet.y = p.y + 8; }
     pet.invuln -= dt; pet.flash -= dt; pet.hpShow -= dt;
     pet.cd -= dt; pet.recover -= dt; pet.windup -= dt;
@@ -190,7 +239,7 @@ const Battle = (() => {
     }
     pet.y = clamp(pet.y, fieldTop(), fieldBot());
     if (!target || pet.cd > 0) return;
-    const dmg = p.dmg * P.dmg * petMult(pet.lvl);
+    const dmg = p.dmg * P.dmg * petMult(pet.lvl) * (1 + (st.bless.mascota || 0) / 100);
     pet.face = Math.sign(target.x - pet.x) || pet.face;
     if (P.kind === 'melee') {
       if (gdist(pet.x, pet.y, target.x, target.y) > P.range + target.size * 0.4) return;
@@ -203,7 +252,7 @@ const Battle = (() => {
       pet.cd = P.cd; pet.windup = 0.2;
       const ang = Math.atan2(target.y - pet.y, target.x - pet.x);
       st.projs.push({ x: pet.x, y: pet.y, vx: Math.cos(ang) * 300, vy: Math.sin(ang) * 240, hostile: false, kind: P.proj,
-                      dmg, life: 1.4, h: pet.size * 0.7, petShot: true, pierce: P.proj === 'darkorb' ? 2 : 0 });
+                      dmg, life: 1.4, h: pet.custom ? 34 : pet.size * 0.7, petShot: true, burn: !!P.burn, pierce: P.proj === 'darkorb' ? 2 : 0 });
     }
   }
   function resetInput() { keys.left = keys.right = keys.up = keys.down = keys.attack = false; stick.x = stick.y = 0; stick.active = false; }
@@ -257,6 +306,7 @@ const Battle = (() => {
     st.enemies = st.enemies.filter(e => !(e.dead && e.deathT <= 0));
     updateProjectiles(dt);
     updateZones(dt);
+    updateHazards(dt);
     updateDrops(dt);
     updateFx(dt);
     for (const k in st.cds) st.cds[k] -= dt;
@@ -305,7 +355,7 @@ const Battle = (() => {
       if (p.ghostT <= 0) { p.ghostT = 0.035; st.ghosts.push({ x: p.x, y: p.y, face: p.face, t: 0.25 }); }
       p.walk += dt * 20;
     } else if (mv.m > 0.08) {
-      p.x += mv.x * PLAYER_SPEED * dt; p.y += mv.y * PLAYER_SPEED * 0.8 * dt;
+      p.x += mv.x * PLAYER_SPEED * st.moveMult * dt; p.y += mv.y * PLAYER_SPEED * 0.8 * st.moveMult * dt;
       if (Math.abs(mv.x) > 0.2 && p.swing < 0) p.face = Math.sign(mv.x);
       p.walk += dt * 13 * mv.m;
       p.dx = mv.x / (mv.m || 1); p.dy = mv.y / (mv.m || 1);
@@ -359,7 +409,7 @@ const Battle = (() => {
       if (e.dead || (e.z || 0) > 25) continue;
       const dx = (e.x - p.x) * p.face;
       if (dx > -16 && dx < reach + e.size * 0.35 && Math.abs(e.y - p.y) < DEPTH + mv.depth + e.size * 0.18) {
-        damageEnemy(e, p.dmg * BALANCE.hitDamage * mv.mult, { knock: mv.knock, canCrit: true, combo: true, melee: true });
+        damageEnemy(e, p.dmg * BALANCE.hitDamage * mv.mult, { knock: mv.knock, canCrit: true, combo: true, melee: true, heavy });
         st.sparks.push({ x: e.x - p.face * e.size * 0.15, y: e.y - e.size * 0.55 - (e.z || 0), t: 0.16, ang: Math.random() * 6, big: heavy });
         hit++;
       }
@@ -400,13 +450,39 @@ const Battle = (() => {
     burst(p.x, p.y - 4, '#d6d3d1', 8, 60, -20);
   }
 
-  function hurtPlayer(amount, fromBoss) {
+  function hurtPlayer(amount, fromBoss, src) {
     const p = st.p;
     if (p.invuln > 0 || st.ended || p.hp <= 0) return false;
-    // Ningún golpe quita demasiada vida de una vez (los de jefe aún menos)
-    const cap = p.maxHp * (fromBoss ? BALANCE.bossHitCap : BALANCE.hitCap);
+    if (st.shieldHits > 0) {
+      st.shieldHits--; p.invuln = 0.5;
+      addFloat(p.x, p.y - 64, '🛡️ ¡Bloqueado!', '#bfdbfe', 14);
+      st.rings.push({ x: p.x, y: p.y, r: 8, max: 46, t: 0.3, life: 0.3, color: '#93c5fd' });
+      Sfx.play('deflect');
+      return false;
+    }
+    // Ningún golpe quita demasiada vida de una vez (los de jefe aún menos); en Pesadilla e Infierno el tope es mayor
+    const cap = p.maxHp * Math.min(0.6, (fromBoss ? BALANCE.bossHitCap : BALANCE.hitCap) * (st.diff ? st.diff.cap : 1));
     const dmg = Math.max(1, Math.round(Math.min(cap, amount * rand(0.9, 1.1) * 100 / (100 + p.def))));
     p.hp = Math.max(0, p.hp - dmg);
+    if (src && src.affixes && src.affixes.includes('vampiro') && !src.dead) {
+      const h = Math.round(src.maxHp * 0.08); src.hp = Math.min(src.maxHp, src.hp + h);
+      addFloat(src.x, src.y - src.size - 10, `+${h}`, '#f87171', 12);
+    }
+    // El Fénix se sacrifica para revivirte (una vez por combate)
+    const pet = st.pet;
+    if (p.hp <= 0 && pet && !pet.down && pet.P.revive && !st.phoenixUsed) {
+      st.phoenixUsed = true;
+      p.hp = Math.round(p.maxHp * 0.5); p.invuln = 2.5;
+      pet.down = true; pet.downT = 1.2; pet.windup = 0;
+      if (!pet.reborn) pet.rebirthT = 9;
+      showBanner('🔥 ¡EL FÉNIX TE REVIVE!', 'Se sacrifica por ti… y renacerá', '#fdba74', 2.4);
+      burst(p.x, p.y - 30, '#f97316', 40, 220, -160); burst(p.x, p.y - 30, '#fde047', 26, 160, -120);
+      st.rings.push({ x: p.x, y: p.y, r: 10, max: 160, t: 0.8, life: 0.8, color: '#fb923c' });
+      st.whiteFlash = 0.3; st.slowT = 0.8;
+      addFloat(p.x, p.y - 80, `+${p.hp}`, '#4ade80', 20, true);
+      Sfx.play('legendary');
+      return true;
+    }
     p.flash = 0.18; p.invuln = 0.45;
     burst(p.x + p.face * 6, p.y - 32, '#ef4444', 10, 130);
     addFloat(p.x, p.y - 64, `-${dmg}`, '#f87171', 17);
@@ -426,7 +502,7 @@ const Battle = (() => {
   function castSkill(id) {
     if (!st || st.ended || paused || st.p.hp <= 0 || !skillLevel(id) || (st.cds[id] || 0) > 0) return;
     const p = st.p;
-    st.cds[id] = skillCd(id);
+    st.cds[id] = skillCd(id) * (1 - Math.min(0.6, (st.bless.recarga || 0) / 100));
     const near = nearestEnemy(p.x, p.y, 400);
     p.swing = 0; p.heavy = true; p.style = 'smash'; p.swingDur = 0.3;
     if (id === 'fuego') {
@@ -551,6 +627,11 @@ const Battle = (() => {
       b.x = W + 60; b.y = (fieldTop() + fieldBot()) / 2;
       st.boss = b;
       st.enemies.push(b);
+      if (st.tower && st.tower.floor % 10 === 0) {
+        // Guardián de la Torre cada 10 pisos: más grande, más duro y con gran premio
+        b.guardian = true; b.hp = b.maxHp = Math.round(b.maxHp * 1.8); b.atk *= 1.25; b.size *= 1.12;
+        showBanner(`👑 GUARDIÁN DE LA TORRE`, `${b.def.name} · Piso ${st.tower.floor}`, '#fde047', 2.6);
+      } else
       showBanner(`⚠️ ${b.def.name.toUpperCase()}`, st.tower ? `Piso ${st.tower.floor} · ¡Jefe!` : '¡Ha aparecido el jefe!', '#fca5a5', 2.2);
       Sfx.play('roar');
       if (typeof Music !== 'undefined') Music.play('boss');
@@ -568,7 +649,7 @@ const Battle = (() => {
     const B = BALANCE, dmgMult = I.dmgMult * (d.boss ? B.bossDmg : 1);
     let hp = Math.round(I.hp * d.hp * (elite ? 2.2 : 1) * (opts.mini ? 0.35 : 1) * (d.boss ? B.bossHp : 1));
     const size = d.size * (elite ? 1.2 : 1) * (opts.mini ? 0.6 : 1);
-    return {
+    const e = {
       id, def: d, boss: !!d.boss, elite, mini: !!opts.mini,
       x: opts.x != null ? opts.x : (side > 0 ? W + 30 : -30),
       y: opts.y != null ? opts.y : rand(fieldTop() + 8, fieldBot() - 4),
@@ -580,12 +661,37 @@ const Battle = (() => {
       dead: false, deathT: 0, specialT: d.specialCd ? d.specialCd * 0.6 : 0, atkIdx: 0, enraged: false, action: null,
       strafe: Math.random() < 0.5 ? -1 : 1,
     };
+    const D = I.diff;
+    if (D && D.spd !== 1) e.speed *= D.spd;
+    if (elite && D && D.affixes) {
+      e.affixes = Object.keys(ELITE_AFFIXES).sort(() => Math.random() - 0.5).slice(0, D.affixes);
+      if (e.affixes.includes('veloz')) e.speed *= 1.5;
+      if (e.affixes.includes('escudo')) e.shield = 4;
+    }
+    return e;
   }
 
   /* ---------- IA de enemigos ---------- */
   function updateEnemy(e, dt) {
     if (e.dead) { e.deathT -= dt; return; }
     e.flash -= dt;
+    if (e.guardT > 0) e.guardT -= dt;
+    if (e.guardBroken > 0) e.guardBroken -= dt;
+    if (e.blinkT > 0) e.blinkT -= dt;
+    if (e.affixes && !e.furious && e.affixes.includes('furioso') && e.hp < e.maxHp * 0.4) {
+      e.furious = true; e.atk *= 1.6; e.speed *= 1.3;
+      addFloat(e.x, e.y - e.size - 22, '😡 ¡Furioso!', '#f87171', 14, true);
+      st.rings.push({ x: e.x, y: e.y, r: 6, max: 60, t: 0.4, life: 0.4, color: '#ef4444' });
+    }
+    if (e.ember > 0) {
+      e.ember -= dt; e.emberTick = (e.emberTick || 0) - dt;
+      if (e.emberTick <= 0) {
+        e.emberTick = 0.5;
+        damageEnemy(e, e.emberDmg || 1, { color: '#fb923c', silent: true });
+        burst(e.x, e.y - e.size * 0.6, '#f97316', 3, 40, -60);
+        if (e.dead) return;
+      }
+    }
     // Empuje por golpes
     if (e.kx || e.ky) {
       e.x += e.kx * dt; e.y += e.ky * dt;
@@ -642,7 +748,7 @@ const Battle = (() => {
       if (d > 4) { e.x += ddx / d * sp * dt; e.y += ddy / d * sp * dt; }
       e.walk += dt * 22;
       if (st.parts.length < 400) st.parts.push({ x: e.x - e.face * e.size * 0.3, y: e.y - 3, vx: -e.face * 40, vy: -20, life: 0.3, max: 0.3, color: '#d6d3d1', size: 3, grav: 0 });
-      if (!e.dashHit && gdist(e.x, e.y, p.x, p.y) < e.size * 0.45 + 10) { if (hurtPlayer(e.atk * 1.3, e.boss)) e.dashHit = true; }
+      if (!e.dashHit && gdist(e.x, e.y, p.x, p.y) < e.size * 0.45 + 10) { if (hurtPlayer(e.atk * 1.3, e.boss, e)) e.dashHit = true; }
       if (!e.dashHit && petAlive() && gdist(e.x, e.y, pet.x, pet.y) < e.size * 0.45 + 8) { if (hurtPet(e.atk * 1.3, e.boss)) e.dashHit = true; }
       if (e.stateT <= 0 || d < 6) { e.state = 'move'; e.recover = 0.6; e.specialCd = rand(2.8, 4.2); }
       clampEnemy(e);
@@ -660,7 +766,7 @@ const Battle = (() => {
       e.windup -= dt * slow;
       if (e.windup <= 0) {
         if (e.def.ai === 'ranged') shoot(e, e.def.proj, Math.atan2(dy, dx));
-        else if (Math.abs(dx) <= e.range + 18 && Math.abs(dy) < DEPTH + 6) { if (T === p) hurtPlayer(e.atk, e.boss); else hurtPet(e.atk); }
+        else if (Math.abs(dx) <= e.range + 18 && Math.abs(dy) < DEPTH + 6) { if (T === p) hurtPlayer(e.atk, e.boss, e); else hurtPet(e.atk); }
         e.recover = 0.3; e.atkT = e.def.atkCd * rand(0.9, 1.15);
       }
       return;
@@ -687,6 +793,18 @@ const Battle = (() => {
 
     if (ai === 'ranged') {
       e.face = Math.sign(dx) || e.face;
+      // Los magos oscuros se teletransportan si te acercas
+      if (e.def.blink && dist < 95 && !(e.blinkT > 0) && onScreen) {
+        e.blinkT = 4.5;
+        burst(e.x, e.y - e.size * 0.5, '#a855f7', 16, 140);
+        e.x = clamp(T.x + (T.x < W / 2 ? 1 : -1) * rand(150, 220), 24, W - 24);
+        e.y = rand(fieldTop() + 6, fieldBot() - 4);
+        burst(e.x, e.y - e.size * 0.5, '#d8b4fe', 16, 140);
+        st.rings.push({ x: e.x, y: e.y, r: 6, max: 44, t: 0.35, life: 0.35, color: '#c084fc' });
+        Sfx.play('warn');
+        e.atkT = Math.min(e.atkT, 0.4);
+        return;
+      }
       let mx = 0, my = 0;
       if (dist < 110) { mx = -Math.sign(dx); my = -Math.sign(dy) * 0.5; }
       else if (dist > e.range) { mx = Math.sign(dx); my = Math.sign(dy) * 0.6; }
@@ -764,13 +882,23 @@ const Battle = (() => {
       st.rings.push({ x: e.x, y: e.y, r: 10, max: 200, t: 0.7, life: 0.7, color: '#f87171' });
       Sfx.play('roar');
     }
+    const P3 = BOSS_PHASE3[e.id];
+    if (P3 && e.phase === 2 && e.hp < e.maxHp * 0.3 && !e.action) {
+      // Tercera fase (solo dragón y Caballero Maldito)
+      e.phase = 3; e.speed *= 1.15; e.size *= 1.05; e.atkIdx = 0; e.specialT = 0.8;
+      showBanner('☠️ FASE 3', P3.title, '#f43f5e', 2.6);
+      st.slowT = 1; st.whiteFlash = 0.35; st.shake = 12;
+      st.rings.push({ x: e.x, y: e.y, r: 10, max: 260, t: 0.9, life: 0.9, color: '#f43f5e' });
+      if (P3.darkness) st.darkness = 1;
+      Sfx.play('roar');
+    }
     if (e.action) { runAction(e, dt); return true; }
     if (e.state === 'dash' || e.state === 'aim') return false;
     e.specialT -= dt;
     if (e.specialT <= 0 && e.x > 30 && e.x < W - 30 && e.windup <= 0) {
-      const list = e.phase === 2 && BOSS_PHASE2[e.id] ? BOSS_PHASE2[e.id].attacks : e.def.attacks;
+      const list = e.phase === 3 && P3 ? P3.attacks : e.phase === 2 && BOSS_PHASE2[e.id] ? BOSS_PHASE2[e.id].attacks : e.def.attacks;
       startAction(e, list[e.atkIdx++ % list.length]);
-      e.specialT = e.def.specialCd * (e.enraged ? 0.7 : 1);
+      e.specialT = e.def.specialCd * (e.phase === 3 ? 0.6 : e.enraged ? 0.7 : 1);
       return true;
     }
     return false;
@@ -819,6 +947,23 @@ const Battle = (() => {
       case 'summon': showBanner('', '¡Invoca refuerzos!', '#fca5a5', 1.2); break;
       case 'howl': showBanner('', '🐺 ¡Aúlla a la manada!', '#fca5a5', 1.2); st.rings.push({ x: e.x, y: e.y, r: 10, max: 150, t: 0.6, life: 0.6, color: '#fca5a5' }); Sfx.play('roar'); break;
       case 'fly': showBanner('', '🔥 ¡El dragón alza el vuelo!', '#fdba74', 1.3); break;
+      case 'firewall': {
+        // Dos muros de fuego que cruzan el campo: hay que cambiar de carril o rodar
+        const mid = (fieldTop() + fieldBot()) / 2, rows = [p.y, clamp(p.y + (p.y < mid ? 1 : -1) * 36, fieldTop(), fieldBot())];
+        rows.forEach((y, r) => { for (let x = 18; x < W; x += 42) addZone(x, y, 28, 1.3 + r * 0.55, e.atk * 1.4, 'fire', false); });
+        showBanner('', '🔥 ¡Muro de fuego! Cambia de carril', '#fdba74', 1.3);
+        break;
+      }
+      case 'rain': showBanner('', '☄️ ¡Lluvia de meteoritos!', '#fdba74', 1.3); break;
+      case 'shadows': showBanner('', '👥 ¡Invoca a sus sombras!', '#c4b5fd', 1.3); break;
+      case 'darkwave': {
+        for (let ring = 0; ring < 3; ring++) {
+          const R = 70 + ring * 62, n = 8 + ring * 4;
+          for (let i = 0; i < n; i++) { const a = (i + ring * 0.5) / n * Math.PI * 2; addZone(e.x + Math.cos(a) * R, e.y + Math.sin(a) * R * 0.5, 28, 0.95 + ring * 0.4, e.atk * 1.35, 'dark', false); }
+        }
+        showBanner('', '🌑 ¡Ondas de oscuridad! Rueda para esquivar', '#c4b5fd', 1.4);
+        break;
+      }
     }
     for (let i = zonesBefore; i < st.zones.length; i++) st.zones[i].boss = true;
   }
@@ -882,6 +1027,30 @@ const Battle = (() => {
         if (!a.landed) { a.landed = true; addZone(e.x, e.y, e.size * 0.6 + 40, 0.25, e.atk * 1.2, 'slam', false); st.zones[st.zones.length - 1].boss = true; st.shake = 8; }
         if (a.t > 3.3) e.action = null;
       }
+    } else if (a.kind === 'rain') {
+      if (a.t > 0.3 && a.t < 2.8 && a.t - 0.3 >= a.shots * 0.15) {
+        a.shots++;
+        const aim = a.shots % 3 === 0;
+        addZone(aim ? st.p.x + rand(-16, 16) : rand(20, W - 20), aim ? st.p.y : rand(fieldTop(), fieldBot()), 34, 0.95, e.atk * 1.2, 'meteor', true);
+        st.zones[st.zones.length - 1].boss = true;
+      }
+      if (a.t > 3.2) e.action = null;
+    } else if (a.kind === 'shadows') {
+      if (!a.done && a.t > 0.6) {
+        a.done = true;
+        for (const sd of [-1, 1]) {
+          if (st.enemies.filter(x => !x.dead).length >= 7) break;
+          const sh = makeEnemy('caballero_oscuro', sd);
+          sh.shadow = true; sh.hp = sh.maxHp = Math.round(sh.maxHp * 0.6);
+          sh.x = clamp(e.x + sd * 70, 24, W - 24); sh.y = clamp(e.y + rand(-14, 14), fieldTop(), fieldBot());
+          st.enemies.push(sh);
+          burst(sh.x, sh.y - 24, '#7c3aed', 20, 150);
+        }
+        Sfx.play('roar');
+      }
+      if (a.t > 1.1) e.action = null;
+    } else if (a.kind === 'firewall' || a.kind === 'darkwave') {
+      if (a.t > 0.9) e.action = null;
     } else if (a.kind === 'summon') {
       if (!a.done && a.t > 0.5) {
         a.done = true;
@@ -899,6 +1068,7 @@ const Battle = (() => {
         z.t -= dt;
         if (z.t <= 0) {
           z.boom = 0.45;
+          if (z.lava) st.lava.push({ x: z.x, y: z.y, r: z.r * 0.85, t: 3.5, max: 3.5 });
           const nx = (p.x - z.x) / z.r, ny = (p.y - z.y) / (z.r * 0.5);
           if (nx * nx + ny * ny < 1.15) hurtPlayer(z.dmg, z.boss);
           if (petAlive()) { const qx = (st.pet.x - z.x) / z.r, qy = (st.pet.y - z.y) / (z.r * 0.5); if (qx * qx + qy * qy < 1.15) hurtPet(z.dmg, z.boss); }
@@ -913,6 +1083,38 @@ const Battle = (() => {
     for (const l of st.lines) l.t -= dt;
     st.lines = st.lines.filter(l => l.t > 0 && !l.e.dead);
   }
+  /** Mundo 4: caen meteoritos que dejan charcos de lava. Torre: rayos de la mejora «Tormenta». */
+  function updateHazards(dt) {
+    const p = st.p;
+    if (!st.tower && st.world.theme === 'volcan' && !st.ended && st.waveIdx >= 0) {
+      st.meteorT -= dt;
+      if (st.meteorT <= 0) {
+        st.meteorT = rand(3, 5.2) * (st.info.boss ? 1.4 : 1);
+        addZone(p.x + rand(-50, 50), p.y + rand(-14, 14), 34, 1.15, st.info.atk * st.info.dmgMult * 0.9, 'meteor', true);
+        st.zones[st.zones.length - 1].lava = true;
+      }
+    }
+    for (const l of st.lava) {
+      l.t -= dt;
+      const nx = (p.x - l.x) / l.r, ny = (p.y - l.y) / (l.r * 0.5);
+      if (nx * nx + ny * ny < 1 && p.dodgeT <= 0) hurtPlayer(st.info.atk * st.info.dmgMult * 0.35, false);
+      if (Math.random() < dt * 8) st.parts.push({ x: l.x + rand(-l.r, l.r) * 0.7, y: l.y + rand(-4, 4), vx: 0, vy: -rand(20, 50), life: 0.5, max: 0.5, color: '#fb923c', size: rand(2, 4), grav: 0 });
+    }
+    st.lava = st.lava.filter(l => l.t > 0);
+    if (st.bless.rayos && !st.ended && !paused) {
+      st.boltT -= dt;
+      if (st.boltT <= 0) {
+        st.boltT = 4;
+        const alive = st.enemies.filter(e => !e.dead);
+        for (let i = 0; i < st.bless.rayos && alive.length; i++) {
+          const e = alive.splice(Math.floor(Math.random() * alive.length), 1)[0];
+          st.bolts.push({ x: e.x, y: e.y - e.size * 0.5, t: 0.35 });
+          damageEnemy(e, st.p.dmg * 1.4, { color: '#fde047', silent: true });
+        }
+        Sfx.play('thunder');
+      }
+    }
+  }
   const FX_COLORS = { slam: '#d6b98c', claw: '#e5e7eb', poison: '#84cc16', ice: '#bae6fd', meteor: '#f97316', fire: '#f97316', dark: '#a855f7' };
 
   /* ---------- Daño a enemigos y muerte ---------- */
@@ -922,6 +1124,21 @@ const Battle = (() => {
     let dmg = base * rand(0.9, 1.1) * comboBonus, crit = false;
     if (o.canCrit && Math.random() < st.p.crit) { dmg *= 2; crit = true; }
     dmg = Math.max(1, Math.round(dmg));
+    if (e.shield > 0 && !o.silent) {
+      e.shield--; dmg = Math.max(1, Math.round(dmg * 0.15));
+      addFloat(e.x, e.y - e.size - 22, e.shield ? '🛡️' : '¡Escudo roto!', '#e2e8f0', 13, !e.shield);
+      if (!e.shield) { burst(e.x, e.y - e.size * 0.5, '#e2e8f0', 18, 170); Sfx.play('deflect'); }
+    }
+    // Caballeros oscuros: bloquean de frente; el golpe fuerte (3.º del combo) rompe la guardia
+    if (o.melee && e.def.guard && !e.boss && !(e.guardBroken > 0) && e.windup <= 0) {
+      if (o.heavy) {
+        e.guardBroken = 2.2;
+        addFloat(e.x, e.y - e.size - 22, '💥 ¡Guardia rota!', '#fde047', 14, true);
+      } else if (Math.sign(st.p.x - e.x) === e.face) {
+        dmg = Math.max(1, Math.round(dmg * 0.3));
+        if (!(e.guardT > 0)) { e.guardT = 0.7; addFloat(e.x, e.y - e.size - 22, '🛡️ ¡Bloqueo!', '#cbd5e1', 13); Sfx.play('deflect'); }
+      }
+    }
     e.hp -= dmg; e.flash = 0.12;
     if (o.knock && !e.boss && !e.action) {
       const d = Math.hypot(e.x - st.p.x, e.y - st.p.y) || 1;
@@ -936,6 +1153,13 @@ const Battle = (() => {
       else if (fx === 'vampiro') { const h = dmg * 0.06; st.p.hp = Math.min(st.p.maxHp, st.p.hp + h); st.lifeAcc = (st.lifeAcc || 0) + h; if (st.lifeAcc >= 3) { addFloat(st.p.x, st.p.y - 64, `+${Math.round(st.lifeAcc)}`, '#f87171', 13); st.lifeAcc = 0; } }
       else if (fx === 'escarcha') e.slowT = Math.max(e.slowT || 0, 2);
       else if (fx === 'llama' && crit) { e.burn = Math.max(e.burn || 0, 2); }
+    }
+    // Mejoras de la Torre
+    if (o.melee && st.blessList.length) {
+      const B = st.bless;
+      if (B.ascuas) { e.ember = 2; e.emberDmg = st.p.dmg * B.ascuas / 100 * 0.5; }
+      if (B.hielo && Math.random() < B.hielo / 100) { e.frozen = Math.max(e.frozen || 0, e.boss ? 0.6 : 1.3); burst(e.x, e.y - e.size * 0.5, '#bae6fd', 8, 90); }
+      if (B.vampiro) st.p.hp = Math.min(st.p.maxHp, st.p.hp + dmg * B.vampiro / 100);
     }
     burst(e.x, e.y - e.size * 0.5 - (e.z || 0), crit ? '#fde047' : (o.color || '#ffffff'), crit ? 14 : 7, 150);
     if (!o.silent) Sfx.play(crit ? 'crit' : 'hit');
@@ -985,12 +1209,18 @@ const Battle = (() => {
     const coins = Math.max(1, Math.round(st.info.coins * rand(0.7, 1.3) * (e.boss ? 12 : e.elite ? 4 : e.mini ? 0.3 : 1)));
     spawnDrop(e.x, e.y, { coins });
     const n = e.boss ? 10 : e.elite ? 4 : e.mini ? (Math.random() < 0.3 ? 1 : 0) : (Math.random() < 0.7 ? 1 : 2);
-    for (let i = 0; i < n; i++) spawnDrop(e.x, e.y, { mat: rollMaterial(), qty: e.boss ? 2 : 1 });
+    for (let i = 0; i < n; i++) spawnDrop(e.x, e.y, { mat: rollMaterial(), qty: lootQty(e.boss ? 2 : 1) });
+    if (e.affixes && e.affixes.includes('explosivo')) {
+      const zo = zoneOwner; zoneOwner = null;
+      addZone(e.x, e.y, 60, 0.8, e.atk * 1.6, 'fire', false);
+      zoneOwner = zo;
+      addFloat(e.x, e.y - e.size - 10, '💣 ¡Va a explotar!', '#fb923c', 13, true);
+    }
     if (!e.boss && Math.random() < (e.elite ? 0.6 : 0.07)) spawnDrop(e.x, e.y, { heart: true });
     if (e.elite) {
       st.elites++;
       // Los élites siempre sueltan algo bueno
-      spawnDrop(e.x, e.y, { mat: rollMaterial(true), qty: 2 });
+      spawnDrop(e.x, e.y, { mat: rollMaterial(true), qty: lootQty(2) });
       if (Math.random() < 0.25) { st.loot.shards++; addFloat(e.x, e.y - e.size - 40, '+1 🧩 fragmento', '#c4b5fd', 13); }
       if (Math.random() < 0.25) { st.loot.gems++; addFloat(e.x, e.y - e.size - 54, '+1 💎', '#7dd3fc', 13); }
       showBanner('', '⭐ ¡Élite derrotado!', '#facc15', 1.1);
@@ -1007,8 +1237,15 @@ const Battle = (() => {
         spawnDrop(e.x, e.y, { mat: st.world.bossDrop, qty: 1 });
         st.specialDrop = st.world.bossDrop;
       }
-      st.bossDefeated = true;
+      st.bossDefeated = true; st.darkness = 0;
       st.slowT = 1.4; st.shake = 12; st.whiteFlash = 0.3;
+      if (e.guardian) {
+        const f = st.tower.floor, gems = 8 + Math.floor(f / 5), frag = 2 + Math.floor(f / 20);
+        st.loot.gems += gems; st.loot.tickets += 2;
+        st.loot.mats.fragmento_legendario = (st.loot.mats.fragmento_legendario || 0) + frag;
+        showBanner('👑 ¡GUARDIÁN VENCIDO!', `+${gems} 💎 · +2 🎟️ · +${frag} fragmentos legendarios`, '#fde047', 2.6);
+        Sfx.play('legendary');
+      } else
       showBanner('🏆 ¡JEFE DERROTADO!', '', '#fde047', 2.2);
       Sfx.play('boom');
       if (st.tower) st.loot.bosses = (st.loot.bosses || 0) + 1;
@@ -1095,6 +1332,7 @@ const Battle = (() => {
           if (e.dead || (pr.hitSet && pr.hitSet.has(e))) continue;
           if (Math.abs(pr.x - e.x) < e.size * 0.45 && Math.abs(pr.y - e.y) < DEPTH) {
             if (pr.explode) explode(pr); else damageEnemy(e, pr.dmg, { color: pr.petShot ? '#fde68a' : '#93c5fd' });
+            if (pr.burn && !e.dead) e.burn = Math.max(e.burn || 0, 2.5);
             if (pr.pierce > 0) { pr.pierce--; pr.hitSet = pr.hitSet || new Set(); pr.hitSet.add(e); continue; }
             pr.life = 0;
             break;
@@ -1274,6 +1512,20 @@ const Battle = (() => {
     c.globalAlpha = 1;
     c.restore();
 
+    if (st.darkness) {
+      // Eclipse del Caos: solo ves cerca de tu caballero
+      const p = st.p, r = 95 + Math.sin(st.time * 2) * 6;
+      const g = c.createRadialGradient(p.x, p.y - 28, r * 0.35, p.x, p.y - 28, r * 1.6);
+      g.addColorStop(0, 'rgba(8,2,20,0)'); g.addColorStop(0.5, 'rgba(8,2,20,.7)'); g.addColorStop(1, 'rgba(8,2,20,.96)');
+      c.fillStyle = g; c.fillRect(0, 0, W, H);
+    }
+    if (st.diff && st.diff.id) {
+      // Bordes del color de la dificultad
+      const g = c.createRadialGradient(W / 2, H / 2, H * 0.45, W / 2, H / 2, W * 0.75);
+      g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(1, st.diff.id === 2 ? 'rgba(234,88,12,.22)' : 'rgba(185,28,28,.2)');
+      c.fillStyle = g; c.fillRect(0, 0, W, H);
+    }
+    if (st.blessList.length) drawBlessings(c);
     if (st.hurtFlash > 0) {
       const g = c.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, W * 0.8);
       g.addColorStop(0, 'rgba(220,38,38,0)'); g.addColorStop(1, `rgba(220,38,38,${st.hurtFlash})`);
@@ -1285,6 +1537,24 @@ const Battle = (() => {
     }
     drawCombo(c);
     drawBanner(c);
+  }
+
+  /** Mejoras de la Torre que llevas (arriba a la derecha). */
+  function drawBlessings(c) {
+    const counts = {};
+    for (const o of st.blessList) counts[o.id] = (counts[o.id] || 0) + 1;
+    const ids = Object.keys(counts);
+    c.font = '800 11px system-ui, sans-serif'; c.textBaseline = 'middle'; c.textAlign = 'center';
+    let x = W - 14, y = 58;
+    for (const id of ids) {
+      c.fillStyle = 'rgba(15,12,29,.75)'; c.beginPath(); c.arc(x, y, 11, 0, Math.PI * 2); c.fill();
+      c.strokeStyle = '#e8b54a'; c.lineWidth = 1; c.stroke();
+      c.fillStyle = '#fff'; c.fillText(BLESSINGS[id].icon, x, y + 0.5);
+      if (counts[id] > 1) { c.fillStyle = '#fde047'; c.font = '900 9px system-ui, sans-serif'; c.fillText(counts[id], x + 9, y + 9); c.font = '800 11px system-ui, sans-serif'; }
+      y += 25;
+      if (y > H - 150) { y = 58; x -= 26; }
+    }
+    if (st.shieldHits > 0) { c.fillStyle = '#bfdbfe'; c.font = '800 10px system-ui, sans-serif'; c.textAlign = 'right'; c.fillText(`🛡️ x${st.shieldHits}`, W - 30, 40); }
   }
 
   /** Silueta translúcida del caballero (estela al esquivar). */
@@ -1318,15 +1588,21 @@ const Battle = (() => {
       c.restore(); c.globalAlpha = 1;
       return;
     }
-    if (e.phase === 2) {
-      const z = e.z || 0, pulse = 0.28 + Math.sin(st.time * 7) * 0.1;
-      const g = c.createRadialGradient(e.x, e.y - z - e.size * 0.5, e.size * 0.1, e.x, e.y - z - e.size * 0.5, e.size * 0.9);
-      g.addColorStop(0, `rgba(239,68,68,${pulse})`); g.addColorStop(1, 'rgba(239,68,68,0)');
+    if (e.phase >= 2 || e.shadow || e.furious) {
+      const z = e.z || 0, pulse = 0.28 + Math.sin(st.time * 7) * 0.1, col = e.phase === 3 || e.shadow ? '168,85,247' : '239,68,68';
+      const g = c.createRadialGradient(e.x, e.y - z - e.size * 0.5, e.size * 0.1, e.x, e.y - z - e.size * 0.5, e.size * (e.phase === 3 ? 1.2 : 0.9));
+      g.addColorStop(0, `rgba(${col},${pulse})`); g.addColorStop(1, `rgba(${col},0)`);
       c.fillStyle = g; c.beginPath(); c.ellipse(e.x, e.y - z - e.size * 0.5, e.size * 0.9, e.size * 0.9, 0, 0, Math.PI * 2); c.fill();
     }
     if (e.action && e.action.kind === 'leap' && e.action.t < 0.55) {
       c.save(); c.translate(e.x, e.y); c.scale(1.1, 0.85); c.translate(-e.x, -e.y); Sprites.enemy(c, e, st.time); c.restore();
-    } else Sprites.enemy(c, e, st.time);
+    } else if (e.shadow) { c.save(); c.globalAlpha = 0.72; Sprites.enemy(c, e, st.time); c.restore(); }
+    else Sprites.enemy(c, e, st.time);
+    // Escudo del élite
+    if (e.shield > 0) {
+      c.strokeStyle = `rgba(226,232,240,${0.5 + Math.sin(st.time * 6) * 0.2})`; c.lineWidth = 2;
+      c.beginPath(); c.ellipse(e.x, e.y - e.size * 0.5 - (e.z || 0), e.size * 0.62, e.size * 0.72, 0, 0, Math.PI * 2); c.stroke();
+    }
     const z = e.z || 0;
     if (e.windup > 0 || e.state === 'aim' || (e.action && e.action.t < 0.6)) {
       c.font = 'bold 18px system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
@@ -1338,19 +1614,35 @@ const Battle = (() => {
       c.fillStyle = '#000a'; c.fillRect(x - 1, y - 1, w + 2, 6);
       c.fillStyle = e.elite ? '#facc15' : '#ef4444'; c.fillRect(x, y, w * e.hp / e.maxHp, 4);
     }
+    if (e.affixes) {
+      // Nombre de los poderes del élite
+      const txt = e.affixes.map(k => ELITE_AFFIXES[k].icon + ' ' + ELITE_AFFIXES[k].name).join('  ');
+      c.font = '800 9px system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      c.lineWidth = 3; c.strokeStyle = '#000c'; c.strokeText(txt, e.x, e.y - e.size - 16 - z);
+      c.fillStyle = '#fde68a'; c.fillText(txt, e.x, e.y - e.size - 16 - z);
+    }
   }
 
   function drawPet(c, pet) {
+    const paint = (o, alpha) => {
+      if (pet.P.custom === 'fenix') Sprites.phoenix(c, o.x, o.y, o.size, st.time, o.face, alpha);
+      else { c.save(); c.globalAlpha = alpha; Sprites.enemy(c, o, st.time); c.restore(); }
+    };
     if (pet.down) {
-      // Se desvanece en chispas al caer; ya no vuelve en esta partida
+      // Cenizas que brillan mientras el Fénix renace
+      if (pet.rebirthT > 0) {
+        const k = 1 - pet.rebirthT / 9, pulse = 0.5 + Math.sin(st.time * 8) * 0.3;
+        const g = c.createRadialGradient(pet.x, pet.y - 4, 1, pet.x, pet.y - 4, 16 + k * 10);
+        g.addColorStop(0, `rgba(254,240,138,${pulse})`); g.addColorStop(1, 'rgba(249,115,22,0)');
+        c.fillStyle = g; c.beginPath(); c.arc(pet.x, pet.y - 4, 18 + k * 10, 0, Math.PI * 2); c.fill();
+        c.fillStyle = '#44403c'; c.beginPath(); c.ellipse(pet.x, pet.y, 9, 3.5, 0, 0, Math.PI * 2); c.fill();
+      }
+      // Se desvanece al caer
       if (pet.downT <= 0) return;
-      c.save(); c.globalAlpha = Math.max(0, pet.downT / 1.2);
-      Sprites.enemy(c, Object.assign({}, pet, { y: pet.y - (1.2 - pet.downT) * 18 }), st.time);
-      c.restore();
+      paint(Object.assign({}, pet, { y: pet.y - (1.2 - pet.downT) * 18 }), Math.max(0, pet.downT / 1.2));
       return;
     }
-    if (pet.invuln > 0 && pet.flash > 0) { c.save(); c.globalAlpha = 0.6; Sprites.enemy(c, pet, st.time); c.restore(); }
-    else Sprites.enemy(c, pet, st.time);
+    paint(pet, pet.invuln > 0 && pet.flash > 0 ? 0.6 : 1);
     // Nivel y vida de la mascota
     c.font = '800 9px system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
     c.lineWidth = 3; c.strokeStyle = '#000a'; c.strokeText(`Nv ${pet.lvl}`, pet.x, pet.y + 9);
@@ -1370,6 +1662,14 @@ const Battle = (() => {
   }
 
   function drawZones(c) {
+    for (const l of st.lava) {
+      const a = Math.min(1, l.t / 0.6, (l.max - l.t) / 0.3 + 0.3);
+      const g = c.createRadialGradient(l.x, l.y, 2, l.x, l.y, l.r);
+      g.addColorStop(0, `rgba(254,240,138,${0.9 * a})`); g.addColorStop(0.45, `rgba(249,115,22,${0.8 * a})`); g.addColorStop(1, `rgba(127,29,29,${0.5 * a})`);
+      c.fillStyle = g; c.beginPath(); c.ellipse(l.x, l.y, l.r, l.r * 0.5, 0, 0, Math.PI * 2); c.fill();
+      c.fillStyle = `rgba(254,240,138,${0.8 * a})`;
+      for (let i = 0; i < 3; i++) { const k = (st.time * 1.5 + i * 0.33 + l.x) % 1; c.beginPath(); c.arc(l.x + Math.sin(i * 2.1 + l.x) * l.r * 0.5, l.y + Math.cos(i * 1.7) * l.r * 0.2, 2.5 * Math.sin(k * Math.PI), 0, Math.PI * 2); c.fill(); }
+    }
     for (const z of st.zones) {
       if (z.t > 0) {
         const k = 1 - z.t / z.total;
@@ -1500,7 +1800,7 @@ const Battle = (() => {
       setText(H_.stage, 'stage', `🏰 Torre del Caos · Piso ${Math.max(1, st.tower.floor)}`);
       setText(H_.prog, 'prog', `🏆 Récord ${S.tower.best} · ☠️ ${st.kills}`);
     } else {
-      setText(H_.stage, 'stage', `${st.world.icon} Etapa ${st.stage} · ${st.info.name}`);
+      setText(H_.stage, 'stage', `${st.diff && st.diff.id ? st.diff.icon + ' ' + st.diff.name + ' · ' : st.world.icon + ' '}Etapa ${st.stage} · ${st.info.name}`);
       const normalWaves = st.waves.filter(w => !ENEMIES[w[0]].boss).length;
       const wave = Math.min(normalWaves, Math.max(1, st.waveIdx + 1));
       setText(H_.prog, 'prog', st.boss && !st.boss.dead ? '👹 JEFE' : `🌊 ${wave}/${normalWaves} · ☠️ ${st.killed}/${st.total - (st.info.boss ? 1 : 0)}`);
@@ -1542,7 +1842,8 @@ const Battle = (() => {
     const result = {
       victory: st.victory, abandoned: !!st.abandoned, stage: st.stage, boss: st.info.boss, loot: st.loot,
       specialDrop: st.specialDrop, killed: st.killed, kills: st.kills, maxCombo: st.maxCombo, elites: st.elites,
-      tower: st.tower ? { floor: Math.max(1, st.tower.floor), cleared: st.tower.cleared } : null, potionsUsed: st.potionsUsed,
+      tower: st.tower ? { floor: Math.max(1, st.tower.floor), cleared: st.tower.cleared, bless: st.blessList.length } : null, potionsUsed: st.potionsUsed,
+      diff: st.diff ? st.diff.id : 0,
     };
     stop();
     if (onEnd) onEnd(result);

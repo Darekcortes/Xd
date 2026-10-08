@@ -22,8 +22,9 @@ const RARITIES = {
   epico:      { name: 'Épico',      icon: '🟣', color: '#c084fc' },
   legendario: { name: 'Legendario', icon: '🟠', color: '#fb923c' },
   mitico:     { name: 'Mítico',     icon: '🔴', color: '#f43f5e' },
+  divino:     { name: 'Divino',     icon: '🌟', color: '#fef08a' },   // solo en dificultad Infierno y en la Ruleta de Diamantes
 };
-const RARITY_ORDER = ['comun', 'pococomun', 'raro', 'epico', 'legendario', 'mitico'];
+const RARITY_ORDER = ['comun', 'pococomun', 'raro', 'epico', 'legendario', 'mitico', 'divino'];
 
 /* ---------- Materiales ---------- */
 const MATERIALS = {
@@ -72,6 +73,7 @@ const ITEMS = {
   espada_fuego:      { type: 'weapon', name: 'Espada de fuego',       icon: '⚔️', rarity: 'epico',      dmg: 88,  color: '#fb923c', upg: 'mineral_volcanico' },
   espada_infernal:   { type: 'weapon', name: 'Espada infernal',       icon: '⚔️', rarity: 'legendario', dmg: 160,  color: '#ef4444', upg: 'cristal_oscuro' },
   espada_inframundo: { type: 'weapon', name: 'Espada del Inframundo', icon: '⚔️', rarity: 'legendario', dmg: 190, crit: 0.1, color: '#a855f7', upg: 'cristal_oscuro' },
+  espada_divina:     { type: 'weapon', name: 'Espada Divina',         icon: '⚔️', rarity: 'divino',     dmg: 430, spd: 0.25, crit: 0.2, color: '#fffbeb', upg: 'fragmento_legendario' },
   hoja_caos:         { type: 'weapon', name: 'Hoja del Caos',         icon: '⚔️', rarity: 'mitico',     dmg: 290, spd: 0.2, crit: 0.15, color: '#f43f5e', upg: 'fragmento_legendario' },
   // Armaduras
   ropa_viajero:       { type: 'armor', name: 'Ropa de viajero',          icon: '👕', rarity: 'comun',      def: 1,   hp: 0,   color: '#8b6b4a', upg: 'madera' },
@@ -82,11 +84,12 @@ const ITEMS = {
   armadura_congelada: { type: 'armor', name: 'Armadura congelada',       icon: '🛡️', rarity: 'epico',      def: 45,  hp: 180, color: '#60a5fa', upg: 'cristal_hielo' },
   armadura_lava:      { type: 'armor', name: 'Armadura de lava',         icon: '🛡️', rarity: 'epico',      def: 80,  hp: 300, color: '#b91c1c', upg: 'mineral_volcanico' },
   armadura_oscura:    { type: 'armor', name: 'Armadura del Caballero Oscuro', icon: '🛡️', rarity: 'legendario', def: 140, hp: 500, color: '#4c1d95', upg: 'cristal_oscuro' },
+  armadura_divina:    { type: 'armor', name: 'Armadura Divina',          icon: '🛡️', rarity: 'divino',     def: 320, hp: 1150, color: '#fef3c7', upg: 'fragmento_legendario' },
   armadura_caos:      { type: 'armor', name: 'Armadura del Caos',        icon: '🛡️', rarity: 'mitico',     def: 210, hp: 760, color: '#9f1239', upg: 'fragmento_legendario' },
 };
 const MAX_ITEM_LEVEL = 5;
 const ITEM_LEVEL_BONUS = 0.15;          // +15% de estadísticas por nivel
-const RARITY_VALUE = { comun: 20, pococomun: 60, raro: 150, epico: 350, legendario: 800, mitico: 2000 };
+const RARITY_VALUE = { comun: 20, pococomun: 60, raro: 150, epico: 350, legendario: 800, mitico: 2000, divino: 5000 };
 
 /* ---------- Recetas de la forja ----------
    world: mundo que hay que alcanzar para ver la receta */
@@ -151,8 +154,8 @@ const ENEMIES = {
   criatura_fuego: { icon: '🔥', name: 'Criatura de fuego', hp: 0.9, atk: 1.2, speed: 50, range: 150, size: 32, ai: 'ranged', atkCd: 2.2, proj: 'fireball', resist: 'fuego', sprite: { art: 'flame', shape: 'flame', color: '#f97316' } },
   golem_lava:     { icon: '🪨', name: 'Gólem de lava',     hp: 2.3, atk: 1.4, speed: 22, range: 30, size: 48, ai: 'tank',   atkCd: 1.8, resist: 'fuego', sprite: { art: 'lavagolem', shape: 'golem', color: '#57190f', glow: '#fb923c' } },
   // Reino Oscuro
-  caballero_oscuro: { icon: '🛡️', name: 'Caballero oscuro', hp: 1.6, atk: 1.3, speed: 40, range: 28, size: 44, ai: 'melee',  atkCd: 1.2, sprite: { art: 'darkknight', shape: 'humanoid', body: '#1f2937', skin: '#374151', head: 'helmet', weapon: 'sword', eye: '#ef4444', cape: '#450a0a', spikes: true } },
-  mago_oscuro:      { icon: '🧙', name: 'Mago oscuro',      hp: 0.9, atk: 1.5, speed: 38, range: 180, size: 42, ai: 'ranged', atkCd: 2.1, proj: 'darkorb', sprite: { art: 'wizard', shape: 'humanoid', body: '#4c1d95', skin: '#a78bfa', head: 'wizard', hood: '#2e1065', weapon: 'staff', eye: '#f0abfc' } },
+  caballero_oscuro: { icon: '🛡️', name: 'Caballero oscuro', hp: 1.6, atk: 1.3, speed: 40, range: 28, size: 44, ai: 'melee',  atkCd: 1.2, guard: true, sprite: { art: 'darkknight', shape: 'humanoid', body: '#1f2937', skin: '#374151', head: 'helmet', weapon: 'sword', eye: '#ef4444', cape: '#450a0a', spikes: true } },
+  mago_oscuro:      { icon: '🧙', name: 'Mago oscuro',      hp: 0.9, atk: 1.5, speed: 38, range: 180, size: 42, ai: 'ranged', atkCd: 2.1, blink: true, proj: 'darkorb', sprite: { art: 'wizard', shape: 'humanoid', body: '#4c1d95', skin: '#a78bfa', head: 'wizard', hood: '#2e1065', weapon: 'staff', eye: '#f0abfc' } },
   criatura_maldita: { icon: '👻', name: 'Criatura maldita', hp: 1.0, atk: 1.2, speed: 58, range: 24, size: 38, ai: 'melee',  atkCd: 1.0, float: true, sprite: { art: 'ghost', shape: 'ghost', color: '#9333ea', eye: '#f0abfc' } },
 
   /* ----- Jefes -----
@@ -272,6 +275,24 @@ const WHEELS = {
       { r: 'legendario', item: 'espada_inframundo' },
       { r: 'mitico', item: 'hoja_caos' },
       { r: 'mitico', item: 'armadura_caos' },
+    ],
+  },
+  // Siempre disponible. Solo se gira con diamantes y no tiene premios básicos.
+  diamante: {
+    name: 'Ruleta de Diamantes', icon: '💎', world: 1, wood: '#1e3a8a', rim: '#facc15', gemOnly: true, gemCost: 50, pity: 10,
+    cost: {},
+    odds: { raro: 50, epico: 33, legendario: 13, mitico: 4 },
+    prizes: [
+      { r: 'raro', bundle: [{ tickets: 6 }, { mat: 'fragmento_legendario', qty: 5 }] },
+      { r: 'epico', item: 'hoja_caos' },
+      { r: 'legendario', pet: 'fenix' },
+      { r: 'raro', bundle: [{ gems: 20 }, { mat: 'esencia_demoniaca', qty: 8 }, { mat: 'cristal_oscuro', qty: 15 }] },
+      { r: 'mitico', item: 'espada_divina' },
+      { r: 'epico', bundle: [{ tickets: 12 }, { gems: 30 }, { mat: 'fragmento_legendario', qty: 10 }] },
+      { r: 'legendario', cosmetic: 'aura_fenix' },
+      { r: 'raro', bundle: [{ potion: 'pocion_grande', qty: 6 }, { tickets: 5 }, { mat: 'alma_maldita', qty: 2 }] },
+      { r: 'mitico', item: 'armadura_divina' },
+      { r: 'epico', item: 'armadura_caos' },
     ],
   },
 };
@@ -424,11 +445,12 @@ function stageInfo(stage) {
   const s = stage - 1;
   const ease = EARLY_STAGES[stage] || {};
   const power = Math.round(BALANCE.powerBase * Math.pow(BALANCE.powerGrowth, s) * (ease.atk ? 0.5 + ease.atk * 0.5 : 1));
+  const wm = WORLD_MULT[world.id] || { hp: 1, atk: 1 };
   return {
     stage, world, boss: isBossStage(stage),
     name: world.stageNames[stageIndexInWorld(stage)] || `Etapa ${stage}`,
-    hp: BALANCE.hpBase * Math.pow(BALANCE.hpGrowth, s) * (ease.hp || 1),
-    atk: BALANCE.atkBase * Math.pow(BALANCE.atkGrowth, s) * (ease.atk || 1),
+    hp: BALANCE.hpBase * Math.pow(BALANCE.hpGrowth, s) * (ease.hp || 1) * wm.hp,
+    atk: BALANCE.atkBase * Math.pow(BALANCE.atkGrowth, s) * (ease.atk || 1) * wm.atk,
     // Multiplicador extra de daño que crece por etapa (suavizado al inicio por ease.atk)
     dmgMult: BALANCE.enemyDmgBase + BALANCE.enemyDmgStep * s,
     xp: Math.round(BALANCE.xpBase * Math.pow(BALANCE.xpGrowth, s)),
@@ -505,8 +527,11 @@ const PETS = {
   lobo_hielo: { name: 'Cachorro de hielo', icon: '❄️', art: 'icewolf', size: 24, kind: 'melee', dmg: 0.3, cd: 1.1, range: 26,  from: 'golem_hielo_boss', desc: 'Sus mordiscos ralentizan.', slow: true },
   llamita:    { name: 'Llamita',         icon: '🔥', art: 'flame',    size: 20, kind: 'ranged', dmg: 0.36, cd: 1.6, range: 170, from: 'dragon',           desc: 'Lanza bolas de fuego desde lejos.', proj: 'fireball' },
   fantasma:   { name: 'Espectro',        icon: '👻', art: 'ghost',    size: 24, kind: 'ranged', dmg: 0.42, cd: 1.8, range: 190, from: 'caballero_maldito', desc: 'Dispara orbes oscuros que atraviesan.', proj: 'darkorb' },
+  // Exclusiva de la Ruleta de Diamantes
+  fenix:      { name: 'Fénix',           icon: '🔥', custom: 'fenix', size: 30, kind: 'ranged', dmg: 0.75, cd: 1.15, range: 230, from: null, wheel: true, proj: 'fireball', burn: true, revive: true, rebirth: true,
+                desc: 'Ave de fuego legendaria: sus bolas de fuego queman. Si caes, se sacrifica para revivirte con la mitad de tu vida y luego renace de sus cenizas.' },
 };
-const PET_ORDER = ['lobito', 'escorpion', 'lobo_hielo', 'llamita', 'fantasma'];
+const PET_ORDER = ['lobito', 'escorpion', 'lobo_hielo', 'llamita', 'fantasma', 'fenix'];
 const PET_MAX_LEVEL = 10;
 const petXpFor = lvl => 20 + lvl * lvl * 12;      // experiencia (derrotas) para el siguiente nivel
 const petMult = lvl => 1 + 0.15 * (lvl - 1);
@@ -533,8 +558,9 @@ const COSMETICS = {
   estela_hojas: { type: 'trail', name: 'Estela de hojas',  icon: '🍃', color: '#84cc16', gems: 25 },
   estela_fuego: { type: 'trail', name: 'Estela de brasas', icon: '🔥', color: '#fb923c', ach: ['combo', 1] },
   estela_caos:  { type: 'trail', name: 'Estela del Caos',  icon: '🌀', color: '#f43f5e', ach: ['tower', 1] },
+  aura_fenix:   { type: 'aura',  name: 'Alas del Fénix',   icon: '🔥', color: '#fb923c', wheel: true },
 };
-const COSMETIC_ORDER = ['aura_dorada', 'aura_hielo', 'aura_fuego', 'aura_sombra', 'estela_luz', 'estela_hojas', 'estela_fuego', 'estela_caos'];
+const COSMETIC_ORDER = ['aura_fenix', 'aura_dorada', 'aura_hielo', 'aura_fuego', 'aura_sombra', 'estela_luz', 'estela_hojas', 'estela_fuego', 'estela_caos'];
 
 /* ---------- Definitiva: "Furia del Caos" ----------
    La barra se llena al golpear y al recibir daño. */
@@ -580,3 +606,61 @@ const ONLINE = {
   key: 'sb_publishable_th04FG8XGA0v5oMflRGt_Q_7lLD-ExH',
   emailDomain: 'jugadores.reinosdelcaos.app',   // el usuario se convierte en un correo interno (nadie recibe correos)
 };
+
+/* ---------- Dificultades ----------
+   Pesadilla se abre al terminar el Normal; Infierno al terminar Pesadilla.
+   Cada dificultad guarda sus propias etapas superadas. */
+const DIFFICULTIES = [
+  { id: 0, name: 'Normal',    icon: '⚔️', color: '#e8b54a', hp: 1, atk: 1,   spd: 1,    elite: 1, loot: 1,   xp: 1, cap: 1,   affixes: 0 },
+  // hp/atk: respecto al final del Normal (etapa 25), y suben un poco en cada etapa
+  { id: 1, name: 'Pesadilla', icon: '💀', color: '#ef4444', hp: 1,   atk: 1, spd: 1.15, elite: 2, loot: 2.5, xp: 2, cap: 1.3, affixes: 1 },
+  { id: 2, name: 'Infierno',  icon: '🔥', color: '#f97316', hp: 3.2, atk: 2, spd: 1.3,  elite: 3, loot: 6,   xp: 4, cap: 1.5, affixes: 2 },
+];
+/* Poderes de los élites en Pesadilla e Infierno */
+const ELITE_AFFIXES = {
+  vampiro:   { name: 'Vampiro',   icon: '🩸', color: '#f87171' },
+  explosivo: { name: 'Explosivo', icon: '💣', color: '#fb923c' },
+  veloz:     { name: 'Veloz',     icon: '💨', color: '#7dd3fc' },
+  escudo:    { name: 'Escudo',    icon: '🛡️', color: '#cbd5e1' },
+  furioso:   { name: 'Furioso',   icon: '😡', color: '#ef4444' },
+};
+/* Tercera fase (solo los jefes de los mundos 4 y 5) */
+const BOSS_PHASE3 = {
+  dragon:            { title: 'Ira del Dragón',   attacks: ['rain', 'firewall', 'breath', 'summon:criatura_fuego', 'firewall', 'fly'] },
+  caballero_maldito: { title: 'Eclipse del Caos', attacks: ['shadows', 'darkwave', 'spin', 'darkwave', 'charge', 'volley'], darkness: true },
+};
+/* Mejoras de la Torre: se elige 1 de 3 al superar cada piso (vals por rareza: común, rara, épica) */
+const BLESSINGS = {
+  fuerza:   { name: 'Fuerza',        icon: '⚔️', desc: v => `+${v}% de daño`, vals: [20, 35, 55] },
+  vida:     { name: 'Vitalidad',     icon: '❤️', desc: v => `+${v}% de vida máxima y te cura`, vals: [25, 40, 60] },
+  critico:  { name: 'Precisión',     icon: '🎯', desc: v => `+${v}% de probabilidad de crítico`, vals: [8, 14, 22] },
+  rapidez:  { name: 'Rapidez',       icon: '💨', desc: v => `Te mueves un ${v}% más rápido`, vals: [12, 20, 30] },
+  ascuas:   { name: 'Ascuas',        icon: '🔥', desc: v => `Tus golpes queman (${v}% de tu daño por segundo)`, vals: [12, 20, 32] },
+  hielo:    { name: 'Escarcha',      icon: '❄️', desc: v => `${v}% de probabilidad de congelar al golpear`, vals: [10, 16, 25] },
+  vampiro:  { name: 'Sed de sangre', icon: '🩸', desc: v => `Recuperas el ${v}% del daño que haces`, vals: [3, 5, 8] },
+  mascota:  { name: 'Vínculo',       icon: '🐾', desc: v => `Tu mascota hace +${v}% de daño`, vals: [60, 110, 180] },
+  recarga:  { name: 'Sabiduría',     icon: '🔮', desc: v => `Tus habilidades se recargan un ${v}% más rápido`, vals: [15, 25, 35] },
+  escudo:   { name: 'Égida',         icon: '🛡️', desc: v => `Bloquea ${v} golpe${v > 1 ? 's' : ''} en cada piso`, vals: [1, 2, 3] },
+  rayos:    { name: 'Tormenta',      icon: '⚡', desc: v => `+${v} rayo${v > 1 ? 's' : ''} cada 4 s sobre los enemigos`, vals: [1, 2, 3] },
+  curacion: { name: 'Bendición',     icon: '✨', desc: v => `Recuperas ${v}% de vida al pasar de piso`, vals: [12, 20, 32] },
+};
+const BLESS_TIERS = [
+  { name: 'Común', color: '#cbd5e1', w: 60 },
+  { name: 'Rara',  color: '#60a5fa', w: 30 },
+  { name: 'Épica', color: '#c084fc', w: 10 },
+];
+/* Mundo 5 mucho más duro que el 4 (antes casi no se notaba el salto) */
+const WORLD_MULT = { 4: { hp: 1.1, atk: 1.1 }, 5: { hp: 1.5, atk: 1.35 } };
+
+/** Etapa en Pesadilla o Infierno: parte de la fuerza del final del Normal y sigue creciendo. */
+function applyDiff(info, D) {
+  if (!D || !D.id) return info;
+  const top = stageInfo(MAX_STAGE), k = info.stage - 1;
+  return Object.assign({}, info, {
+    hp: top.hp * D.hp * Math.pow(1.06, k), atk: top.atk * D.atk * Math.pow(1.05, k), dmgMult: top.dmgMult + 0.04 * k,
+    coins: Math.round(top.coins * 0.5 * D.loot * Math.pow(1.04, k)), xp: Math.round(top.xp * 0.5 * D.xp * Math.pow(1.04, k)),
+    power: Math.round(top.power * Math.sqrt(D.hp * D.atk) * Math.pow(1.055, k)),
+    enemyCount: Math.min(20, 9 + Math.floor(info.stage * 0.5)), maxAlive: Math.min(5, 3 + Math.floor(info.stage / 8)),
+    eliteChance: Math.min(0.35, (0.05 + info.stage * 0.003) * D.elite), diff: D,
+  });
+}

@@ -84,6 +84,9 @@ const UI = (() => {
     if (!S().settings.vibrate) return;
     try { if (navigator.vibrate) navigator.vibrate(ms); } catch (e) { /* no disponible */ }
   }
+  /** Progreso de la dificultad elegida ({ cleared, unlocked }) y su ficha. */
+  const PG = () => Game.prog();
+  const DIF = () => DIFFICULTIES[S().diff || 0];
   /** Icono dibujado de un objeto, poción o material (sin emojis repetidos). */
   const ico = id => `<span class="gi-wrap">${Icons.html(id)}</span>`;
   const costPills = (cost, coins, gems) => {
@@ -104,8 +107,9 @@ const UI = (() => {
 
   /* ---------- Menú principal ---------- */
   RENDER.menu = () => {
-    const s = S(), stage = s.unlocked, info = stageInfo(stage), P = Game.stats(), w = info.world;
-    const allDone = s.cleared[MAX_STAGE];
+    const s = S(), pg = PG(), stage = pg.unlocked, info = stageInfo(stage), P = Game.stats(), w = info.world, D = DIF();
+    const allDone = pg.cleared[MAX_STAGE];
+    document.body.dataset.diff = D.id;
     const wheelReady = Object.values(WHEELS).some(wh => wh.world <= Game.highestWorld() && (Game.hasCost(wh.cost) || s.gems >= wh.gemCost));
     const craftReady = RECIPES.some(r => r.item && !s.items[r.item] && r.world <= Game.highestWorld() && Game.hasCost(r.cost, r.coins));
     const daily = Game.ensureDaily();
@@ -113,7 +117,7 @@ const UI = (() => {
     const first = (w.id - 1) * STAGES_PER_WORLD + 1;
     let pips = '';
     for (let st = first; st < first + STAGES_PER_WORLD; st++) {
-      const cls = s.cleared[st] ? 'done' : st === stage ? 'current' : 'locked';
+      const cls = pg.cleared[st] ? 'done' : st === stage ? 'current' : 'locked';
       pips += `<span class="pip ${cls} ${isBossStage(st) ? 'boss' : ''}">${isBossStage(st) ? '👹' : st}</span>`;
     }
     const dock = (to, ico, label, badge) =>
@@ -140,9 +144,10 @@ const UI = (() => {
           <div class="world-name">${w.icon} Mundo ${w.id} · ${w.name}${s.streak ? ` <span class="streak-chip">🔥 x${s.streak}</span>` : ''}</div>
           <div class="pips">${pips}</div>
         </div>
-        <button class="btn btn-play" data-act="play">
+        ${Game.maxDiff() ? `<div class="diff-pick">${DIFFICULTIES.map(d => `<button class="diff-chip ${d.id === D.id ? 'on' : ''}" style="--dc:${d.color}" data-act="diff" data-d="${d.id}" ${Game.diffUnlocked(d.id) ? '' : 'disabled'}>${Game.diffUnlocked(d.id) ? d.icon : '🔒'} ${d.name}</button>`).join('')}</div>` : ''}
+        <button class="btn btn-play ${D.id ? 'diff-' + D.id : ''}" data-act="play">
           <span class="play-main"><span class="pm-sw">⚔️</span> JUGAR</span>
-          <small>${allDone ? 'Reinos conquistados · repetir etapa ' + stage : `Etapa ${stage} · ${esc(info.name)}${info.boss ? ' · ¡JEFE!' : ''}`}</small>
+          <small>${D.id ? D.icon + ' ' + D.name + ' · ' : ''}${allDone ? 'Reinos conquistados · repetir etapa ' + stage : `Etapa ${stage} · ${esc(info.name)}${info.boss ? ' · ¡JEFE!' : ''}`}</small>
         </button>
         <nav class="dock">
           ${dock('wheel', '🎰', 'Ruleta', s.tickets ? s.tickets : wheelReady ? '!' : '')}
@@ -591,9 +596,9 @@ const UI = (() => {
     }
     const pct = Math.floor(s.xp / xpForLevel(s.level) * 100);
     out.push({ text: `⭐ Nivel ${s.level + 1}: ${pct}%`, to: 'char' });
-    const idx = stageIndexInWorld(s.unlocked);
+    const idx = stageIndexInWorld(PG().unlocked);
     const toBoss = STAGES_PER_WORLD - 1 - idx;
-    if (!s.cleared[MAX_STAGE]) out.push({ text: toBoss ? `👹 Jefe en ${toBoss}` : '👹 ¡Jefe!', to: 'map' });
+    if (!PG().cleared[MAX_STAGE]) out.push({ text: toBoss ? `👹 Jefe en ${toBoss}` : '👹 ¡Jefe!', to: 'map' });
     out.push({ text: `🧩 ${s.ticketShards}/${TICKET_SHARDS} → 🎟️`, to: 'wheel' });
     const pend = d.missions.filter(m => m.progress < m.goal).sort((a, b) => b.progress / b.goal - a.progress / a.goal)[0];
     if (pend) out.push({ text: `📜 ${fmt(pend.progress)}/${fmt(pend.goal)}`, to: 'missions' });
@@ -653,51 +658,55 @@ const UI = (() => {
 
   /* ---------- Mapa ---------- */
   RENDER.map = () => {
-    const s = S();
-    let html = head('🗺️ Mapa');
+    const s = S(), pg = PG(), D = DIF();
+    let html = head(`🗺️ Mapa${D.id ? ` · <span style="color:${D.color}">${D.icon} ${D.name}</span>` : ''}`);
+    if (Game.maxDiff()) html += `<div class="diff-pick map">${DIFFICULTIES.map(d => `<button class="diff-chip ${d.id === D.id ? 'on' : ''}" style="--dc:${d.color}" data-act="diff" data-d="${d.id}" ${Game.diffUnlocked(d.id) ? '' : 'disabled'}>${Game.diffUnlocked(d.id) ? d.icon : '🔒'} ${d.name}</button>`).join('')}</div>`;
     for (const w of WORLDS) {
       const first = (w.id - 1) * STAGES_PER_WORLD + 1, last = first + STAGES_PER_WORLD - 1;
-      const locked = first > s.unlocked;
-      const done = Array.from({ length: STAGES_PER_WORLD }, (_, i) => s.cleared[first + i]).filter(Boolean).length;
+      const locked = first > pg.unlocked;
+      const done = Array.from({ length: STAGES_PER_WORLD }, (_, i) => pg.cleared[first + i]).filter(Boolean).length;
       let route = w.id === 1 ? '<span class="start" aria-hidden="true">🏁</span><span class="arrow">→</span>' : '';
       for (let st = first; st <= last; st++) {
         const boss = isBossStage(st);
-        const cls = s.cleared[st] ? 'done' : st === s.unlocked ? 'current' : st > s.unlocked ? 'locked' : '';
-        const label = boss ? '👹' : st > s.unlocked ? '🔒' : st;
+        const cls = pg.cleared[st] ? 'done' : st === pg.unlocked ? 'current' : st > pg.unlocked ? 'locked' : '';
+        const label = boss ? '👹' : st > pg.unlocked ? '🔒' : st;
         route += `<button class="node ${cls} ${boss ? 'boss' : ''}" data-act="stage" data-stage="${st}" aria-label="Etapa ${st}${boss ? ' (jefe)' : ''}">${label}</button>`;
         if (st < last) route += '<span class="arrow">→</span>';
       }
       html += `
-        <div class="world ${locked ? 'locked' : ''}" style="--wbg:${worldBg(w)}">
+        <div class="world ${locked ? 'locked' : ''} ${D.id ? 'diff-' + D.id : ''}" style="--wbg:${worldBg(w)}">
           <div class="world-head"><span class="wico">${w.icon}</span>
             <div><h3>Mundo ${w.id} — ${w.name}</h3><small>Etapas ${first}-${last} · ${done}/${STAGES_PER_WORLD} completadas · Jefe: ${ENEMIES[w.boss].name}</small></div>
           </div>
           <div class="route">${route}</div>
         </div>`;
     }
-    html += `<div class="soon">🚧 Nuevos reinos llegarán pronto…<br><small>Más allá del Trono del Caos aguardan tierras inexploradas.</small></div>`;
+    const nextD = DIFFICULTIES[Game.maxDiff() + 1];
+    html += nextD ? `<div class="soon">${nextD.icon} Termina el ${DIFFICULTIES[nextD.id - 1].name} para abrir la dificultad <b style="color:${nextD.color}">${nextD.name}</b><br><small>Enemigos mucho más duros, élites con poderes y mejor botín.</small></div>`
+      : `<div class="soon">🔥 Has abierto todas las dificultades.<br><small>En Infierno los jefes pueden soltar objetos Divinos.</small></div>`;
     $('scr-map').innerHTML = html;
     const cur = $('scr-map').querySelector('.node.current');
     if (cur) setTimeout(() => cur.scrollIntoView({ block: 'center', behavior: 'smooth' }), 60);
   };
 
   function openStage(stage) {
-    const s = S();
-    if (stage > s.unlocked) { toast(`🔒 Completa la etapa ${stage - 1} para desbloquearla`, true); return; }
-    const info = stageInfo(stage), P = Game.stats();
-    const powerOk = P.power >= info.power * 0.85;
+    const s = S(), pg = PG(), D = DIF();
+    if (stage > pg.unlocked) { toast(`🔒 Completa la etapa ${stage - 1} para desbloquearla`, true); return; }
+    const info = applyDiff(stageInfo(stage), D), P = Game.stats(), rec = info.power;
+    const powerOk = P.power >= rec * 0.85;
     const foes = (info.boss ? [info.world.boss] : []).concat(info.world.enemies);
     const drops = Object.keys(info.world.drops).map(id => `<span title="${MATERIALS[id].name}">${ico(id)}</span>`).join('');
     openModal(`
-      <h2>${info.boss ? '👹 ' : ''}Etapa ${stage}</h2>
+      <h2>${info.boss ? '👹 ' : ''}Etapa ${stage}${D.id ? ` <span style="color:${D.color}">· ${D.icon} ${D.name}</span>` : ''}</h2>
       <p class="sub">${esc(info.name)} · ${info.world.icon} ${info.world.name}</p>
       <div class="info-rows">
         <div class="foe-row">${foes.map(id => `<figure class="foe ${ENEMIES[id].boss ? 'boss' : ''}"><canvas data-foe="${id}" width="160" height="150"></canvas><figcaption>${ENEMIES[id].name}</figcaption></figure>`).join('')}</div>
         ${info.boss ? `<div class="info-row"><span>Jefe</span><b style="color:#fca5a5">👹 ${ENEMIES[info.world.boss].name}</b></div>` : `<div class="info-row"><span>Enemigos</span><b>${info.enemyCount} en oleadas</b></div>`}
-        <div class="info-row"><span>Poder recomendado</span><b style="color:${powerOk ? '#86efac' : '#fca5a5'}">💥 ${fmt(info.power)}</b></div>
+        <div class="info-row"><span>Poder recomendado</span><b style="color:${powerOk ? '#86efac' : '#fca5a5'}">💥 ${fmt(rec)}</b></div>
+        ${D.id ? `<div class="info-row"><span>Dificultad</span><b style="color:${D.color}">${D.icon} Élites con ${D.affixes} poder${D.affixes > 1 ? 'es' : ''} · botín ×${D.loot}</b></div>` : ''}
         <div class="info-row"><span>Tu poder</span><b>💥 ${fmt(P.power)}</b></div>
         <div class="info-row"><span>Materiales</span><span class="icons">${drops}${info.boss ? ico(info.world.bossDrop) : ''}</span></div>
-        <div class="info-row"><span>Completada</span><b>${s.cleared[stage] ? `✅ ${s.cleared[stage]} ${s.cleared[stage] === 1 ? 'vez' : 'veces'}` : `No · primera vez: +${info.boss ? 5 : 1} 💎`}</b></div>
+        <div class="info-row"><span>Completada</span><b>${pg.cleared[stage] ? `✅ ${pg.cleared[stage]} ${pg.cleared[stage] === 1 ? 'vez' : 'veces'}` : `No · primera vez: +${(info.boss ? 5 : 1) * (1 + D.id * 2)} 💎`}</b></div>
       </div>
       ${!powerOk ? '<p class="hint" style="text-align:center;margin-top:10px">⚠️ Tu poder es bajo. Mejora tu equipo en la forja o prueba suerte en la ruleta.</p>' : ''}
       <div class="modal-actions">
@@ -802,12 +811,28 @@ const UI = (() => {
     if (r.victory) {
       const info = stageInfo(r.stage);
       xp += Math.round(info.xp * (r.boss ? 10 : 4) * (1 + bonus));
+      const dId = r.diff || 0, wasMax = Game.maxDiff();
       first = Game.completeStage(r.stage);
-      gems = first ? (r.boss ? 5 : 1) : (r.boss ? 2 : 0);
+      gems = (first ? (r.boss ? 5 : 1) : (r.boss ? 2 : 0)) * (1 + dId * 2);
+      if (Game.maxDiff() > wasMax) {
+        const nd = DIFFICULTIES[Game.maxDiff()];
+        gifts.push({ icon: nd.icon, text: `¡Dificultad ${nd.name} desbloqueada! Elígela en el menú` });
+      }
+      if (r.boss && dId) {
+        // Botín especial de Pesadilla e Infierno
+        gifts.push({ icon: '🌟', text: Game.grant({ mat: 'fragmento_legendario', qty: dId === 2 ? 4 + Math.floor(Math.random() * 3) : 2 }) });
+        if (dId === 2) {
+          const finalFirst = first && r.stage === MAX_STAGE;
+          if (finalFirst || Math.random() < 0.08) {
+            const div = !s.items.espada_divina ? 'espada_divina' : !s.items.armadura_divina ? 'armadura_divina' : (Math.random() < 0.5 ? 'espada_divina' : 'armadura_divina');
+            gifts.push({ icon: '🌟', text: 'DIVINO: ' + Game.grant({ item: div }) });
+          }
+        }
+      }
       s.gems += gems;
       extra.shards += 1;
       made += Game.addShards(1);
-      if (first) {
+      if (first && !dId) {
         // Objetos y habilidades nuevos ya se muestran en su propia tarjeta
         for (const p of (FIRST_CLEAR[r.stage] || [])) { const t = Game.grant(p); if (!p.item && !p.skill) gifts.push({ icon: '🎁', text: t }); }
       }
@@ -934,7 +959,7 @@ const UI = (() => {
         </div>` : '<p class="hint" style="text-align:center">Consejo: fabrica o mejora tu equipo en la 🔨 Forja, sube estadísticas en 👤 Héroe o gira la 🎰 Ruleta.</p>'}
       ${r.victory && nextShard < TICKET_SHARDS ? `<p class="hint" style="text-align:center;margin:6px 0 0">🎟️ ${nextShard === 1 ? '¡Una etapa más' : `${nextShard} etapas más`} y consigues otra tirada!</p>` : ''}
       <div class="modal-actions" id="result-actions" ${r.victory ? 'hidden' : ''}>
-        ${r.victory && next <= MAX_STAGE && next <= s.unlocked ? `<button class="btn" data-act="enter" data-stage="${next}">▶ Etapa ${next}${isBossStage(next) ? ' · ¡JEFE!' : ''}</button>` : ''}
+        ${r.victory && next <= MAX_STAGE && next <= PG().unlocked ? `<button class="btn" data-act="enter" data-stage="${next}">▶ Etapa ${next}${isBossStage(next) ? ' · ¡JEFE!' : ''}</button>` : ''}
         ${!r.victory ? `<button class="btn" data-act="enter" data-stage="${r.stage}">🔁 Reintentar</button>` : `<button class="btn ghost" data-act="enter" data-stage="${r.stage}">🔁 Repetir etapa</button>`}
         <button class="btn ghost" data-act="go" data-to="wheel">🎰 Ruleta${s.tickets ? ` (${s.tickets} 🎟️)` : ''}</button>
         <button class="btn ghost" data-act="go" data-to="${r.victory ? 'map' : 'forge'}">${r.victory ? '🗺️ Mapa' : '🔨 Forja'}</button>
@@ -989,20 +1014,20 @@ const UI = (() => {
 
   RENDER.wheel = () => {
     const ids = unlockedWheels();
-    if (!view.wheel || !ids.includes(view.wheel)) view.wheel = ids[ids.length - 1];
+    if (!view.wheel || !ids.includes(view.wheel)) view.wheel = ids.filter(id => !WHEELS[id].gemOnly).pop();
     const w = WHEELS[view.wheel];
     const tabs = Object.keys(WHEELS).map(id => {
       const ok = ids.includes(id), W_ = WHEELS[id];
       return `<button class="tab ${id === view.wheel ? 'active' : ''}" data-act="wheel-sel" data-id="${id}" ${ok ? '' : 'disabled'} title="${ok ? W_.name : 'Se desbloquea en el mundo ' + W_.world}">${ok ? W_.icon : '🔒'} ${W_.name.replace('Ruleta ', '')}</button>`;
     }).join('');
-    const odds = RARITY_ORDER.map(r => {
+    const odds = RARITY_ORDER.filter(r => w.odds[r] != null).map(r => {
       const prizes = w.prizes.filter(p => p.r === r).map(p => Game.prizeLabel(p).full).join(', ');
       return `<div class="odd-row" style="--rc:${rc(r)}"><b>${RARITIES[r].icon} ${RARITIES[r].name}</b><span class="prz">${esc(prizes)}</span><span class="pct">${w.odds[r]}%</span></div>`;
     }).join('');
     $('scr-wheel').innerHTML = `
       ${head('🎰 Ruleta')}
       <div class="tabs">${tabs}</div>
-      <div class="wheel-area">
+      <div class="wheel-area ${w.gemOnly ? 'diamond' : ''}">
         <h3 style="color:var(--gold)">${w.icon} ${w.name}</h3>
         <div class="wheel-box" style="--wglow:${w.rim}88">
           <div class="wheel-glow"></div>
@@ -1010,7 +1035,7 @@ const UI = (() => {
           <canvas id="wheel-cv" width="640" height="640"></canvas>
           <div class="wheel-hub">${w.icon}</div>
         </div>
-        <div class="ticket-box">
+        ${w.gemOnly ? diamondBox(w) : `<div class="ticket-box">
           <div><b>🎟️ ${S().tickets}</b> tickets · 🧩 ${S().ticketShards}/${TICKET_SHARDS}</div>
           <div class="bar thin"><i style="width:${S().ticketShards / TICKET_SHARDS * 100}%"></i></div>
         </div>
@@ -1020,12 +1045,24 @@ const UI = (() => {
           <button class="btn ghost" data-act="spin" data-mode="mats" ${Game.hasCost(w.cost) ? '' : 'disabled'}>🎰 Girar con materiales</button>
           <button class="btn ghost" data-act="spin" data-mode="gems" ${S().gems >= w.gemCost ? '' : 'disabled'}>Girar con 💎 ${w.gemCost}</button>
         </div>
-        <p class="hint" style="text-align:center;margin:0">Consigue 🎟️ completando etapas (cada ${TICKET_SHARDS} 🧩 = 1 🎟️), venciendo jefes y élites, con combos, rachas y misiones. Si sale un objeto que ya tienes, sube un nivel.</p>
+        <p class="hint" style="text-align:center;margin:0">Consigue 🎟️ completando etapas (cada ${TICKET_SHARDS} 🧩 = 1 🎟️), venciendo jefes y élites, con combos, rachas y misiones. Si sale un objeto que ya tienes, sube un nivel.</p>`}
         <div class="odds">${odds}</div>
       </div>`;
     drawWheel(w);
     $('wheel-cv').style.transform = `rotate(${view.wheelRot}deg)`;
   };
+
+  /** Panel de la Ruleta de Diamantes: precio, seguro de suerte y botón. */
+  function diamondBox(w) {
+    const s = S(), left = Math.max(1, w.pity - (s.diamondPity || 0)), can = s.gems >= w.gemCost;
+    return `<div class="diamond-box">
+      <div class="db-row"><span>💎 Tienes <b>${fmt(s.gems)}</b></span><span>Cada tirada: <b>${w.gemCost} 💎</b></span></div>
+      <div class="db-pity"><span>⭐ Premio <b style="color:#fb923c">Legendario</b> o <b style="color:#f43f5e">Mítico</b> seguro en <b>${left}</b> tirada${left > 1 ? 's' : ''}</span>
+        <div class="bar thin"><i style="width:${(s.diamondPity || 0) / w.pity * 100}%"></i></div></div>
+      <button class="btn wide diamond-btn ${can ? 'glow' : ''}" data-act="spin" data-mode="gems" ${can ? '' : 'disabled'}>💎 Girar por ${w.gemCost}</button>
+      <p class="hint" style="text-align:center;margin:0">Sin premios básicos: el <b>Fénix</b>, las <b>Alas del Fénix</b>, objetos <b>míticos</b> y <b>divinos</b>, y montones de tickets, gemas y fragmentos legendarios.</p>
+    </div>`;
+  }
 
   function drawWheel(w) {
     const cv = $('wheel-cv'), c = cv.getContext('2d'), R = 320, n = w.prizes.length, seg = Math.PI * 2 / n;
@@ -1047,7 +1084,13 @@ const UI = (() => {
       c.font = '56px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
       const im = lab.id && Icons.image(lab.id);
       c.save(); c.translate(R * 0.6, 0); c.rotate(Math.PI / 2);
-      if (im && im.complete && im.naturalWidth) c.drawImage(im, -40, -40, 80, 80);
+      if (lab.pet === 'fenix') Sprites.phoenix(c, -4, 34, 46, 0.6, 1);
+      else if (lab.cosmetic) {
+        const s_ = S();
+        Sprites.knight(c, 0, 42, 1.25, { face: 1, walk: 0, swing: -1, heavy: false, time: 0.8, aura: lab.cosmetic, flash: false,
+          weaponColor: ITEMS[s_.equip.weapon].color, armorColor: ITEMS[s_.equip.armor].color, helmet: s_.settings.helmet, rank: Game.rank() });
+      }
+      else if (im && im.complete && im.naturalWidth) c.drawImage(im, -40, -40, 80, 80);
       else {
         c.fillText(lab.icon, 0, 0);
         if (im) im.onload = () => { if (current === 'wheel' && $('wheel-cv')) drawWheel(w); };
@@ -1083,7 +1126,14 @@ const UI = (() => {
     refreshTop();
     document.querySelectorAll('[data-act="spin"], [data-act="wheel-sel"], #scr-wheel .back').forEach(b => { b.disabled = true; });
     // Elige rareza según probabilidades y luego un premio de esa rareza
-    const rar = weightedPick(w.odds);
+    let rar = weightedPick(w.odds);
+    if (w.pity) {
+      // Seguro de suerte: tras varias tiradas sin premio especial, toca uno seguro
+      S().diamondPity = (S().diamondPity || 0) + 1;
+      if (S().diamondPity >= w.pity) rar = weightedPick({ legendario: w.odds.legendario, mitico: w.odds.mitico });
+      if (rar === 'legendario' || rar === 'mitico') S().diamondPity = 0;
+      Game.save();
+    }
     const options = w.prizes.map((p, i) => i).filter(i => w.prizes[i].r === rar);
     const idx = options[Math.floor(Math.random() * options.length)];
     const n = w.prizes.length, segDeg = 360 / n;
@@ -1118,17 +1168,56 @@ const UI = (() => {
     openModal(`
       <div class="prize-reveal ${ri >= 4 ? 'legend' : ri >= 3 ? 'epic' : ''}" style="--rc:${r.color}">
         <div class="prize-rarity">${shout}</div>
-        <div class="prize-icon">${lab.id ? ico(lab.id) : lab.icon}</div>
+        <div class="prize-icon">${lab.pet || lab.cosmetic ? '<canvas id="prize-cv" width="240" height="220"></canvas>' : lab.id ? ico(lab.id) : lab.icon}</div>
         <div class="prize-name">${esc(name)}</div>
         <div class="prize-detail">${esc(text)}</div>
       </div>
       <div class="modal-actions">
         <button class="btn" data-act="close">¡Genial!</button>
       </div>`, () => RENDER.wheel());
+    if (lab.pet || lab.cosmetic) animatePrize(lab);
     if (ri >= 4) { Sfx.play('legendary'); confetti(110, [r.color, '#fde047', '#ffffff']); vibrate(120); }
     else if (ri >= 3) { Sfx.play('legendary'); confetti(50, [r.color, '#ffffff']); }
     else Sfx.play('chest');
     refreshTop();
+  }
+
+  /** Torre: elegir 1 de 3 mejoras al superar un piso. */
+  function blessingPick(opts, list, pick) {
+    const counts = {};
+    for (const o of list) counts[o.id] = (counts[o.id] || 0) + 1;
+    const cards = opts.map((o, i) => {
+      const B = BLESSINGS[o.id], T = BLESS_TIERS[o.tier];
+      return `<button class="bless-card t${o.tier}" style="--tc:${T.color}" data-bless="${i}">
+        <span class="bl-tier">${T.name}</span><span class="bl-ico">${B.icon}</span>
+        <b class="bl-name">${B.name}</b><span class="bl-desc">${B.desc(B.vals[o.tier])}</span>
+        ${counts[o.id] ? `<span class="bl-have">Ya tienes x${counts[o.id]} · se suma</span>` : ''}</button>`;
+    }).join('');
+    const mine = Object.keys(counts).map(id => `<span class="pill">${BLESSINGS[id].icon} x${counts[id]}</span>`).join('');
+    let chosen = false;
+    openModal(`<div class="bless-wrap"><h2>✨ Elige una mejora</h2><p class="sub">Dura toda esta escalada de la Torre</p>
+      <div class="bless-row">${cards}</div>${mine ? `<div class="bless-mine">${mine}</div>` : ''}</div>`, () => { if (!chosen) { chosen = true; pick(0); } });
+    document.querySelectorAll('[data-bless]').forEach(b => b.addEventListener('click', () => {
+      if (chosen) return; chosen = true;
+      b.classList.add('picked'); Sfx.play('click');
+      setTimeout(() => { closeModal(); pick(+b.dataset.bless); }, 260);
+    }));
+  }
+
+  /** Animación del premio especial (Fénix o Alas del Fénix) al salir en la ruleta. */
+  function animatePrize(lab) {
+    const cv = $('prize-cv');
+    if (!cv) return;
+    const c = cv.getContext('2d'), t0 = performance.now(), s = S();
+    (function frame(t) {
+      if (!document.body.contains(cv)) return;
+      const time = (t - t0) / 1000;
+      c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, cv.width, cv.height);
+      if (lab.pet) Sprites.phoenix(c, 120, 190, 92, time, 1);
+      else Sprites.knight(c, 120, 210, 2.5, { face: 1, walk: 0, swing: -1, heavy: false, time, aura: lab.cosmetic, flash: false,
+        weaponColor: ITEMS[s.equip.weapon].color, armorColor: ITEMS[s.equip.armor].color, helmet: s.settings.helmet, rank: Game.rank() });
+      requestAnimationFrame(frame);
+    })(t0);
   }
 
   /* ---------- Forja ---------- */
@@ -1728,7 +1817,7 @@ const UI = (() => {
             <div class="item-meta">${P.desc}</div>
             ${o ? `<div class="item-meta">⚔️ ${Math.round(P.dmg * petMult(o.lvl) * 100)}% de tu daño · ${P.kind === 'melee' ? 'cuerpo a cuerpo' : 'a distancia'}</div>${lvlBar}
               <button class="btn small ${active ? 'ghost' : ''}" data-act="pet-use" data-id="${id}">${active ? '✅ Te acompaña' : '🐾 Llevar'}</button>`
-              : `<div class="item-meta">Se consigue al vencer a ${ENEMIES[P.from].name}.</div>`}
+              : P.wheel ? `<div class="item-meta">💎 Solo en la <b>Ruleta de Diamantes</b>.</div><button class="btn small ghost" data-act="go-diamond">💎 Ir a la ruleta</button>` : `<div class="item-meta">Se consigue al vencer a ${ENEMIES[P.from].name}.</div>`}
           </div></div>`;
       }).join('');
       body = `<p class="hint">Tu mascota te sigue en combate y ataca sola. Gana experiencia con cada enemigo derrotado mientras te acompaña.</p><div class="cards">${body}</div>`;
@@ -1738,6 +1827,7 @@ const UI = (() => {
         let how = '';
         if (!unlocked) {
           if (C.gems) how = `<button class="btn small" data-act="cos-buy" data-id="${id}" ${s.gems >= C.gems ? '' : 'disabled'}>💎 ${C.gems} Comprar</button>`;
+          else if (C.wheel) how = `<div class="item-meta">💎 Solo en la <b>Ruleta de Diamantes</b></div><button class="btn small ghost" data-act="go-diamond">💎 Ir a la ruleta</button>`;
           else { const a = ACHIEVEMENTS.find(x => x.id === C.ach[0]); how = `<div class="item-meta">🔒 Logro «${a.name}» ${MEDALS[C.ach[1]].icon}: ${a.text(a.goals[C.ach[1]])}</div>`; }
         } else how = `<button class="btn small ${worn ? 'ghost' : ''}" data-act="cos-wear" data-id="${id}">${worn ? '✅ Puesto (quitar)' : '✨ Ponerse'}</button>`;
         const viewing = view.previewCos === id;
@@ -1762,7 +1852,20 @@ const UI = (() => {
     });
   };
   function drawPets() {
+    // El Fénix se anima (vuela y aletea)
+    cancelAnimationFrame(petsRaf);
+    const fen = document.querySelector('canvas[data-pet="fenix"]');
+    if (fen) {
+      const c = fen.getContext('2d'), t0 = performance.now(), dim = fen.classList.contains('dim');
+      (function frame(t) {
+        if (!document.body.contains(fen)) return;
+        c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, fen.width, fen.height);
+        Sprites.phoenix(c, 62, 96, 44, (t - t0) / 1000, -1, dim ? 0.6 : 1);
+        petsRaf = requestAnimationFrame(frame);
+      })(t0);
+    }
     document.querySelectorAll('canvas[data-pet]').forEach(cv => {
+      if (cv.dataset.pet === 'fenix') return;
       const P = PETS[cv.dataset.pet], c = cv.getContext('2d');
       const e = { def: { sprite: { art: P.art } }, x: 60, y: 90, size: 60, face: -1, walk: 0, flash: 0, windup: 0, windupMax: 1, recover: 0, seed: 1, frozen: 0, state: 'move' };
       const fit = Sprites.artFit(e.def, 110, 82);
@@ -1771,6 +1874,8 @@ const UI = (() => {
       Sprites.enemy(c, e, 0.5);
     });
   }
+
+  let petsRaf = 0;
 
   /* ---------- Torre del Caos ---------- */
   RENDER.tower = () => {
@@ -1879,7 +1984,16 @@ const UI = (() => {
      ================================================================= */
   const ACTIONS = {
     go: d => { closeModal(); show(d.to); },
-    play: () => openStage(S().unlocked),
+    play: () => openStage(PG().unlocked),
+    diff: d => {
+      const id = +d.d;
+      if (!Game.setDiff(id)) { toast('🔒 Termina la dificultad anterior para abrirla', true); return; }
+      const D = DIFFICULTIES[id];
+      document.body.dataset.diff = id;
+      toast(`${D.icon} Dificultad: ${D.name}`);
+      Sfx.play(id ? 'roar' : 'click');
+      RENDER[current] && RENDER[current]();
+    },
     stage: d => openStage(+d.stage),
     enter: d => enterStage(+d.stage),
     close: () => closeModal(),
@@ -1909,6 +2023,7 @@ const UI = (() => {
     },
     'pet-tab': d => { view.petTab = d.tab; view.previewCos = null; RENDER.pets(); },
     'rank-profile': d => rankProfile(d.i),
+    'go-diamond': () => { view.wheel = 'diamante'; show('wheel'); },
     'cos-try': d => { view.previewCos = view.previewCos === d.id ? null : d.id; RENDER.pets(); const cv = $('style-cv'); if (cv) cv.scrollIntoView({ behavior: 'smooth', block: 'center' }); },
     'pets-open': d => { view.petTab = d.tab; show('pets'); },
     'pet-use': d => { S().pets.active = d.id; Game.save(); toast(`🐾 ${PETS[d.id].name} te acompaña`); RENDER.pets(); },
@@ -2100,5 +2215,5 @@ const UI = (() => {
     });
   }
 
-  return { title, EMBLEM, show, toast, vibrate, refreshTop, bindEvents, askUsername, askAccount, onCloud, loginModal, redrawArt: drawFoes, get current() { return current; } };
+  return { title, EMBLEM, blessingPick, show, toast, vibrate, refreshTop, bindEvents, askUsername, askAccount, onCloud, loginModal, redrawArt: drawFoes, get current() { return current; } };
 })();

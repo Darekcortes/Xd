@@ -33,6 +33,7 @@ const Icons = (() => {
     espada_fuego:      { blade: 'flame', bc: '#fb923c', guard: 'horns', gc: '#7c2d12', grip: '#431407', pommel: '#f97316', gem: '#fde047', glow: '#f97316' },
     espada_infernal:   { blade: 'jagged', bc: '#3f0d0d', guard: 'horns', gc: '#1c0a0a', grip: '#450a0a', pommel: '#ef4444', gem: '#ef4444', cracks: '#ef4444', glow: '#ef4444' },
     espada_inframundo: { blade: 'wave', bc: '#6b21a8', guard: 'wings', gc: '#2e1065', grip: '#1e1b4b', pommel: '#c084fc', gem: '#e879f9', runes: '#e9d5ff', glow: '#a855f7' },
+    espada_divina:     { blade: 'long', bc: '#fffbeb', guard: 'wings', gc: '#facc15', grip: '#1e3a8a', pommel: '#fde047', gem: '#67e8f9', runes: '#f59e0b', glow: '#fde047', w: 5.2, fuller: true },
     hoja_caos:         { blade: 'chaos', bc: '#f43f5e', guard: 'chaos', gc: '#facc15', grip: '#111827', pommel: '#facc15', gem: '#fdf2f8', runes: '#fff1f2', glow: '#f43f5e' },
   };
   function bladePath(w) {
@@ -114,6 +115,7 @@ const Icons = (() => {
     armadura_congelada: { kind: 'plate', c: '#93c5fd', trim: '#1d4ed8', pauldrons: true, ice: true, gem: '#e0f2fe' },
     armadura_lava:      { kind: 'plate', c: '#3f1d1d', trim: '#7f1d1d', pauldrons: true, lava: true, gem: '#f97316' },
     armadura_oscura:    { kind: 'plate', c: '#3b2a5c', trim: '#1e1033', pauldrons: true, spikes: '#a78bfa', gem: '#c084fc' },
+    armadura_divina:    { kind: 'plate', c: '#fef3c7', trim: '#d97706', pauldrons: true, horns: true, gem: '#67e8f9', star: true },
     armadura_caos:      { kind: 'plate', c: '#9f1239', trim: '#facc15', pauldrons: true, horns: true, gem: '#fde047', star: true },
   };
   const TORSO = 'M20,14 L27,10 Q32,15 37,10 L44,14 L49,23 L45,27 L45,51 Q32,58 19,51 L19,27 L15,23 Z';

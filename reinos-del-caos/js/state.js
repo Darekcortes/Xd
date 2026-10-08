@@ -28,6 +28,9 @@ const Game = (() => {
       enchantsOwned: {},                               // { arma: [encantamientos ya comprados] }
       cosmetics: { owned: [], aura: null, trail: null },
       tower: { best: 0, runs: 0 },
+      diff: 0,                                         // dificultad elegida: 0 Normal, 1 Pesadilla, 2 Infierno
+      dprog: { 1: { cleared: {}, unlocked: 1 }, 2: { cleared: {}, unlocked: 1 } },   // progreso en Pesadilla e Infierno
+      diamondPity: 0,                                  // tiradas de la Ruleta de Diamantes sin premio especial
       tickets: 1, ticketShards: 0,   // 🎟️ tickets de ruleta y fragmentos
       streak: 0, bestStreak: 0,      // racha de victorias seguidas
       daily: null,                   // misiones del día
@@ -46,6 +49,13 @@ const Game = (() => {
     // Fusiona sub-objetos para que partidas antiguas reciban campos nuevos
     for (const k of ['alloc', 'potions', 'settings', 'stats', 'equip', 'login', 'pets', 'cosmetics', 'tower']) S[k] = Object.assign({}, defaults[k], data[k] || {});
     if (!Array.isArray(S.cosmetics.owned)) S.cosmetics.owned = [];
+    // Progreso por dificultad
+    if (!S.dprog || typeof S.dprog !== 'object') S.dprog = defaults.dprog;
+    for (const d of [1, 2]) {
+      const p = S.dprog[d] = Object.assign({ cleared: {}, unlocked: 1 }, S.dprog[d] || {});
+      p.unlocked = Math.min(Math.max(1, p.unlocked), MAX_STAGE);
+    }
+    if (![0, 1, 2].includes(S.diff) || !diffUnlocked(S.diff)) S.diff = 0;
     // Encantamientos ya pagados: se guardan por arma y cambiar entre ellos es gratis
     if (!S.enchantsOwned || typeof S.enchantsOwned !== 'object') S.enchantsOwned = {};
     for (const w in S.enchants) {
@@ -683,7 +693,13 @@ const Game = (() => {
       const t = rollChest(bossStage, true).map(grant).join(' · ');
       return prize.gems ? `${t} · ${grant({ gems: prize.gems })}` : t;
     }
-    if (prize.pet) return givePet(prize.pet);
+    if (prize.pet) { const isNew = !S.pets.owned[prize.pet], t = givePet(prize.pet); if (isNew && PETS[prize.pet].wheel) S.pets.active = prize.pet; return t; }
+    if (prize.cosmetic) {
+      const C = COSMETICS[prize.cosmetic];
+      if (S.cosmetics.owned.includes(prize.cosmetic)) { S.gems += 60; S.tickets += 5; return `${C.icon} ${C.name} (ya la tenías → +60 💎 y +5 🎟️)`; }
+      S.cosmetics.owned.push(prize.cosmetic); S.cosmetics[C.type] = prize.cosmetic;
+      return `${C.icon} ¡${C.name}! (ya la llevas puesta)`;
+    }
     if (prize.coins) { S.coins += prize.coins; return `💰 ${prize.coins} monedas`; }
     if (prize.item) { const r = giveItem(prize.item); return `${ITEMS[prize.item].icon} ${ITEMS[prize.item].name} (${r.text})`; }
     if (prize.skill) { const r = giveSkill(prize.skill); return `${SKILLS[prize.skill].icon} ${SKILLS[prize.skill].name} (${r.text})`; }
@@ -698,6 +714,8 @@ const Game = (() => {
     if (p.gems) return { icon: '💎', name: `x${p.gems}`, full: `${p.gems} cristales` };
     if (p.tickets) return { icon: '🎟️', name: `x${p.tickets}`, full: `${p.tickets} ticket${p.tickets > 1 ? 's' : ''}` };
     if (p.coins) return { icon: '💰', name: `x${p.coins}`, full: `${p.coins} monedas` };
+    if (p.pet) return { icon: PETS[p.pet].icon, name: PETS[p.pet].name, full: `Mascota: ${PETS[p.pet].name}`, pet: p.pet };
+    if (p.cosmetic) return { icon: COSMETICS[p.cosmetic].icon, name: 'Alas', full: `Aura: ${COSMETICS[p.cosmetic].name}`, cosmetic: p.cosmetic };
     if (p.item) return { id: p.item, icon: ITEMS[p.item].icon, name: ITEMS[p.item].name.split(' ').slice(-1)[0], full: ITEMS[p.item].name };
     if (p.skill) return { icon: SKILLS[p.skill].icon, name: 'Habilidad', full: SKILLS[p.skill].name };
     return { icon: '?', name: '', full: '' };
@@ -761,10 +779,23 @@ const Game = (() => {
   }
 
   /* ---------- Etapas ---------- */
+  /* ---------- Dificultades ---------- */
+  // Normal usa S.cleared / S.unlocked (como siempre); Pesadilla e Infierno su propio progreso
+  const NORMAL_PROG = { get cleared() { return S.cleared; }, get unlocked() { return S.unlocked; }, set unlocked(v) { S.unlocked = v; } };
+  const prog = (d = S.diff) => (d ? S.dprog[d] : NORMAL_PROG);
+  const diffUnlocked = d => d === 0 || (d === 1 ? !!S.cleared[MAX_STAGE] : d === 2 && !!(S.dprog && S.dprog[1] && S.dprog[1].cleared[MAX_STAGE]));
+  function setDiff(d) {
+    if (!diffUnlocked(d)) return false;
+    S.diff = d; save(true);
+    return true;
+  }
+  const maxDiff = () => (diffUnlocked(2) ? 2 : diffUnlocked(1) ? 1 : 0);
+
   function completeStage(stage) {
-    const first = !S.cleared[stage];
-    S.cleared[stage] = (S.cleared[stage] || 0) + 1;
-    if (stage === S.unlocked && S.unlocked < MAX_STAGE) S.unlocked++;
+    const P = prog();
+    const first = !P.cleared[stage];
+    P.cleared[stage] = (P.cleared[stage] || 0) + 1;
+    if (stage === P.unlocked && P.unlocked < MAX_STAGE) P.unlocked++;
     S.streak++;
     S.bestStreak = Math.max(S.bestStreak, S.streak);
     return first;
@@ -903,6 +934,7 @@ const Game = (() => {
     get S() { return S; },
     load, save, reset, stats, itemStats, matCount, addMat, hasCost, payCost,
     giveItem, giveSkill, grant, prizeLabel, addXp, completeStage, highestWorld, rollChest,
+    prog, diffUnlocked, setDiff, maxDiff,
     addShards, streakBonus, ensureDaily, track, missionText,
     connectCloud, cloudWrite, exportCode, importCode, get cloud() { return Cloud; },
     createAccount, login, logout, accountsBlocked, canSaveOnline, syncNow, accountPending, get account() { return Acc; },

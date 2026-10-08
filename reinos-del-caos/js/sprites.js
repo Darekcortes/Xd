@@ -398,6 +398,48 @@ const Sprites = (() => {
       }
       c.globalAlpha = 1;
     },
+    aura_fenix(c, s, t, k, layer) {
+      if (layer === 'back') {
+        // Anillo de fuego en el suelo
+        c.save(); c.globalCompositeOperation = 'lighter';
+        const rg = c.createRadialGradient(0, 0, 8 * s, 0, 0, 40 * s);
+        rg.addColorStop(0, 'rgba(253,186,116,.45)'); rg.addColorStop(1, 'rgba(220,38,38,0)');
+        c.fillStyle = rg; c.beginPath(); c.ellipse(0, 0, 40 * s, 12 * s, 0, 0, TAU); c.fill();
+        c.restore();
+        bodyGlow(c, s, [251, 146, 60], 0.38 + Math.sin(t * 4) * 0.08, 40, 52);
+        // Alas de fuego que se abren desde los hombros y aletean despacio
+        c.save(); c.globalCompositeOperation = 'lighter';
+        const flap = Math.sin(t * 2.4) * 0.16;
+        for (const side of [-1, 1]) {
+          c.save(); c.translate(side * 6 * s, -40 * s); c.scale(side, 1); c.rotate(-flap);
+          for (let j = 7; j >= 0; j--) {
+            // Plumas en abanico: de casi horizontales (abajo) a casi verticales (arriba)
+            const ang = -0.05 - j * 0.2 + Math.sin(t * 3 + j) * 0.03, len = (30 + j * 3 - Math.max(0, j - 5) * 7) * s;
+            const ex = Math.cos(ang) * len, ey = Math.sin(ang) * len * 0.9 + 4 * s;
+            const g = c.createLinearGradient(0, 0, ex, ey);
+            g.addColorStop(0, 'rgba(255,251,235,.9)'); g.addColorStop(0.35, 'rgba(253,224,71,.8)'); g.addColorStop(0.75, 'rgba(249,115,22,.6)'); g.addColorStop(1, 'rgba(220,38,38,0)');
+            c.fillStyle = g; c.beginPath(); c.moveTo(0, 0);
+            c.quadraticCurveTo(ex * 0.5 - 5 * s, ey * 0.5 - 4 * s, ex, ey);
+            c.quadraticCurveTo(ex * 0.5 + 3 * s, ey * 0.5 + 5 * s, 2 * s, 3 * s); c.closePath(); c.fill();
+          }
+          c.restore();
+        }
+        c.restore();
+      } else {
+        // Plumas de fuego y brasas que suben
+        c.save(); c.globalCompositeOperation = 'lighter';
+        for (let i = 0; i < 12; i++) {
+          const ph = (t * 0.55 + hash(i + 40)) % 1;
+          c.globalAlpha = (1 - ph) * 0.95;
+          const x = (hash(i + 3) - 0.5) * 56 * s + Math.sin(t * 2 + i) * 6 * s * ph, y = -ph * 86 * s;
+          if (i % 3 === 0) {
+            c.save(); c.translate(x, y); c.rotate(Math.sin(t * 3 + i) * 0.6);
+            c.fillStyle = '#fdba74'; c.beginPath(); c.ellipse(0, 0, 1.4 * s, 4 * s, 0, 0, TAU); c.fill(); c.restore();
+          } else { c.fillStyle = ph < 0.4 ? '#fef9c3' : '#fb923c'; c.beginPath(); c.arc(x, y, (1.7 - ph) * s, 0, TAU); c.fill(); }
+        }
+        c.restore();
+      }
+    },
   };
   /** Dibuja una capa del aura (por id de cosmético). */
   function auraFx(c, s, t, id, layer) {
@@ -407,6 +449,65 @@ const Sprites = (() => {
     c.save();
     if (fx) fx(c, s, t, rgbOf(C.color), layer);
     else if (layer === 'back') bodyGlow(c, s, rgbOf(C.color), 0.3);
+    c.restore();
+  }
+
+  /** Fénix: ave de fuego que vuela, con alas que aletean, cola de plumas y chispas. */
+  function phoenix(c, x, y, size, t, face = 1, alpha = 1) {
+    const k = size / 30, bob = Math.sin(t * 3) * 3 * k, flap = Math.sin(t * 9);
+    c.save(); c.globalAlpha = alpha;
+    c.fillStyle = 'rgba(0,0,0,.22)'; c.beginPath(); c.ellipse(x, y, 12 * k, 4 * k, 0, 0, TAU); c.fill();
+    c.translate(x, y - 30 * k + bob); c.scale(face * k, k);
+    c.globalCompositeOperation = 'lighter';
+    const halo = c.createRadialGradient(0, 0, 2, 0, 0, 36);
+    halo.addColorStop(0, 'rgba(253,186,116,.6)'); halo.addColorStop(1, 'rgba(249,115,22,0)');
+    c.fillStyle = halo; c.beginPath(); c.arc(0, 0, 36, 0, TAU); c.fill();
+    c.globalCompositeOperation = 'source-over';
+    // Cola: plumas largas que ondean
+    for (let i = 0; i < 5; i++) {
+      const a = (i - 2) * 0.24, len = 30 + (2 - Math.abs(i - 2)) * 9, wv = Math.sin(t * 4 + i) * 5;
+      const ex = -8 - Math.cos(a) * len, ey = 6 + Math.sin(a) * len * 0.6 + wv;
+      const g = c.createLinearGradient(-6, 4, ex, ey);
+      g.addColorStop(0, '#fde047'); g.addColorStop(0.55, '#f97316'); g.addColorStop(1, 'rgba(220,38,38,0)');
+      c.fillStyle = g; c.beginPath(); c.moveTo(-6, 1);
+      c.quadraticCurveTo((ex - 6) / 2, (ey + 1) / 2 - 6 + wv * 0.5, ex, ey);
+      c.quadraticCurveTo((ex - 6) / 2, (ey + 1) / 2 + 4, -4, 7); c.closePath(); c.fill();
+      c.fillStyle = 'rgba(254,240,138,.9)'; c.beginPath(); c.arc(ex * 0.8 - 1, ey * 0.8 + 1, 1.8, 0, TAU); c.fill();
+    }
+    const wing = back => {
+      const lift = flap * (back ? 0.8 : 1);
+      c.save(); c.translate(back ? 3 : 0, -3); c.rotate(-0.35 - lift * 0.6);
+      for (let j = 0; j < 5; j++) {
+        const len = 27 - j * 3, ang = -1.25 + j * 0.3, ex = Math.cos(ang) * len * -0.35, ey = Math.sin(ang) * len;
+        const g = c.createLinearGradient(0, 0, ex, ey);
+        g.addColorStop(0, back ? '#c2410c' : '#fb923c'); g.addColorStop(0.7, back ? '#dc2626' : '#fde047'); g.addColorStop(1, 'rgba(254,240,138,0)');
+        c.fillStyle = g; c.beginPath(); c.moveTo(-4, 0);
+        c.quadraticCurveTo(ex * 0.5 - 6, ey * 0.5, ex - 4 - j * 2, ey);
+        c.quadraticCurveTo(ex * 0.5 + 5, ey * 0.5 + 3, 5, 2); c.closePath(); c.fill();
+      }
+      c.restore();
+    };
+    wing(true);
+    const bg = c.createLinearGradient(0, -10, 0, 10);
+    bg.addColorStop(0, '#fde68a'); bg.addColorStop(0.5, '#f97316'); bg.addColorStop(1, '#b91c1c');
+    c.fillStyle = bg; c.beginPath(); c.ellipse(0, 2, 11, 7, -0.2, 0, TAU); c.fill();
+    c.beginPath(); c.ellipse(9, -6, 6, 5.5, 0, 0, TAU); c.fill();
+    // Cresta de llamas
+    for (let j = 0; j < 3; j++) {
+      const h = 8 + j * 2 + Math.sin(t * 10 + j) * 1.5;
+      c.fillStyle = j === 1 ? '#fde047' : '#fb923c';
+      c.beginPath(); c.moveTo(5 + j * 2, -10); c.quadraticCurveTo(1 + j * 2, -10 - h * 0.6, -2 + j * 3, -10 - h); c.quadraticCurveTo(6 + j * 2, -12 - h * 0.3, 9 + j * 2, -10); c.fill();
+    }
+    c.fillStyle = '#facc15'; c.beginPath(); c.moveTo(14, -7.5); c.lineTo(20.5, -5.2); c.lineTo(14, -3.5); c.closePath(); c.fill();
+    c.fillStyle = '#fff7ed'; c.beginPath(); c.arc(11, -7.5, 1.9, 0, TAU); c.fill();
+    c.fillStyle = '#7c2d12'; c.beginPath(); c.arc(11.6, -7.5, 1, 0, TAU); c.fill();
+    wing(false);
+    c.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 8; i++) {
+      const ph = (t * 0.9 + i / 8) % 1;
+      c.globalAlpha = alpha * (1 - ph); c.fillStyle = i % 2 ? '#fde047' : '#fb923c';
+      c.beginPath(); c.arc(-10 - ph * 30 + Math.sin(i * 3 + t * 2) * 6, 8 + Math.sin(i * 1.7) * 10 - ph * 14, 1.7 * (1 - ph) + 0.4, 0, TAU); c.fill();
+    }
     c.restore();
   }
 
@@ -1507,5 +1608,5 @@ const Sprites = (() => {
     c.beginPath(); c.moveTo(x, base); c.lineTo(x, base - 36); c.moveTo(x, base - 22); c.lineTo(x - 12, base - 34); c.moveTo(x, base - 30); c.lineTo(x + 11, base - 42); c.stroke();
   }
 
-  return { loadArt, artFit, ART, knight, trailPart, drawPart, enemy, background, coin, gem, heart, prop, crown, THEMES, rrect, shade };
+  return { loadArt, artFit, ART, knight, trailPart, drawPart, phoenix, enemy, background, coin, gem, heart, prop, crown, THEMES, rrect, shade };
 })();

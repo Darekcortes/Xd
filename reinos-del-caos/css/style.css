@@ -924,3 +924,63 @@ button.power-chip { cursor: pointer; color: inherit; font: inherit; }
 .fs-item .gi-wrap { width: 1.5em; height: 1.5em; }
 .mslot .ms-ico .gi-wrap, .mat .mi .gi-wrap { width: 1.5em; height: 1.5em; }
 .ft-ico { display: grid; place-items: center; }
+
+/* =====================================================================
+   DIFICULTADES, MEJORAS DE LA TORRE Y RULETA DE DIAMANTES
+   ===================================================================== */
+.diff-pick { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+.diff-pick.map { margin: -4px 0 12px; }
+.diff-chip {
+  padding: 4px 12px; min-height: 32px; border-radius: 999px; cursor: pointer; font-weight: 800; font-size: .85rem;
+  background: #0f0c1dd9; color: #e2e8f0; border: 2px solid color-mix(in srgb, var(--dc) 55%, #000); box-shadow: 0 2px 0 #000;
+}
+.diff-chip.on { color: #fff; background: linear-gradient(180deg, color-mix(in srgb, var(--dc) 70%, #000), color-mix(in srgb, var(--dc) 35%, #000)); border-color: var(--dc); box-shadow: 0 0 12px color-mix(in srgb, var(--dc) 70%, transparent), 0 2px 0 #000; }
+.diff-chip:disabled { opacity: .45; cursor: not-allowed; }
+.btn-play.diff-1 { background: linear-gradient(180deg, #fecaca 0%, #ef4444 30%, #b91c1c 70%, #7f1d1d 100%); border-color: #fecaca; box-shadow: 0 0 0 3px #3b0505, 0 0 0 5px #ef4444, 0 6px 0 5px #2a0404, 0 10px 24px #000c; }
+.btn-play.diff-1 .play-main, .btn-play.diff-1 small { color: #fff; text-shadow: 0 2px 2px #0008; }
+.btn-play.diff-2 { background: linear-gradient(180deg, #fed7aa 0%, #f97316 28%, #c2410c 60%, #431407 100%); border-color: #fed7aa; box-shadow: 0 0 0 3px #2a0d02, 0 0 0 5px #f97316, 0 6px 0 5px #1c0701, 0 0 30px #f9731688; }
+.btn-play.diff-2 .play-main, .btn-play.diff-2 small { color: #fff; text-shadow: 0 2px 2px #0008; }
+body[data-diff="1"] #scr-menu .menu-ui { box-shadow: inset 0 0 90px #b91c1c66; }
+body[data-diff="2"] #scr-menu .menu-ui { box-shadow: inset 0 0 110px #ea580c77; }
+.world.diff-1 { box-shadow: inset 0 0 0 2px #ef444488; }
+.world.diff-2 { box-shadow: inset 0 0 0 2px #f9731699; }
+@media (orientation: landscape) and (max-height: 520px) {
+  .diff-chip { min-height: 26px; padding: 2px 9px; font-size: .74rem; }
+}
+
+/* Mejoras de la Torre */
+.bless-wrap { text-align: center; }
+.bless-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+.bless-card {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 8px 12px; border-radius: 14px; cursor: pointer;
+  background: radial-gradient(circle at 50% 25%, color-mix(in srgb, var(--tc) 30%, #251d40), #120e1e 80%);
+  border: 2px solid var(--tc); color: #fff; box-shadow: 0 0 16px color-mix(in srgb, var(--tc) 45%, transparent), 0 4px 0 #07050e;
+  animation: blessin .35s ease-out backwards; transition: transform .12s;
+}
+.bless-card:nth-child(2) { animation-delay: .07s; } .bless-card:nth-child(3) { animation-delay: .14s; }
+.bless-card:hover, .bless-card:focus-visible { transform: translateY(-4px) scale(1.03); }
+.bless-card.t2 { animation: blessin .35s ease-out backwards, blessglow 1.4s ease-in-out infinite .4s; }
+.bless-card.picked { transform: scale(1.1); filter: brightness(1.4); }
+@keyframes blessin { from { opacity: 0; transform: translateY(16px) scale(.9); } }
+@keyframes blessglow { 50% { box-shadow: 0 0 28px var(--tc), 0 4px 0 #07050e; } }
+.bl-tier { font-size: .68rem; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; color: var(--tc); }
+.bl-ico { font-size: 2.1rem; line-height: 1.1; filter: drop-shadow(0 3px 3px #000); }
+.bl-name { font-family: var(--font-display); font-size: 1rem; color: #fde68a; }
+.bl-desc { font-size: .8rem; color: #e2e8f0; line-height: 1.25; }
+.bl-have { font-size: .68rem; color: #86efac; font-weight: 800; }
+.bless-mine { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; margin-top: 12px; }
+@media (orientation: landscape) and (max-height: 520px) {
+  .bless-card { padding: 8px 6px; } .bl-ico { font-size: 1.6rem; } .bl-desc { font-size: .72rem; }
+}
+
+/* Ruleta de Diamantes */
+.wheel-area.diamond .wheel-box { filter: drop-shadow(0 0 22px #60a5fa88); }
+.wheel-area.diamond h3 { background: linear-gradient(90deg, #93c5fd, #fef08a, #93c5fd); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.diamond-box { display: flex; flex-direction: column; gap: 8px; width: 100%; padding: 12px; border-radius: 14px;
+  background: linear-gradient(180deg, #1e3a8a55, #0f0c1d); border: 2px solid #60a5fa88; box-shadow: inset 0 0 20px #1d4ed844; }
+.db-row { display: flex; justify-content: space-between; gap: 8px; font-size: .9rem; flex-wrap: wrap; }
+.db-row b { color: #7dd3fc; }
+.db-pity { display: flex; flex-direction: column; gap: 4px; font-size: .82rem; color: #e2e8f0; }
+.db-pity .bar i { background: linear-gradient(90deg, #fb923c, #f43f5e); }
+.diamond-btn { background: linear-gradient(180deg, #e0f2fe, #38bdf8 40%, #1d4ed8); color: #0b1a3a; border-color: #e0f2fe; box-shadow: 0 4px 0 #0c2a6b, 0 0 18px #38bdf888; font-family: var(--font-display); font-weight: 900; }
+#prize-cv { width: 180px; height: 165px; display: block; margin: 0 auto; }
