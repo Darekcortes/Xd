@@ -110,7 +110,7 @@ const UI = (() => {
     const s = S(), pg = PG(), stage = pg.unlocked, info = stageInfo(stage), P = Game.stats(), w = info.world, D = DIF();
     const allDone = pg.cleared[MAX_STAGE];
     document.body.dataset.diff = D.id;
-    const wheelReady = Object.values(WHEELS).some(wh => wh.world <= Game.highestWorld() && (Game.hasCost(wh.cost) || s.gems >= wh.gemCost));
+    const wheelReady = Object.keys(WHEELS).some(id => { const wh = WHEELS[id]; return Game.wheelOpen(id) && (wh.gemOnly ? s.gems >= wh.gemCost || (wh.matCost && Game.hasCost(wh.matCost)) : Game.hasCost(wh.cost) || s.gems >= wh.gemCost); });
     const craftReady = RECIPES.some(r => r.item && !s.items[r.item] && r.world <= Game.highestWorld() && Game.hasCost(r.cost, r.coins));
     const daily = Game.ensureDaily();
     const claimable = daily.missions.filter(m => m.progress >= m.goal && !m.claimed).length + (allMissionsClaimable(daily) ? 1 : 0);
@@ -695,7 +695,7 @@ const UI = (() => {
     const info = applyDiff(stageInfo(stage), D), P = Game.stats(), rec = info.power;
     const powerOk = P.power >= rec * 0.85;
     const foes = (info.boss ? [info.world.boss] : []).concat(info.world.enemies);
-    const drops = Object.keys(info.world.drops).map(id => `<span title="${MATERIALS[id].name}">${ico(id)}</span>`).join('');
+    const drops = Object.keys(D.id ? DIFF_DROPS[D.id] : info.world.drops).map(id => `<span title="${MATERIALS[id].name}">${ico(id)}</span>`).join('');
     openModal(`
       <h2>${info.boss ? '👹 ' : ''}Etapa ${stage}${D.id ? ` <span style="color:${D.color}">· ${D.icon} ${D.name}</span>` : ''}</h2>
       <p class="sub">${esc(info.name)} · ${info.world.icon} ${info.world.name}</p>
@@ -1010,7 +1010,9 @@ const UI = (() => {
   }
 
   /* ---------- Ruleta ---------- */
-  const unlockedWheels = () => Object.keys(WHEELS).filter(id => WHEELS[id].world <= Game.highestWorld());
+  const unlockedWheels = () => Object.keys(WHEELS).filter(id => Game.wheelOpen(id));
+  /** Qué hay que hacer para abrir una ruleta. */
+  const wheelLock = w => (w.req ? `Termina todos los mundos en ${DIFFICULTIES[w.req - 1].name}` : `Se desbloquea en el mundo ${w.world}`);
 
   RENDER.wheel = () => {
     const ids = unlockedWheels();
@@ -1018,7 +1020,7 @@ const UI = (() => {
     const w = WHEELS[view.wheel];
     const tabs = Object.keys(WHEELS).map(id => {
       const ok = ids.includes(id), W_ = WHEELS[id];
-      return `<button class="tab ${id === view.wheel ? 'active' : ''}" data-act="wheel-sel" data-id="${id}" ${ok ? '' : 'disabled'} title="${ok ? W_.name : 'Se desbloquea en el mundo ' + W_.world}">${ok ? W_.icon : '🔒'} ${W_.name.replace('Ruleta ', '')}</button>`;
+      return `<button class="tab ${id === view.wheel ? 'active' : ''}" data-act="wheel-sel" data-id="${id}" ${ok ? '' : 'disabled'} title="${ok ? W_.name : wheelLock(W_)}">${ok ? W_.icon : '🔒'} ${W_.name.replace('Ruleta ', '')}</button>`;
     }).join('');
     const odds = RARITY_ORDER.filter(r => w.odds[r] != null).map(r => {
       const prizes = w.prizes.filter(p => p.r === r).map(p => Game.prizeLabel(p).full).join(', ');
@@ -1052,15 +1054,24 @@ const UI = (() => {
     $('wheel-cv').style.transform = `rotate(${view.wheelRot}deg)`;
   };
 
-  /** Panel de la Ruleta de Diamantes: precio, seguro de suerte y botón. */
+  /** Panel de las ruletas especiales: precio, seguro de suerte y botones. */
+  const SPECIAL_TEXT = {
+    diamante: 'Sin premios básicos: el <b>Fénix</b>, las <b>Alas del Fénix</b>, objetos <b>míticos</b> y <b>divinos</b>, y montones de tickets, gemas y fragmentos legendarios.',
+    pesadilla: 'Premios de Pesadilla: el <b>Dragoncito</b>, el <b>Velo de Pesadilla</b>, la <b>Estela de almas</b> y objetos <b>divinos</b>. También gira con <b>Almas de pesadilla</b>, que caen en esa dificultad.',
+    infierno: 'Lo mejor del juego: el <b>Diablillo</b>, la <b>Corona Infernal</b>, la <b>Estela infernal</b> y el <b>Tesoro Divino</b> (las dos piezas divinas + 150 💎). También gira con <b>Brasas infernales</b>.',
+  };
   function diamondBox(w) {
-    const s = S(), left = Math.max(1, w.pity - (s.diamondPity || 0)), can = s.gems >= w.gemCost;
-    return `<div class="diamond-box">
-      <div class="db-row"><span>💎 Tienes <b>${fmt(s.gems)}</b></span><span>Cada tirada: <b>${w.gemCost} 💎</b></span></div>
-      <div class="db-pity"><span>⭐ Premio <b style="color:#fb923c">Legendario</b> o <b style="color:#f43f5e">Mítico</b> seguro en <b>${left}</b> tirada${left > 1 ? 's' : ''}</span>
-        <div class="bar thin"><i style="width:${(s.diamondPity || 0) / w.pity * 100}%"></i></div></div>
-      <button class="btn wide diamond-btn ${can ? 'glow' : ''}" data-act="spin" data-mode="gems" ${can ? '' : 'disabled'}>💎 Girar por ${w.gemCost}</button>
-      <p class="hint" style="text-align:center;margin:0">Sin premios básicos: el <b>Fénix</b>, las <b>Alas del Fénix</b>, objetos <b>míticos</b> y <b>divinos</b>, y montones de tickets, gemas y fragmentos legendarios.</p>
+    const s = S(), id = view.wheel, n = (s.wheelPity && s.wheelPity[id]) || 0, left = Math.max(1, w.pity - n), can = s.gems >= w.gemCost;
+    const mc = w.matCost, canM = mc && Game.hasCost(mc);
+    return `<div class="diamond-box ${id}">
+      <div class="db-row"><span>💎 Tienes <b>${fmt(s.gems)}</b></span><span>Cada tirada: <b>${w.gemCost} 💎</b>${mc ? ` o ${costPills(mc)}` : ''}</span></div>
+      <div class="db-pity"><span>⭐ Premio <b style="color:#fb923c">Legendario</b> o mejor seguro en <b>${left}</b> tirada${left > 1 ? 's' : ''}</span>
+        <div class="bar thin"><i style="width:${n / w.pity * 100}%"></i></div></div>
+      <div class="spin-row">
+        <button class="btn wide diamond-btn ${can ? 'glow' : ''}" data-act="spin" data-mode="gems" ${can ? '' : 'disabled'}>💎 Girar por ${w.gemCost}</button>
+        ${mc ? `<button class="btn wide ghost" data-act="spin" data-mode="mats" ${canM ? '' : 'disabled'}>${Object.keys(mc).map(k => ico(k)).join('')} Girar con ${Object.values(mc)[0]}</button>` : ''}
+      </div>
+      <p class="hint" style="text-align:center;margin:0">${SPECIAL_TEXT[id] || ''}</p>
     </div>`;
   }
 
@@ -1085,9 +1096,16 @@ const UI = (() => {
       const im = lab.id && Icons.image(lab.id);
       c.save(); c.translate(R * 0.6, 0); c.rotate(Math.PI / 2);
       if (lab.pet === 'fenix') Sprites.phoenix(c, -4, 34, 46, 0.6, 1);
+      else if (lab.pet) {
+        const e = { def: { sprite: { art: PETS[lab.pet].art } }, x: 0, y: 34, size: 60, face: -1, walk: 0, flash: 0, windup: 0, windupMax: 1, recover: 0, seed: 1, frozen: 0, state: 'move' };
+        const fit = Sprites.artFit(e.def, 92, 80);
+        if (fit) { e.size = fit.size; e.x = fit.dx; e.y = 36 - fit.dy; }
+        Sprites.enemy(c, e, 0.5);
+      }
       else if (lab.cosmetic) {
-        const s_ = S();
-        Sprites.knight(c, 0, 42, 1.25, { face: 1, walk: 0, swing: -1, heavy: false, time: 0.8, aura: lab.cosmetic, flash: false,
+        const s_ = S(), C = COSMETICS[lab.cosmetic];
+        if (C.type === 'trail') for (let i = 0; i < 9; i++) { const pt = Sprites.trailPart(lab.cosmetic, -14 - i * 7, 40, 1, 1.6); pt.life = pt.max * (1 - i / 10); Sprites.drawPart(c, pt); }
+        Sprites.knight(c, 0, 42, 1.25, { face: 1, walk: 0, swing: -1, heavy: false, time: 0.8, aura: C.type === 'aura' ? lab.cosmetic : '', flash: false,
           weaponColor: ITEMS[s_.equip.weapon].color, armorColor: ITEMS[s_.equip.armor].color, helmet: s_.settings.helmet, rank: Game.rank() });
       }
       else if (im && im.complete && im.naturalWidth) c.drawImage(im, -40, -40, 80, 80);
@@ -1119,7 +1137,7 @@ const UI = (() => {
     const w = WHEELS[view.wheel];
     let paid;
     if (mode === 'ticket') { paid = S().tickets > 0; if (paid) { S().tickets--; Game.save(); } }
-    else paid = mode === 'gems' ? Game.payCost({}, 0, w.gemCost) : Game.payCost(w.cost);
+    else paid = mode === 'gems' ? Game.payCost({}, 0, w.gemCost) : Game.payCost(w.gemOnly ? w.matCost || { _: 1 } : w.cost);
     if (!paid) { toast('No tienes suficientes recursos para girar', true); return; }
     view.spinning = true;
     S().stats.spins++;
@@ -1129,9 +1147,10 @@ const UI = (() => {
     let rar = weightedPick(w.odds);
     if (w.pity) {
       // Seguro de suerte: tras varias tiradas sin premio especial, toca uno seguro
-      S().diamondPity = (S().diamondPity || 0) + 1;
-      if (S().diamondPity >= w.pity) rar = weightedPick({ legendario: w.odds.legendario, mitico: w.odds.mitico });
-      if (rar === 'legendario' || rar === 'mitico') S().diamondPity = 0;
+      const P = S().wheelPity = S().wheelPity || {}, top = ['legendario', 'mitico', 'divino'];
+      P[view.wheel] = (P[view.wheel] || 0) + 1;
+      if (P[view.wheel] >= w.pity) { const o = {}; for (const r of top) if (w.odds[r]) o[r] = w.odds[r]; rar = weightedPick(o); }
+      if (top.includes(rar)) P[view.wheel] = 0;
       Game.save();
     }
     const options = w.prizes.map((p, i) => i).filter(i => w.prizes[i].r === rar);
@@ -1162,7 +1181,7 @@ const UI = (() => {
     const text = Game.grant(p);
     Game.save();
     const lab = Game.prizeLabel(p), r = RARITIES[p.r], ri = RARITY_ORDER.indexOf(p.r);
-    const shout = ['Común', 'Poco común', '¡Raro!', '¡ÉPICO!', '🎉 ¡LEGENDARIO!', '🔥 ¡¡MÍTICO!!'][ri];
+    const shout = ['Común', 'Poco común', '¡Raro!', '¡ÉPICO!', '🎉 ¡LEGENDARIO!', '🔥 ¡¡MÍTICO!!', '🌟 ¡¡¡DIVINO!!!'][ri];
     let name = lab.full;
     if (p.item) name = ITEMS[p.item].name;
     openModal(`
@@ -1208,12 +1227,20 @@ const UI = (() => {
   function animatePrize(lab) {
     const cv = $('prize-cv');
     if (!cv) return;
+    if (lab.cosmetic) {
+      const C = COSMETICS[lab.cosmetic], w_ = S().cosmetics;
+      animateKnight('prize-cv', 'wheel', 120, 210, 2.5, () => ({ aura: C.type === 'aura' ? lab.cosmetic : w_.aura, trail: C.type === 'trail' ? lab.cosmetic : null }));
+      return;
+    }
     const c = cv.getContext('2d'), t0 = performance.now(), s = S();
+    const P = PETS[lab.pet], e = P.custom ? null : { def: { sprite: { art: P.art } }, x: 120, y: 200, size: 120, face: 1, walk: 0, flash: 0, windup: 0, windupMax: 1, recover: 0, seed: 1, frozen: 0, state: 'move' };
+    if (e) { const fit = Sprites.artFit(e.def, 220, 180); if (fit) { e.size = fit.size; e.x = 120 + fit.dx; e.y = 205 - fit.dy; } }
     (function frame(t) {
       if (!document.body.contains(cv)) return;
       const time = (t - t0) / 1000;
       c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, cv.width, cv.height);
-      if (lab.pet) Sprites.phoenix(c, 120, 190, 92, time, 1);
+      if (e) { e.walk = time * 8; Sprites.enemy(c, e, time); }
+      else if (lab.pet) Sprites.phoenix(c, 120, 190, 92, time, 1);
       else Sprites.knight(c, 120, 210, 2.5, { face: 1, walk: 0, swing: -1, heavy: false, time, aura: lab.cosmetic, flash: false,
         weaponColor: ITEMS[s.equip.weapon].color, armorColor: ITEMS[s.equip.armor].color, helmet: s.settings.helmet, rank: Game.rank() });
       requestAnimationFrame(frame);
@@ -1817,7 +1844,7 @@ const UI = (() => {
             <div class="item-meta">${P.desc}</div>
             ${o ? `<div class="item-meta">⚔️ ${Math.round(P.dmg * petMult(o.lvl) * 100)}% de tu daño · ${P.kind === 'melee' ? 'cuerpo a cuerpo' : 'a distancia'}</div>${lvlBar}
               <button class="btn small ${active ? 'ghost' : ''}" data-act="pet-use" data-id="${id}">${active ? '✅ Te acompaña' : '🐾 Llevar'}</button>`
-              : P.wheel ? `<div class="item-meta">💎 Solo en la <b>Ruleta de Diamantes</b>.</div><button class="btn small ghost" data-act="go-diamond">💎 Ir a la ruleta</button>` : `<div class="item-meta">Se consigue al vencer a ${ENEMIES[P.from].name}.</div>`}
+              : P.wheel ? wheelHow(P.wheel) : `<div class="item-meta">Se consigue al vencer a ${ENEMIES[P.from].name}.</div>`}
           </div></div>`;
       }).join('');
       body = `<p class="hint">Tu mascota te sigue en combate y ataca sola. Gana experiencia con cada enemigo derrotado mientras te acompaña.</p><div class="cards">${body}</div>`;
@@ -1827,7 +1854,7 @@ const UI = (() => {
         let how = '';
         if (!unlocked) {
           if (C.gems) how = `<button class="btn small" data-act="cos-buy" data-id="${id}" ${s.gems >= C.gems ? '' : 'disabled'}>💎 ${C.gems} Comprar</button>`;
-          else if (C.wheel) how = `<div class="item-meta">💎 Solo en la <b>Ruleta de Diamantes</b></div><button class="btn small ghost" data-act="go-diamond">💎 Ir a la ruleta</button>`;
+          else if (C.wheel) how = wheelHow(C.wheel);
           else { const a = ACHIEVEMENTS.find(x => x.id === C.ach[0]); how = `<div class="item-meta">🔒 Logro «${a.name}» ${MEDALS[C.ach[1]].icon}: ${a.text(a.goals[C.ach[1]])}</div>`; }
         } else how = `<button class="btn small ${worn ? 'ghost' : ''}" data-act="cos-wear" data-id="${id}">${worn ? '✅ Puesto (quitar)' : '✨ Ponerse'}</button>`;
         const viewing = view.previewCos === id;
@@ -1876,6 +1903,12 @@ const UI = (() => {
   }
 
   let petsRaf = 0;
+  /** «Solo en la Ruleta X» con botón para ir (o qué hace falta para abrirla). */
+  function wheelHow(id) {
+    const w = WHEELS[id], open = Game.wheelOpen(id);
+    return `<div class="item-meta">${w.icon} Solo en la <b>${w.name}</b>${open ? '' : ` · 🔒 ${wheelLock(w)}`}</div>`
+      + (open ? `<button class="btn small ghost" data-act="go-wheel" data-id="${id}">${w.icon} Ir a la ruleta</button>` : '');
+  }
 
   /* ---------- Torre del Caos ---------- */
   RENDER.tower = () => {
@@ -2023,7 +2056,7 @@ const UI = (() => {
     },
     'pet-tab': d => { view.petTab = d.tab; view.previewCos = null; RENDER.pets(); },
     'rank-profile': d => rankProfile(d.i),
-    'go-diamond': () => { view.wheel = 'diamante'; show('wheel'); },
+    'go-wheel': d => { view.wheel = d.id; show('wheel'); },
     'cos-try': d => { view.previewCos = view.previewCos === d.id ? null : d.id; RENDER.pets(); const cv = $('style-cv'); if (cv) cv.scrollIntoView({ behavior: 'smooth', block: 'center' }); },
     'pets-open': d => { view.petTab = d.tab; show('pets'); },
     'pet-use': d => { S().pets.active = d.id; Game.save(); toast(`🐾 ${PETS[d.id].name} te acompaña`); RENDER.pets(); },

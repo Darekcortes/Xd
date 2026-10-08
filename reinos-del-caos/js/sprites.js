@@ -440,6 +440,81 @@ const Sprites = (() => {
         c.restore();
       }
     },
+    aura_pesadilla(c, s, t, k, layer) {
+      if (layer === 'back') {
+        // Niebla roja y negra que sube
+        for (let i = 0; i < 9; i++) {
+          const ph = (t * 0.3 + hash(i + 70)) % 1, x = (hash(i + 71) - 0.5) * 34 * s + Math.sin(t + i * 2) * 9 * s * ph, r = (9 + ph * 15) * s;
+          const g = c.createRadialGradient(x, -ph * 72 * s, 0, x, -ph * 72 * s, r);
+          g.addColorStop(0, `rgba(${i % 2 ? '127,29,29' : '20,0,10'},${0.55 * Math.sin(ph * Math.PI)})`); g.addColorStop(1, 'rgba(20,0,10,0)');
+          c.fillStyle = g; c.beginPath(); c.arc(x, -ph * 72 * s, r, 0, TAU); c.fill();
+        }
+        bodyGlow(c, s, [220, 38, 38], 0.32 + Math.sin(t * 3) * 0.08);
+        // Círculo de runas con estrella que gira en el suelo
+        c.save(); c.scale(1, 0.32); c.rotate(t * 0.6);
+        c.strokeStyle = `rgba(239,68,68,${0.75 + Math.sin(t * 4) * 0.2})`; c.lineWidth = 1.6 * s;
+        c.beginPath(); c.arc(0, 0, 34 * s, 0, TAU); c.stroke();
+        c.beginPath(); c.arc(0, 0, 28 * s, 0, TAU); c.stroke();
+        c.beginPath();
+        for (let i = 0; i <= 5; i++) { const a = -Math.PI / 2 + i * TAU * 2 / 5; i ? c.lineTo(Math.cos(a) * 28 * s, Math.sin(a) * 28 * s) : c.moveTo(Math.cos(a) * 28 * s, Math.sin(a) * 28 * s); }
+        c.stroke(); c.restore();
+      }
+      // Calaveras que orbitan, con ojos rojos
+      for (let i = 0; i < 3; i++) {
+        const a = t * 1.4 + i * TAU / 3, depth = Math.sin(a);
+        if ((depth > 0) !== (layer === 'front')) continue;
+        const x = Math.cos(a) * 26 * s, y = (-36 + Math.sin(t * 2 + i * 2) * 10) * s + depth * 5 * s, r = (3.4 + depth * 0.6) * s;
+        c.globalAlpha = 0.75 + depth * 0.25;
+        c.fillStyle = '#f5f5f4'; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill();
+        c.fillRect(x - r * 0.6, y + r * 0.5, r * 1.2, r * 0.7);
+        c.fillStyle = '#dc2626'; c.beginPath(); c.arc(x - r * 0.38, y, r * 0.28, 0, TAU); c.arc(x + r * 0.38, y, r * 0.28, 0, TAU); c.fill();
+        c.fillStyle = 'rgba(239,68,68,.35)'; c.beginPath(); c.arc(x, y, r * 2, 0, TAU); c.fill();
+      }
+      c.globalAlpha = 1;
+    },
+    aura_infernal(c, s, t, k, layer) {
+      if (layer === 'back') {
+        // Columnas de fuego infernal (rojo con centro negro)
+        c.save(); c.globalCompositeOperation = 'lighter';
+        for (let i = 0; i < 7; i++) {
+          const x = (i - 3) * 8 * s, h = (40 + hash(i + 90) * 30) * (1 + Math.sin(t * 9 + i * 1.7) * 0.15) * s * (1 - Math.abs(i - 3) * 0.1);
+          c.fillStyle = 'rgba(185,28,28,.6)'; flameShape(c, x, 2 * s, 6 * s, h, Math.sin(t * 4 + i) * 5 * s);
+          c.fillStyle = 'rgba(249,115,22,.55)'; flameShape(c, x, 2 * s, 4 * s, h * 0.7, Math.sin(t * 4 + i) * 3 * s);
+        }
+        c.restore();
+        bodyGlow(c, s, [234, 88, 12], 0.35 + Math.sin(t * 6) * 0.06, 38, 50);
+        // Grietas de lava en el suelo
+        c.strokeStyle = `rgba(253,186,116,${0.7 + Math.sin(t * 5) * 0.2})`; c.lineWidth = 1.4 * s;
+        for (let i = 0; i < 6; i++) {
+          const a = i * TAU / 6 + 0.3;
+          c.beginPath(); c.moveTo(Math.cos(a) * 8 * s, Math.sin(a) * 3 * s);
+          c.lineTo(Math.cos(a + 0.2) * 22 * s, Math.sin(a + 0.2) * 7 * s); c.lineTo(Math.cos(a - 0.1) * 36 * s, Math.sin(a - 0.1) * 11 * s); c.stroke();
+        }
+      } else {
+        // Corona de fuego flotando sobre la cabeza
+        const cy = -74 * s + Math.sin(t * 2) * 2 * s;
+        c.save(); c.globalCompositeOperation = 'lighter';
+        const g = c.createRadialGradient(0, cy, 2 * s, 0, cy, 22 * s);
+        g.addColorStop(0, 'rgba(253,224,71,.6)'); g.addColorStop(1, 'rgba(234,88,12,0)');
+        c.fillStyle = g; c.beginPath(); c.ellipse(0, cy, 22 * s, 12 * s, 0, 0, TAU); c.fill();
+        for (let i = 0; i < 7; i++) {
+          const x = (i - 3) * 4.2 * s, h = (i % 2 ? 7 : 11) * s * (1 + Math.sin(t * 12 + i) * 0.2);
+          c.fillStyle = i % 2 ? '#f97316' : '#fde047'; flameShape(c, x, cy + 3 * s, 2.4 * s, h, 0);
+        }
+        c.restore();
+        c.strokeStyle = '#7c2d12'; c.lineWidth = 2 * s;
+        c.beginPath(); c.ellipse(0, cy + 3 * s, 14 * s, 3.5 * s, 0, 0, TAU); c.stroke();
+        c.strokeStyle = '#fbbf24'; c.lineWidth = 1 * s; c.stroke();
+        // Brasas y humo negro
+        c.save(); c.globalCompositeOperation = 'lighter';
+        for (let i = 0; i < 10; i++) {
+          const ph = (t * 0.8 + hash(i + 50)) % 1;
+          c.globalAlpha = 1 - ph; c.fillStyle = ph < 0.5 ? '#fde68a' : '#ef4444';
+          c.beginPath(); c.arc((hash(i + 51) - 0.5) * 44 * s + Math.sin(t * 3 + i) * 5 * s, -ph * 80 * s, (1.6 - ph) * s + 0.4, 0, TAU); c.fill();
+        }
+        c.restore();
+      }
+    },
   };
   /** Dibuja una capa del aura (por id de cosmético). */
   function auraFx(c, s, t, id, layer) {
@@ -512,16 +587,18 @@ const Sprites = (() => {
   }
 
   /** Partícula de estela según el cosmético (hojas, destellos, brasas, remolinos). */
-  const TRAIL_SHAPE = { estela_luz: 'star', estela_hojas: 'leaf', estela_fuego: 'ember', estela_caos: 'swirl' };
+  const TRAIL_SHAPE = { estela_luz: 'star', estela_hojas: 'leaf', estela_fuego: 'ember', estela_caos: 'swirl', estela_almas: 'soul', estela_infernal: 'hellfire' };
   function trailPart(id, x, y, face, k = 1) {
     const C = COSMETICS[id], shape = TRAIL_SHAPE[id] || 'dot', r = Math.random;
-    const pal = { star: ['#fde68a', '#fffbeb', '#facc15'], leaf: ['#84cc16', '#4d7c0f', '#a3e635', '#65a30d'], ember: ['#fde047', '#fb923c', '#ef4444'], swirl: ['#f43f5e', '#a855f7', '#fb7185'] }[shape] || [C.color];
+    const pal = { star: ['#fde68a', '#fffbeb', '#facc15'], leaf: ['#84cc16', '#4d7c0f', '#a3e635', '#65a30d'], ember: ['#fde047', '#fb923c', '#ef4444'], swirl: ['#f43f5e', '#a855f7', '#fb7185'], soul: ['#f5f3ff', '#e9d5ff', '#c4b5fd'], hellfire: ['#ef4444', '#f97316', '#fde047'] }[shape] || [C.color];
     const p = { x: x - face * 8 * k + (r() - 0.5) * 10 * k, y: y - (2 + r() * 16) * k, vx: -face * (10 + r() * 25) * k, vy: -(10 + r() * 30) * k,
                 life: 0.7, max: 0.7, color: pal[Math.floor(r() * pal.length)], size: (2.5 + r() * 2.5) * k, grav: -20 * k, shape, rot: r() * TAU, spin: (r() - 0.5) * 8 };
     if (shape === 'leaf') { p.grav = 45 * k; p.vy = -(20 + r() * 25) * k; p.life = p.max = 0.9; p.size *= 1.3; }
     if (shape === 'ember') { p.grav = -70 * k; p.life = p.max = 0.6; }
     if (shape === 'swirl') { p.spin = 10 * (r() < 0.5 ? -1 : 1); p.size *= 1.4; p.vy *= 0.4; }
     if (shape === 'star') { p.life = p.max = 0.65; }
+    if (shape === 'soul') { p.grav = -35 * k; p.life = p.max = 1.0; p.size *= 1.5; p.vx *= 0.5; }
+    if (shape === 'hellfire') { p.grav = -90 * k; p.life = p.max = 0.55; p.size *= 1.4; }
     return p;
   }
   function drawPart(c, p) {
@@ -547,6 +624,22 @@ const Sprites = (() => {
       c.beginPath();
       for (let i = 0; i <= 14; i++) { const q = i / 14, ang = q * TAU * 1.4, rr = q * p.size * (1.4 - a * 0.4); i ? c.lineTo(Math.cos(ang) * rr, Math.sin(ang) * rr) : c.moveTo(0, 0); }
       c.stroke(); c.restore();
+    } else if (p.shape === 'soul') {
+      // Alma: fantasmita con cola que ondea
+      const r = p.size * 0.6, wv = Math.sin(age * 10 + p.rot) * r * 0.4;
+      c.save(); c.globalAlpha = a * 0.9;
+      c.beginPath(); c.arc(p.x, p.y, r, Math.PI, 0);
+      c.quadraticCurveTo(p.x + r + wv, p.y + r * 1.4, p.x + wv * 0.5, p.y + r * 2.2);
+      c.quadraticCurveTo(p.x - r + wv, p.y + r * 1.4, p.x - r, p.y); c.fill();
+      c.fillStyle = '#4c1d95'; c.beginPath(); c.arc(p.x - r * 0.35, p.y - r * 0.1, r * 0.18, 0, TAU); c.arc(p.x + r * 0.35, p.y - r * 0.1, r * 0.18, 0, TAU); c.fill();
+      c.restore();
+    } else if (p.shape === 'hellfire') {
+      // Llamita infernal con centro oscuro
+      c.save(); c.globalCompositeOperation = 'lighter';
+      const h = p.size * (1.6 + a);
+      c.fillStyle = p.color; flameShape(c, p.x, p.y, p.size * 0.5, h, Math.sin(age * 12) * 2);
+      c.restore();
+      c.fillStyle = `rgba(20,0,0,${a * 0.6})`; flameShape(c, p.x, p.y, p.size * 0.22, h * 0.45, 0);
     } else c.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
     c.globalAlpha = 1;
   }

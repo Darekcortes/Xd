@@ -49,6 +49,9 @@ const MATERIALS = {
   nucleo_hielo:  { name: 'Núcleo de hielo eterno', icon: '🔷', rarity: 'legendario', special: true },
   escama_dragon: { name: 'Escama de dragón',       icon: '🐲', rarity: 'legendario', special: true },
   alma_maldita:  { name: 'Alma maldita',           icon: '👻', rarity: 'mitico',     special: true },
+  // Solo caen en Pesadilla e Infierno (sirven para sus ruletas)
+  alma_pesadilla: { name: 'Alma de pesadilla',     icon: '💀', rarity: 'legendario' },
+  brasa_infernal: { name: 'Brasa infernal',        icon: '🔥', rarity: 'mitico' },
 };
 
 /* ---------- Pociones ---------- */
@@ -279,7 +282,7 @@ const WHEELS = {
   },
   // Siempre disponible. Solo se gira con diamantes y no tiene premios básicos.
   diamante: {
-    name: 'Ruleta de Diamantes', icon: '💎', world: 1, wood: '#1e3a8a', rim: '#facc15', gemOnly: true, gemCost: 50, pity: 10,
+    name: 'Ruleta de Diamantes', icon: '💎', world: 1, req: 1, wood: '#1e3a8a', rim: '#facc15', gemOnly: true, gemCost: 50, pity: 10,
     cost: {},
     odds: { raro: 50, epico: 33, legendario: 13, mitico: 4 },
     prizes: [
@@ -293,6 +296,38 @@ const WHEELS = {
       { r: 'raro', bundle: [{ potion: 'pocion_grande', qty: 6 }, { tickets: 5 }, { mat: 'alma_maldita', qty: 2 }] },
       { r: 'mitico', item: 'armadura_divina' },
       { r: 'epico', item: 'armadura_caos' },
+    ],
+  },
+  // Se abre al terminar la dificultad Pesadilla. Gira con diamantes o con Almas de pesadilla.
+  pesadilla: {
+    name: 'Ruleta de Pesadilla', icon: '💀', world: 1, req: 2, wood: '#450a0a', rim: '#dc2626', gemOnly: true, gemCost: 80, matCost: { alma_pesadilla: 15 }, pity: 8,
+    cost: {},
+    odds: { epico: 52, legendario: 34, mitico: 14 },
+    prizes: [
+      { r: 'epico', bundle: [{ tickets: 15 }, { mat: 'fragmento_legendario', qty: 12 }] },
+      { r: 'legendario', pet: 'dragoncito' },
+      { r: 'epico', bundle: [{ gems: 45 }, { mat: 'oro_oscuro', qty: 25 }, { mat: 'alma_maldita', qty: 3 }] },
+      { r: 'mitico', item: 'espada_divina' },
+      { r: 'legendario', cosmetic: 'aura_pesadilla' },
+      { r: 'epico', bundle: [{ potion: 'pocion_grande', qty: 10 }, { tickets: 10 }, { mat: 'alma_pesadilla', qty: 10 }] },
+      { r: 'legendario', cosmetic: 'estela_almas' },
+      { r: 'mitico', item: 'armadura_divina' },
+    ],
+  },
+  // Se abre al terminar la dificultad Infierno. Gira con diamantes o con Brasas infernales.
+  infierno: {
+    name: 'Ruleta Infernal', icon: '🔥', world: 1, req: 3, wood: '#1c0701', rim: '#f97316', gemOnly: true, gemCost: 120, matCost: { brasa_infernal: 15 }, pity: 8,
+    cost: {},
+    odds: { epico: 40, legendario: 37, mitico: 18, divino: 5 },
+    prizes: [
+      { r: 'epico', bundle: [{ tickets: 25 }, { gems: 70 }] },
+      { r: 'legendario', pet: 'diablillo' },
+      { r: 'mitico', item: 'espada_divina' },
+      { r: 'epico', bundle: [{ mat: 'fragmento_legendario', qty: 30 }, { mat: 'brasa_infernal', qty: 12 }, { mat: 'alma_maldita', qty: 5 }] },
+      { r: 'legendario', cosmetic: 'aura_infernal' },
+      { r: 'divino', bundle: [{ item: 'espada_divina' }, { item: 'armadura_divina' }, { gems: 150 }] },
+      { r: 'legendario', cosmetic: 'estela_infernal' },
+      { r: 'mitico', item: 'armadura_divina' },
     ],
   },
 };
@@ -528,10 +563,15 @@ const PETS = {
   llamita:    { name: 'Llamita',         icon: '🔥', art: 'flame',    size: 20, kind: 'ranged', dmg: 0.36, cd: 1.6, range: 170, from: 'dragon',           desc: 'Lanza bolas de fuego desde lejos.', proj: 'fireball' },
   fantasma:   { name: 'Espectro',        icon: '👻', art: 'ghost',    size: 24, kind: 'ranged', dmg: 0.42, cd: 1.8, range: 190, from: 'caballero_maldito', desc: 'Dispara orbes oscuros que atraviesan.', proj: 'darkorb' },
   // Exclusiva de la Ruleta de Diamantes
-  fenix:      { name: 'Fénix',           icon: '🔥', custom: 'fenix', size: 30, kind: 'ranged', dmg: 0.75, cd: 1.15, range: 230, from: null, wheel: true, proj: 'fireball', burn: true, revive: true, rebirth: true,
+  fenix:      { name: 'Fénix',           icon: '🔥', custom: 'fenix', size: 30, kind: 'ranged', dmg: 0.75, cd: 1.15, range: 230, from: null, wheel: 'diamante', proj: 'fireball', burn: true, revive: true, rebirth: true,
                 desc: 'Ave de fuego legendaria: sus bolas de fuego queman. Si caes, se sacrifica para revivirte con la mitad de tu vida y luego renace de sus cenizas.' },
+  // Exclusivas de las ruletas de Pesadilla e Infierno
+  dragoncito: { name: 'Dragoncito',      icon: '🐉', art: 'dragon', size: 34, kind: 'ranged', dmg: 0.9, cd: 1.0, range: 230, from: null, wheel: 'pesadilla', proj: 'fireball', burn: true,
+                desc: 'Una cría de dragón: escupe fuego que quema y atraviesa a 2 enemigos.', pierce: 2 },
+  diablillo:  { name: 'Diablillo',       icon: '😈', art: 'demon',  size: 28, kind: 'melee',  dmg: 1.1, cd: 0.7, range: 28,  from: null, wheel: 'infierno', heal: 0.02,
+                desc: 'Demonio menor muy rápido: cada zarpazo te cura un 2% de tu vida.' },
 };
-const PET_ORDER = ['lobito', 'escorpion', 'lobo_hielo', 'llamita', 'fantasma', 'fenix'];
+const PET_ORDER = ['lobito', 'escorpion', 'lobo_hielo', 'llamita', 'fantasma', 'fenix', 'dragoncito', 'diablillo'];
 const PET_MAX_LEVEL = 10;
 const petXpFor = lvl => 20 + lvl * lvl * 12;      // experiencia (derrotas) para el siguiente nivel
 const petMult = lvl => 1 + 0.15 * (lvl - 1);
@@ -558,9 +598,13 @@ const COSMETICS = {
   estela_hojas: { type: 'trail', name: 'Estela de hojas',  icon: '🍃', color: '#84cc16', gems: 25 },
   estela_fuego: { type: 'trail', name: 'Estela de brasas', icon: '🔥', color: '#fb923c', ach: ['combo', 1] },
   estela_caos:  { type: 'trail', name: 'Estela del Caos',  icon: '🌀', color: '#f43f5e', ach: ['tower', 1] },
-  aura_fenix:   { type: 'aura',  name: 'Alas del Fénix',   icon: '🔥', color: '#fb923c', wheel: true },
+  aura_fenix:   { type: 'aura',  name: 'Alas del Fénix',   icon: '🔥', color: '#fb923c', wheel: 'diamante', short: 'Alas' },
+  aura_pesadilla:  { type: 'aura',  name: 'Velo de Pesadilla', icon: '💀', color: '#dc2626', wheel: 'pesadilla', short: 'Velo' },
+  aura_infernal:   { type: 'aura',  name: 'Corona Infernal',   icon: '👑', color: '#f97316', wheel: 'infierno', short: 'Corona' },
+  estela_almas:    { type: 'trail', name: 'Estela de almas',   icon: '👻', color: '#e9d5ff', wheel: 'pesadilla', short: 'Almas' },
+  estela_infernal: { type: 'trail', name: 'Estela infernal',   icon: '🔥', color: '#ef4444', wheel: 'infierno', short: 'Infernal' },
 };
-const COSMETIC_ORDER = ['aura_fenix', 'aura_dorada', 'aura_hielo', 'aura_fuego', 'aura_sombra', 'estela_luz', 'estela_hojas', 'estela_fuego', 'estela_caos'];
+const COSMETIC_ORDER = ['aura_fenix', 'aura_pesadilla', 'aura_infernal', 'aura_dorada', 'aura_hielo', 'aura_fuego', 'aura_sombra', 'estela_luz', 'estela_hojas', 'estela_fuego', 'estela_caos', 'estela_almas', 'estela_infernal'];
 
 /* ---------- Definitiva: "Furia del Caos" ----------
    La barra se llena al golpear y al recibir daño. */
@@ -664,3 +708,14 @@ function applyDiff(info, D) {
     eliteChance: Math.min(0.35, (0.05 + info.stage * 0.003) * D.elite), diff: D,
   });
 }
+
+/* Materiales que caen en Pesadilla e Infierno (los de los primeros mundos ya no sirven ahí) */
+const DIFF_DROPS = {
+  1: { cristal_oscuro: 26, esencia_demoniaca: 20, oro_oscuro: 20, cristal_rojo: 14, alma_pesadilla: 16, fragmento_legendario: 9 },
+  2: { fragmento_legendario: 24, oro_oscuro: 20, esencia_demoniaca: 18, brasa_infernal: 20, alma_pesadilla: 10, alma_maldita: 4 },
+};
+/* Equipo que puede salir en los cofres de Pesadilla e Infierno */
+const DIFF_CHEST_ITEMS = {
+  1: { espada_infernal: 30, armadura_lava: 25, espada_inframundo: 25, armadura_oscura: 20 },
+  2: { hoja_caos: 30, armadura_caos: 30, espada_inframundo: 20, armadura_oscura: 20 },
+};

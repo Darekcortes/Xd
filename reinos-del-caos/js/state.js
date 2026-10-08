@@ -30,7 +30,7 @@ const Game = (() => {
       tower: { best: 0, runs: 0 },
       diff: 0,                                         // dificultad elegida: 0 Normal, 1 Pesadilla, 2 Infierno
       dprog: { 1: { cleared: {}, unlocked: 1 }, 2: { cleared: {}, unlocked: 1 } },   // progreso en Pesadilla e Infierno
-      diamondPity: 0,                                  // tiradas de la Ruleta de Diamantes sin premio especial
+      wheelPity: {},                                   // { ruleta: tiradas sin premio especial } (seguro de suerte)
       tickets: 1, ticketShards: 0,   // 🎟️ tickets de ruleta y fragmentos
       streak: 0, bestStreak: 0,      // racha de victorias seguidas
       daily: null,                   // misiones del día
@@ -56,6 +56,9 @@ const Game = (() => {
       p.unlocked = Math.min(Math.max(1, p.unlocked), MAX_STAGE);
     }
     if (![0, 1, 2].includes(S.diff) || !diffUnlocked(S.diff)) S.diff = 0;
+    if (!S.wheelPity || typeof S.wheelPity !== 'object') S.wheelPity = {};
+    if (data.diamondPity && !S.wheelPity.diamante) S.wheelPity.diamante = data.diamondPity;
+    delete S.diamondPity;
     // Encantamientos ya pagados: se guardan por arma y cambiar entre ellos es gratis
     if (!S.enchantsOwned || typeof S.enchantsOwned !== 'object') S.enchantsOwned = {};
     for (const w in S.enchants) {
@@ -715,7 +718,7 @@ const Game = (() => {
     if (p.tickets) return { icon: '🎟️', name: `x${p.tickets}`, full: `${p.tickets} ticket${p.tickets > 1 ? 's' : ''}` };
     if (p.coins) return { icon: '💰', name: `x${p.coins}`, full: `${p.coins} monedas` };
     if (p.pet) return { icon: PETS[p.pet].icon, name: PETS[p.pet].name, full: `Mascota: ${PETS[p.pet].name}`, pet: p.pet };
-    if (p.cosmetic) return { icon: COSMETICS[p.cosmetic].icon, name: 'Alas', full: `Aura: ${COSMETICS[p.cosmetic].name}`, cosmetic: p.cosmetic };
+    if (p.cosmetic) { const C = COSMETICS[p.cosmetic]; return { icon: C.icon, name: C.short || 'Aura', full: `${C.type === 'aura' ? 'Aura' : 'Estela'}: ${C.name}`, cosmetic: p.cosmetic }; }
     if (p.item) return { id: p.item, icon: ITEMS[p.item].icon, name: ITEMS[p.item].name.split(' ').slice(-1)[0], full: ITEMS[p.item].name };
     if (p.skill) return { icon: SKILLS[p.skill].icon, name: 'Habilidad', full: SKILLS[p.skill].name };
     return { icon: '?', name: '', full: '' };
@@ -789,6 +792,10 @@ const Game = (() => {
     S.diff = d; save(true);
     return true;
   }
+  /** ¿Terminaste todos los mundos de la dificultad d? (0 Normal, 1 Pesadilla, 2 Infierno) */
+  const diffCleared = d => !!(d === 0 ? S.cleared[MAX_STAGE] : S.dprog && S.dprog[d] && S.dprog[d].cleared[MAX_STAGE]);
+  /** Ruletas especiales: req 1 = terminar Normal, 2 = Pesadilla, 3 = Infierno */
+  const wheelOpen = id => { const w = WHEELS[id]; return w.req ? diffCleared(w.req - 1) : w.world <= highestWorld(); };
   const maxDiff = () => (diffUnlocked(2) ? 2 : diffUnlocked(1) ? 1 : 0);
 
   function completeStage(stage) {
@@ -803,7 +810,19 @@ const Game = (() => {
   const highestWorld = () => worldOfStage(S.unlocked).id;
 
   /* ---------- Cofre de etapa ---------- */
+  /** Cofre de Pesadilla e Infierno: materiales de alto nivel, gemas, tickets y equipo bueno. */
+  function rollChestDiff(stage, isBoss) {
+    const d = S.diff, info = applyDiff(stageInfo(stage), DIFFICULTIES[d]), rewards = [];
+    if (Math.random() < (isBoss ? 0.4 : 0.07)) rewards.push({ item: weightedPick(DIFF_CHEST_ITEMS[d]) });
+    rewards.push({ gems: (isBoss ? 6 : 2) * d + Math.floor(Math.random() * 3) });
+    if (Math.random() < (isBoss ? 0.9 : 0.3)) rewards.push({ tickets: isBoss ? 2 : 1 });
+    for (let i = 0; i < (isBoss ? 4 : 2); i++) rewards.push({ mat: weightedPick(DIFF_DROPS[d]), qty: Math.round((3 + Math.random() * 4) * (d === 2 ? 1.6 : 1) * (isBoss ? 2 : 1)) });
+    if (Math.random() < 0.25) rewards.push({ potion: 'pocion_grande', qty: isBoss ? 3 : 1 });
+    rewards.push({ coins: Math.round(info.coins * (isBoss ? 12 : 3) * (1 + streakBonus())) });
+    return rewards;
+  }
   function rollChest(stage, isBoss) {
+    if (S.diff && DIFF_DROPS[S.diff]) return rollChestDiff(stage, isBoss);
     const info = stageInfo(stage), world = info.world, depth = stageIndexInWorld(stage);
     const rewards = [];
     const roll = Math.random();
@@ -934,7 +953,7 @@ const Game = (() => {
     get S() { return S; },
     load, save, reset, stats, itemStats, matCount, addMat, hasCost, payCost,
     giveItem, giveSkill, grant, prizeLabel, addXp, completeStage, highestWorld, rollChest,
-    prog, diffUnlocked, setDiff, maxDiff,
+    prog, diffUnlocked, setDiff, maxDiff, diffCleared, wheelOpen,
     addShards, streakBonus, ensureDaily, track, missionText,
     connectCloud, cloudWrite, exportCode, importCode, get cloud() { return Cloud; },
     createAccount, login, logout, accountsBlocked, canSaveOnline, syncNow, accountPending, get account() { return Acc; },

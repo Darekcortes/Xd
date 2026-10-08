@@ -247,12 +247,13 @@ const Battle = (() => {
       damageEnemy(target, dmg, { color: '#fde68a', pet: true });
       if (P.poison && !target.dead) { target.poison = 3; target.poisonDmg = dmg * 0.25; }
       if (P.slow && !target.dead) target.slowT = Math.max(target.slowT || 0, 1.5);
+      if (P.heal && p.hp > 0 && p.hp < p.maxHp) heal(p.maxHp * P.heal, '#f87171');
       Sfx.play('hit');
     } else {
       pet.cd = P.cd; pet.windup = 0.2;
       const ang = Math.atan2(target.y - pet.y, target.x - pet.x);
       st.projs.push({ x: pet.x, y: pet.y, vx: Math.cos(ang) * 300, vy: Math.sin(ang) * 240, hostile: false, kind: P.proj,
-                      dmg, life: 1.4, h: pet.custom ? 34 : pet.size * 0.7, petShot: true, burn: !!P.burn, pierce: P.proj === 'darkorb' ? 2 : 0 });
+                      dmg, life: 1.4, h: pet.custom ? 34 : pet.size * 0.7, petShot: true, burn: !!P.burn, pierce: P.pierce || (P.proj === 'darkorb' ? 2 : 0) });
     }
   }
   function resetInput() { keys.left = keys.right = keys.up = keys.down = keys.attack = false; stick.x = stick.y = 0; stick.active = false; }
@@ -1168,6 +1169,13 @@ const Battle = (() => {
   }
 
   function rollMaterial(rare) {
+    // En Pesadilla e Infierno solo caen materiales de alto nivel
+    const DD = st.diff && st.diff.id && DIFF_DROPS[st.diff.id];
+    if (DD) {
+      const w = {};
+      for (const id in DD) w[id] = DD[id] * (rare ? 1 + RARITY_ORDER.indexOf(MATERIALS[id].rarity) * 0.4 : 1);
+      return weightedPick(w);
+    }
     const depth = Math.max(0, stageIndexInWorld(st.info.stage));
     const w = {};
     for (const id in st.world.drops) {
