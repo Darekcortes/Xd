@@ -118,6 +118,7 @@ const Battle = (() => {
       for (let i = 0; i < 26; i++) { const pt = Sprites.auraPart(au, st.p.x + rand(-26, 26), st.p.y + rand(-6, 6), Math.random() < 0.5 ? 1 : -1); if (pt) { pt.vy -= rand(40, 120); st.parts.push(pt); } }
     }
     if (typeof Music !== 'undefined') { Music.setIntensity(D.id || 0); Music.play(info.world.theme); }
+    if (!Game.S.tipSprint) { Game.S.tipSprint = 1; setTimeout(() => { if (st && typeof UI !== 'undefined') UI.toast('Mantén pulsado el botón de esquivar para correr'); }, 2600); }
     resetInput();
     paused = false;
     cancelAnimationFrame(raf);
@@ -295,7 +296,7 @@ const Battle = (() => {
                       dmg, life: 1.4, h: pet.custom ? 34 : pet.size * 0.7, petShot: true, burn: !!P.burn, pierce: P.pierce || (P.proj === 'darkorb' ? 2 : 0) });
     }
   }
-  function resetInput() { keys.left = keys.right = keys.up = keys.down = keys.attack = false; stick.x = stick.y = 0; stick.active = false; }
+  function resetInput() { keys.left = keys.right = keys.up = keys.down = keys.attack = keys.sprint = false; stick.x = stick.y = 0; stick.active = false; }
 
   const PROP_STYLE = {
     bosque: { kind: 'crate', color: '#a16207' }, desierto: { kind: 'pot', color: '#c2410c' },
@@ -404,10 +405,15 @@ const Battle = (() => {
       if (p.ghostT <= 0) { p.ghostT = 0.035; st.ghosts.push({ x: p.x, y: p.y, face: p.face, t: 0.25 }); }
       p.walk += dt * 20;
     } else if (mv.m > 0.08) {
-      // Carrera: al moverte un rato seguido vas más rápido (mucho más en Pesadilla e Infierno)
+      // Carrera: manteniendo pulsado el botón de esquivar (al caminar no deja rastro)
       p.moveT += dt;
-      const sprint = st.mob ? (p.moveT > 0.6 ? 1.38 : 1.15) : (p.moveT > 1 ? 1.12 : 1);
-      if (sprint > 1.2 && (p.ghostT -= dt) <= 0) {
+      const run = !!keys.sprint && mv.m > 0.3;
+      const sprint = run ? (st.mob ? 1.42 : 1.25) : (st.mob ? 1.1 : 1);
+      if (run && !p.running && st.parts.length < 400) {   // arranque: nube de polvo
+        for (let i = 0; i < 8; i++) st.parts.push({ x: p.x - p.face * 6, y: p.y - 2, vx: -p.face * rand(30, 90) + rand(-20, 20), vy: -rand(10, 50), life: 0.4, max: 0.4, color: '#d6d3d1', size: rand(2.5, 5), grav: 0 });
+      }
+      p.running = run;
+      if (run && (p.ghostT -= dt) <= 0) {
         p.ghostT = 0.07; st.ghosts.push({ x: p.x, y: p.y, face: p.face, t: 0.16 });
         if (st.parts.length < 420) st.parts.push({ x: p.x - p.face * 8, y: p.y - 2, vx: -p.face * rand(20, 50), vy: -rand(10, 30), life: 0.35, max: 0.35, color: '#d6d3d1', size: rand(2, 4), grav: 0 });
       }
@@ -419,7 +425,7 @@ const Battle = (() => {
         st.trailT = 0.05;
         if (COSMETICS[st.trail] && st.parts.length < 450) st.parts.push(Sprites.trailPart(st.trail, p.x, p.y, p.face));
       }
-    } else { p.walk = 0; p.moveT = 0; }
+    } else { p.walk = 0; p.moveT = 0; p.running = false; }
     p.x = clamp(p.x, 16, W - 16);
     p.y = clamp(p.y, fieldTop(), fieldBot());
     if (keys.attack && p.atkT <= 0) attack();

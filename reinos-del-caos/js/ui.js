@@ -2333,7 +2333,9 @@ const UI = (() => {
       btn.addEventListener('contextmenu', e => e.preventDefault());
     });
     $('b-potion').addEventListener('pointerdown', e => { e.preventDefault(); Battle.usePotion(); });
-    $('b-dodge').addEventListener('pointerdown', e => { e.preventDefault(); Battle.dodge(); });
+    // Esquivar: toque = rodar; mantener pulsado = correr (sprint)
+    $('b-dodge').addEventListener('pointerdown', e => { e.preventDefault(); Battle.dodge(); Battle.setInput('sprint', true); try { e.currentTarget.setPointerCapture(e.pointerId); } catch (er) {} });
+    for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) $('b-dodge').addEventListener(ev, () => Battle.setInput('sprint', false));
     $('b-ult').addEventListener('pointerdown', e => { e.preventDefault(); Sfx.unlock(); Battle.ultimate(); });
     $('scr-battle').addEventListener('touchmove', e => e.preventDefault(), { passive: false });
 
@@ -2376,7 +2378,7 @@ const UI = (() => {
     window.addEventListener('keydown', e => {
       if (current !== 'battle' || !$('modal').hidden) return;
       if (KEYS[e.key]) { e.preventDefault(); Battle.setInput(KEYS[e.key], true); }
-      else if (e.key === 'Shift' || e.key === 'k' || e.key === 'K') Battle.dodge();
+      else if (e.key === 'Shift' || e.key === 'k' || e.key === 'K') { if (!e.repeat) Battle.dodge(); Battle.setInput('sprint', true); }
       else if (e.key === 'u' || e.key === 'U' || e.key === 'q' || e.key === 'Q') Battle.ultimate();
       else if (e.key === '1') Battle.castSkill('fuego');
       else if (e.key === '2') Battle.castSkill('hielo');
@@ -2384,8 +2386,8 @@ const UI = (() => {
       else if (e.key === 'q' || e.key === 'Q') Battle.usePotion();
       else if (e.key === 'Escape' || e.key === 'p') openPause();
     });
-    window.addEventListener('keyup', e => { if (KEYS[e.key]) Battle.setInput(KEYS[e.key], false); });
-    window.addEventListener('blur', () => { ['left', 'right', 'up', 'down', 'attack'].forEach(k => Battle.setInput(k, false)); resetStick(); });
+    window.addEventListener('keyup', e => { if (KEYS[e.key]) Battle.setInput(KEYS[e.key], false); if (e.key === 'Shift' || e.key === 'k' || e.key === 'K') Battle.setInput('sprint', false); });
+    window.addEventListener('blur', () => { ['left', 'right', 'up', 'down', 'attack', 'sprint'].forEach(k => Battle.setInput(k, false)); resetStick(); });
     // Pantalla completa automática al primer toque (si el navegador lo permite)
     document.addEventListener('pointerdown', function first() {
       document.removeEventListener('pointerdown', first, true);
