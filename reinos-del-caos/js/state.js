@@ -30,7 +30,8 @@ const Game = (() => {
       tower: { best: 0, runs: 0 },
       diff: 0,                                         // dificultad elegida: 0 Normal, 1 Pesadilla, 2 Infierno
       dprog: { 1: { cleared: {}, unlocked: 1 }, 2: { cleared: {}, unlocked: 1 } },   // progreso en Pesadilla e Infierno
-      wheelPity: {},                                   // { ruleta: tiradas sin premio especial } (seguro de suerte)
+      wheelPity: {},
+      gifts: {},                                       // regalos únicos ya entregados                                   // { ruleta: tiradas sin premio especial } (seguro de suerte)
       tickets: 1, ticketShards: 0,   // 🎟️ tickets de ruleta y fragmentos
       streak: 0, bestStreak: 0,      // racha de victorias seguidas
       daily: null,                   // misiones del día
@@ -830,6 +831,18 @@ const Game = (() => {
     save(true);
     return true;
   }
+  /* Regalos únicos para cuentas concretas (solo con la sesión iniciada en esa cuenta) */
+  const GIFTS = [{ id: 'darek500', user: 'darekcortes', gems: 500, text: '🎁 ¡Regalo del creador: +500 💎!' }];
+  function claimGifts() {
+    if (!Acc.session || Acc.status !== 'ok') return null;
+    const name = String(Acc.session.name || '').trim().toLowerCase();
+    S.gifts = S.gifts || {};
+    const got = GIFTS.filter(g => g.user === name && !S.gifts[g.id]);
+    if (!got.length) return null;
+    for (const g of got) { S.gifts[g.id] = true; S.gems += g.gems; }
+    save(true);
+    return got.map(g => g.text).join(' · ');
+  }
   /** Nivel máximo del equipo: 5, o 10 (Ascensión) al terminar el Normal. */
   const itemMaxLevel = () => (S.cleared[MAX_STAGE] ? ASCEND_MAX : MAX_ITEM_LEVEL);
 
@@ -1006,7 +1019,7 @@ const Game = (() => {
     load, save, reset, stats, itemStats, matCount, addMat, hasCost, payCost,
     giveItem, giveSkill, grant, prizeLabel, addXp, completeStage, highestWorld, rollChest,
     prog, diffUnlocked, setDiff, maxDiff, diffCleared, wheelOpen,
-    shopToday, shopBuy, shopRefresh, shopRefreshCost, itemMaxLevel, lookEntry,
+    claimGifts, shopToday, shopBuy, shopRefresh, shopRefreshCost, itemMaxLevel, lookEntry,
     addShards, streakBonus, ensureDaily, track, missionText,
     connectCloud, cloudWrite, exportCode, importCode, get cloud() { return Cloud; },
     createAccount, login, logout, accountsBlocked, canSaveOnline, syncNow, accountPending, get account() { return Acc; },

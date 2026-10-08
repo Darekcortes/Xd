@@ -535,6 +535,8 @@ const UI = (() => {
       closeModal();
       toast(create ? `🔐 ¡Cuenta creada! Bienvenido, ${S().username}` : `🔐 ¡Hola de nuevo, ${S().username}! Progreso cargado`);
       Sfx.setEnabled(S().settings.sound);
+      const gift = Game.claimGifts();
+      if (gift) { setTimeout(() => toast(gift), 900); Sfx.play('legendary'); confetti(80, ['#7dd3fc', '#fde047', '#fff']); Game.cloudWrite(); }
       refreshTop();
       show('menu');
     });
@@ -552,6 +554,8 @@ const UI = (() => {
   /** Se llama cuando cambia el estado de la cuenta (o llega una partida guardada en ella). */
   function onCloud(loaded) {
     if (loaded) toast('☁️ Progreso recuperado de tu cuenta');
+    const gift = Game.claimGifts();
+    if (gift) { toast(gift); Sfx.play('legendary'); confetti(80, ['#7dd3fc', '#fde047', '#fff']); Game.cloudWrite(); if (current !== 'battle' && $('modal').hidden && RENDER[current]) RENDER[current](); }
     // Tras cada guardado solo se actualiza el icono (sin redibujar la pantalla entera)
     if (!loaded && current !== 'settings') {
       document.querySelectorAll('.cloud-ico').forEach(el => { el.outerHTML = cloudIcon() || '<span class="cloud-ico"></span>'; });
