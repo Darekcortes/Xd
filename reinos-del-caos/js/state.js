@@ -552,7 +552,7 @@ const Game = (() => {
   /** Lo que ven los demás al inspeccionarte: aura, estela, mascota, equipo y hasta dónde llegaste. */
   function lookEntry() {
     const d = maxDiff(), P = prog(d), pet = S.pets.active;
-    return { aura: S.cosmetics.aura || null, trail: S.cosmetics.trail || null, pet: pet || null, petLvl: pet && S.pets.owned[pet] ? S.pets.owned[pet].lvl : 0,
+    return { aura: S.cosmetics.aura || null, trail: S.cosmetics.trail || null, pet: pet || null, petLvl: pet && S.pets.owned[pet] ? S.pets.owned[pet].lvl : 0, petName: pet && S.pets.owned[pet] && S.pets.owned[pet].name || null,
              diff: d, world: worldOfStage(P.unlocked).id, done: diffCleared(d), weapon: S.equip.weapon, armor: S.equip.armor };
   }
   let lookCol = true;   // si la tabla aún no tiene la columna «look», se sube sin ella

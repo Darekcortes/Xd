@@ -77,9 +77,13 @@ const Battle = (() => {
     } else {
       const nWaves = stage >= 3 ? 3 : 2;
       const total = info.enemyCount;
+      let lastType = 'normal';
       for (let w = 0; w < nWaves; w++) {
         const n = Math.round(total / nWaves) + (w === nWaves - 1 ? total - Math.round(total / nWaves) * nWaves : 0);
-        waves.push(Array.from({ length: Math.max(1, n) }, pick));
+        // Cada oleada tiene su estilo (la primera de las primeras etapas siempre es normal)
+        const type = w === 0 && stage < 4 ? 'normal' : pickWaveType(stage, lastType);
+        waves.push(buildWave(type, Math.max(1, n), info.world, stage));
+        lastType = type;
       }
     }
     const total = waves.reduce((t, w) => t + w.length, 0);
@@ -87,10 +91,10 @@ const Battle = (() => {
       info, world: info.world, stage: tower ? 0 : stage, time: 0, tower: tower ? { floor: 0, cleared: 0 } : null,
       ult: 0, ultT: 0, potionsUsed: 0, sparks: [], pet: makePet(P), diff: D,
       bless: {}, blessList: [], base: { dmg: P.dmg, maxHp: P.maxHp, crit: P.crit }, moveMult: 1, shieldHits: 0, boltT: 4,
-      lava: [], meteorT: 3, darkness: 0, phoenixUsed: false,
+      lava: [], meteorT: 3, darkness: 0, phoenixUsed: false, mob: D.id > 0,
       p: { x: W * 0.3, y: (fieldTop() + fieldBot()) / 2, hp: P.maxHp, maxHp: P.maxHp, dmg: P.dmg, def: P.def,
            spd: P.spd, crit: P.crit, face: 1, atkT: 0, swing: -1, heavy: false, walk: 0, flash: 0, invuln: 0,
-           chain: 0, chainT: 0, dodgeT: 0, dodgeCd: 0, dx: 1, dy: 0, ghostT: 0 },
+           chain: 0, chainT: 0, dodgeT: 0, dodgeCd: 0, dx: 1, dy: 0, ghostT: 0, charges: 2, chargeT: 0, moveT: 0, lungeT: 0, sinceDodge: 9 },
       enemies: [], projs: [], zones: [], parts: [], floats: [], drops: [], bolts: [], rings: [], ambient: [],
       props: [], ghosts: [], lines: [],
       waves, waveIdx: -1, queue: [], waveT: 0.6, total, killed: 0, spawnT: 0,
@@ -105,6 +109,7 @@ const Battle = (() => {
     bg = Sprites.background(info.world.theme, W, H, HY, dpr);
     for (let i = 0; i < 30; i++) st.ambient.push(newAmbient(true));
     spawnProps();
+    spawnScenery();
     showBanner(tower ? '🏰 Torre del Caos' : `Etapa ${stage}`, tower ? '¿Hasta qué piso llegarás?' : info.name, '#fde68a');
     // Entrada con el aura: anillo y estallido de su color
     const au = Game.S.cosmetics.aura, AC = au && COSMETICS[au];
@@ -112,7 +117,7 @@ const Battle = (() => {
       st.rings.push({ x: st.p.x, y: st.p.y, r: 8, max: 110, t: 0.8, life: 0.8, color: AC.color });
       for (let i = 0; i < 26; i++) { const pt = Sprites.auraPart(au, st.p.x + rand(-26, 26), st.p.y + rand(-6, 6), Math.random() < 0.5 ? 1 : -1); if (pt) { pt.vy -= rand(40, 120); st.parts.push(pt); } }
     }
-    if (typeof Music !== 'undefined') Music.play(info.world.theme);
+    if (typeof Music !== 'undefined') { Music.setIntensity(D.id || 0); Music.play(info.world.theme); }
     resetInput();
     paused = false;
     cancelAnimationFrame(raf);
@@ -123,15 +128,42 @@ const Battle = (() => {
 
   const lootQty = q => Math.max(1, Math.round(q * (st.diff ? st.diff.loot : 1) * rand(0.8, 1.2)));
 
-  function stop() { cancelAnimationFrame(raf); raf = 0; st = null; if (typeof Music !== 'undefined') Music.play('menu'); }
+  function stop() { cancelAnimationFrame(raf); raf = 0; st = null; if (typeof Music !== 'undefined') { Music.setIntensity(0); Music.play('menu'); } }
+
+  /* ---------- Oleadas variadas ---------- */
+  function pickWaveType(stage, last) {
+    const o = {};
+    for (const k in WAVE_TYPES) if (stage >= (WAVE_TYPES[k].from || 0) && (k !== last || k === 'normal')) o[k] = WAVE_TYPES[k].w;
+    return weightedPick(o);
+  }
+  function buildWave(type, n, world, stage) {
+    let pool = world.enemies;
+    if (type === 'invasores') {
+      // Enemigos de un reino vecino
+      const other = WORLDS.filter(w => w.id !== world.id && w.id <= Math.max(2, world.id + 1));
+      pool = other[Math.floor(Math.random() * other.length)].enemies.concat(world.enemies.slice(0, 1));
+    } else if (type === 'asedio') {
+      const all = [...new Set(WORLDS.filter(w => w.id <= world.id).flatMap(w => w.enemies))];
+      const ranged = all.filter(id => ENEMIES[id].ai === 'ranged' || ENEMIES[id].ai === 'tank');
+      if (ranged.length) pool = ranged;
+    }
+    const one = pool[Math.floor(Math.random() * pool.length)];
+    const pick = () => pool[Math.floor(Math.random() * pool.length)];
+    let size = n;
+    if (type === 'manada') size = Math.round(n * 1.7);
+    if (type === 'elite') size = Math.max(2, Math.round(n * 0.45));
+    if (type === 'capitan') size = Math.max(2, Math.round(n * 0.6));
+    const w = Array.from({ length: size }, () => (type === 'manada' ? one : pick()));
+    w.type = type;
+    return w;
+  }
 
   /* ---------- Torre del Caos ---------- */
   function towerWave(floor) {
     const I = towerInfo(floor), pool = I.world.enemies;
     const n = I.enemyCount;
-    const wave = Array.from({ length: n }, () => pool[Math.floor(Math.random() * pool.length)]);
-    if (I.boss) return [I.world.boss].concat(wave.slice(0, 2));
-    return wave;
+    if (I.boss) { const w = Array.from({ length: 2 }, () => pool[Math.floor(Math.random() * pool.length)]); return [I.world.boss].concat(w); }
+    return buildWave(floor < 3 ? 'normal' : pickWaveType(floor + 2, ''), n, I.world, floor + 2);
   }
   /** Piso superado: el siguiente llega más duro; cada 5 pisos hay premio y curación. */
   function nextFloor() {
@@ -149,7 +181,8 @@ const Battle = (() => {
     const B = st.bless;
     if (B.curacion) heal(st.p.maxHp * B.curacion / 100);
     st.shieldHits = B.escudo || 0;
-    if (st.p.hp > 0) offerBlessing();
+    // Mejora a elegir cada 5 pisos (antes era cada piso y la Torre quedaba demasiado fácil)
+    if (st.p.hp > 0 && T.cleared % TOWER.milestone === 0) offerBlessing();
   }
   /* Mejoras de la Torre: al superar un piso se elige 1 de 3 (duran toda la escalada) */
   function rollBlessings() {
@@ -184,7 +217,7 @@ const Battle = (() => {
     if (!o) return null;
     const P = PETS[id];
     const maxHp = Math.round(stats.maxHp * 0.45 * (1 + 0.1 * (o.lvl - 1)));
-    return { id, def: { sprite: { art: P.art } }, P, custom: P.custom, lvl: o.lvl, x: 40, y: 0, size: P.size, face: 1, walk: 0, seed: 3,
+    return { id, def: { sprite: { art: P.art } }, P, custom: P.custom, name: o.name || '', lvl: o.lvl, x: 40, y: 0, size: P.size, face: 1, walk: 0, seed: 3,
              hp: maxHp, maxHp, petDef: stats.def * 0.6, invuln: 1, down: false, downT: 0, hpShow: 0,
              cd: 1, flash: 0, windup: 0, windupMax: 1, recover: 0, frozen: 0, state: 'move', elite: false, slowT: 0 };
   }
@@ -314,6 +347,7 @@ const Battle = (() => {
     updateProjectiles(dt);
     updateZones(dt);
     updateHazards(dt);
+    updateScenery(dt);
     updateDrops(dt);
     updateFx(dt);
     for (const k in st.cds) st.cds[k] -= dt;
@@ -351,18 +385,33 @@ const Battle = (() => {
 
   function updatePlayer(dt) {
     const p = st.p;
-    p.atkT -= dt; p.flash -= dt; p.invuln -= dt; p.chainT -= dt; p.dodgeCd -= dt;
+    p.atkT -= dt; p.flash -= dt; p.invuln -= dt; p.chainT -= dt; p.dodgeCd -= dt; p.sinceDodge += dt;
+    // Pesadilla e Infierno: 2 rodadas seguidas que se recargan solas
+    if (st.mob && p.charges < 2 && (p.chargeT -= dt) <= 0) { p.charges++; p.chargeT = 0.9; }
     if (p.swing >= 0) { p.swing += dt / (p.swingDur || 0.22); if (p.swing >= 1) p.swing = -1; }
     if (st.ended || p.hp <= 0) { p.walk = 0; return; }
     const mv = moveInput();
-    if (p.dodgeT > 0) {
+    if (p.lungeT > 0) {
+      // Estocada: sale disparado hacia delante con la espada por delante
+      p.lungeT -= dt;
+      p.x += p.face * 620 * dt;
+      p.ghostT -= dt;
+      if (p.ghostT <= 0) { p.ghostT = 0.025; st.ghosts.push({ x: p.x, y: p.y, face: p.face, t: 0.3 }); }
+    } else if (p.dodgeT > 0) {
       p.dodgeT -= dt;
       p.x += p.dx * DODGE_SPEED * dt; p.y += p.dy * DODGE_SPEED * 0.75 * dt;
       p.ghostT -= dt;
       if (p.ghostT <= 0) { p.ghostT = 0.035; st.ghosts.push({ x: p.x, y: p.y, face: p.face, t: 0.25 }); }
       p.walk += dt * 20;
     } else if (mv.m > 0.08) {
-      p.x += mv.x * PLAYER_SPEED * st.moveMult * dt; p.y += mv.y * PLAYER_SPEED * 0.8 * st.moveMult * dt;
+      // Carrera: al moverte un rato seguido vas más rápido (mucho más en Pesadilla e Infierno)
+      p.moveT += dt;
+      const sprint = st.mob ? (p.moveT > 0.6 ? 1.38 : 1.15) : (p.moveT > 1 ? 1.12 : 1);
+      if (sprint > 1.2 && (p.ghostT -= dt) <= 0) {
+        p.ghostT = 0.07; st.ghosts.push({ x: p.x, y: p.y, face: p.face, t: 0.16 });
+        if (st.parts.length < 420) st.parts.push({ x: p.x - p.face * 8, y: p.y - 2, vx: -p.face * rand(20, 50), vy: -rand(10, 30), life: 0.35, max: 0.35, color: '#d6d3d1', size: rand(2, 4), grav: 0 });
+      }
+      p.x += mv.x * PLAYER_SPEED * st.moveMult * sprint * dt; p.y += mv.y * PLAYER_SPEED * 0.8 * st.moveMult * sprint * dt;
       if (Math.abs(mv.x) > 0.2 && p.swing < 0) p.face = Math.sign(mv.x);
       p.walk += dt * 13 * mv.m;
       p.dx = mv.x / (mv.m || 1); p.dy = mv.y / (mv.m || 1);
@@ -370,7 +419,7 @@ const Battle = (() => {
         st.trailT = 0.05;
         if (COSMETICS[st.trail] && st.parts.length < 450) st.parts.push(Sprites.trailPart(st.trail, p.x, p.y, p.face));
       }
-    } else p.walk = 0;
+    } else { p.walk = 0; p.moveT = 0; }
     p.x = clamp(p.x, 16, W - 16);
     p.y = clamp(p.y, fieldTop(), fieldBot());
     if (keys.attack && p.atkT <= 0) attack();
@@ -393,8 +442,32 @@ const Battle = (() => {
     { style: 'smash',  dur: 0.3,  mult: 1.9, reach: 8,  depth: 10, knock: 30, extra: 0.12 },
   ];
 
+  /** Estocada (Pesadilla e Infierno): atacar justo al rodar lanza un tajo que atraviesa enemigos. */
+  function lunge() {
+    const p = st.p;
+    p.lungeT = 0.17; p.dodgeT = 0; p.sinceDodge = 9;
+    p.atkT = 0.42; p.swing = 0; p.swingDur = 0.24; p.style = 'thrust'; p.heavy = false; p.chain = 2; p.chainT = 0.8;
+    p.invuln = Math.max(p.invuln, 0.25);
+    const x0 = p.x, x1 = p.x + p.face * 110;
+    let hit = 0;
+    for (const e of st.enemies) {
+      if (e.dead || (e.z || 0) > 25) continue;
+      const ex = e.x;
+      if ((ex - x0) * p.face > -16 && (ex - x1) * p.face < e.size * 0.4 && Math.abs(e.y - p.y) < DEPTH + 10 + e.size * 0.18) {
+        damageEnemy(e, p.dmg * BALANCE.hitDamage * 1.7, { knock: 22, canCrit: true, combo: true, melee: true, heavy: true });
+        st.sparks.push({ x: e.x - p.face * e.size * 0.15, y: e.y - e.size * 0.55, t: 0.2, ang: Math.random() * 6, big: true });
+        hit++;
+      }
+    }
+    addFloat(p.x + p.face * 30, p.y - 70, '¡Estocada!', '#bae6fd', 14, true);
+    st.lines.push({ e: { x: x0, y: p.y - 28, tx: x1, ty: p.y - 28, size: 20, dead: false }, t: 0.18, lunge: true });
+    if (hit) { st.shake = Math.max(st.shake, 5); st.hitStop = Math.max(st.hitStop, 0.05); }
+    Sfx.play('swing');
+  }
+
   function attack() {
     const p = st.p;
+    if (st.mob && (p.dodgeT > 0 || p.sinceDodge < 0.22)) { lunge(); return; }
     p.chain = p.chainT > 0 ? (p.chain % 3) + 1 : 1;
     const mv = COMBO[p.chain - 1];
     p.atkT = 1 / (p.spd * BALANCE.attackRate) + mv.extra;
@@ -410,6 +483,14 @@ const Battle = (() => {
     p.x = clamp(p.x + p.face * (mv.style === 'thrust' ? 9 : heavy ? 7 : 4), 16, W - 16);
     p.swing = 0; p.heavy = heavy; p.style = mv.style;
     Sfx.play('swing');
+    cutScenery(p.x, p.x + p.face * (REACH + mv.reach), p.y);
+    if (heavy) {
+      // Golpe fuerte: onda en el suelo y polvo
+      const gx = p.x + p.face * 38;
+      st.rings.push({ x: gx, y: p.y, r: 6, max: 58, t: 0.32, life: 0.32, color: 'rgba(253,230,138,.9)' });
+      for (let i = 0; i < 10 && st.parts.length < 440; i++) st.parts.push({ x: gx + rand(-14, 14), y: p.y - 2, vx: rand(-90, 90), vy: -rand(60, 180), life: 0.45, max: 0.45, color: i % 2 ? '#a8a29e' : '#d6d3d1', size: rand(2, 4), grav: 420 });
+      st.shake = Math.max(st.shake, 3);
+    }
     // Las auras dejan su marca en cada golpe
     const au = Game.S.cosmetics.aura;
     if (au && st.parts.length < 420) for (let i = 0; i < (heavy ? 8 : 4); i++) {
@@ -422,8 +503,16 @@ const Battle = (() => {
       if (e.dead || (e.z || 0) > 25) continue;
       const dx = (e.x - p.x) * p.face;
       if (dx > -16 && dx < reach + e.size * 0.35 && Math.abs(e.y - p.y) < DEPTH + mv.depth + e.size * 0.18) {
+        // Pesadilla e Infierno: los enemigos a veces esquivan saltando hacia atrás
+        if (st.mob && !e.boss && !e.captain && e.windup <= 0 && !(e.frozen > 0) && !(e.evadeT > 0) && Math.random() < (st.diff.id === 2 ? 0.26 : 0.16)) {
+          e.evadeT = 2.4; e.kx = -p.face * 430; e.ky = rand(-140, 140);
+          addFloat(e.x, e.y - e.size - 12, '¡Esquiva!', '#e2e8f0', 12);
+          burst(e.x, e.y - 4, '#d6d3d1', 8, 70, -20);
+          continue;
+        }
         damageEnemy(e, p.dmg * BALANCE.hitDamage * mv.mult, { knock: mv.knock, canCrit: true, combo: true, melee: true, heavy });
-        st.sparks.push({ x: e.x - p.face * e.size * 0.15, y: e.y - e.size * 0.55 - (e.z || 0), t: 0.16, ang: Math.random() * 6, big: heavy });
+        st.sparks.push({ x: e.x - p.face * e.size * 0.15, y: e.y - e.size * 0.55 - (e.z || 0), t: 0.16, ang: Math.random() * 6, big: heavy,
+          slash: mv.style === 'smash' ? Math.PI / 2 : mv.style === 'thrust' ? 0 : -0.7 * p.face, face: p.face, sz: e.size });
         hit++;
       }
     }
@@ -454,11 +543,12 @@ const Battle = (() => {
   function dodge() {
     if (!st || st.ended || paused) return;
     const p = st.p;
-    if (p.dodgeCd > 0 || p.hp <= 0 || p.dodgeT > 0) return;
+    if (p.dodgeCd > 0 || p.hp <= 0 || p.dodgeT > 0 || p.lungeT > 0) return;
+    if (st.mob) { if (p.charges <= 0) return; p.charges--; if (p.chargeT <= 0) p.chargeT = 0.9; }
     const mv = moveInput();
     if (mv.m > 0.2) { p.dx = mv.x / mv.m; p.dy = mv.y / mv.m; } else { p.dx = p.face; p.dy = 0; }
     if (Math.abs(p.dx) > 0.2) p.face = Math.sign(p.dx);
-    p.dodgeT = 0.2; p.dodgeCd = 0.75; p.invuln = Math.max(p.invuln, 0.32);
+    p.dodgeT = 0.2; p.dodgeCd = st.mob ? 0.12 : 0.75; p.invuln = Math.max(p.invuln, 0.32); p.sinceDodge = 0;
     Sfx.play('swing');
     burst(p.x, p.y - 4, '#d6d3d1', 8, 60, -20);
   }
@@ -616,6 +706,9 @@ const Battle = (() => {
       if (st.waveT <= 0) {
         st.waveIdx++;
         st.queue = st.waves[st.waveIdx].slice();
+        st.waveType = st.waves[st.waveIdx].type || 'normal';
+        st.captainLeft = st.waveType === 'capitan' ? 1 : 0;
+        st.ambushSide = 1;
         if (st.tower) {
           st.tower.floor = st.waveIdx + 1;
           const prevTheme = st.world.theme;
@@ -626,7 +719,11 @@ const Battle = (() => {
         }
         st.spawnT = 0.3; st.waveT = 1.3;
         const isBoss = ENEMIES[st.queue[0]].boss;
-        if (!st.tower && !isBoss && st.waves.length > 1 && st.waveIdx > 0) showBanner(`Oleada ${st.waveIdx + 1}/${st.waves.filter(w => !ENEMIES[w[0]].boss).length}`, '', '#fde68a', 1.2);
+        const WT = WAVE_TYPES[st.waveType];
+        if (!st.tower && !isBoss && st.waves.length > 1 && (st.waveIdx > 0 || (WT && WT.name)))
+          showBanner(WT && WT.name ? WT.name : `Oleada ${st.waveIdx + 1}/${st.waves.filter(w => !ENEMIES[w[0]].boss).length}`, WT && WT.name ? `Oleada ${st.waveIdx + 1} · ${WT.sub}` : '', st.waveType === 'normal' ? '#fde68a' : '#fca5a5', 1.6);
+        else if (st.tower && WT && WT.name && !isBoss) showBanner(WT.name, WT.sub, '#fca5a5', 1.4);
+        if (st.waveType === 'emboscada') { st.spawnT = 0.1; Sfx.play('warn'); }
       }
       return;
     }
@@ -649,16 +746,23 @@ const Battle = (() => {
       Sfx.play('roar');
       if (typeof Music !== 'undefined') Music.play('boss');
       st.shake = 9;
-    } else if (alive < st.maxAlive) {
+    } else if (alive < st.maxAlive + (st.waveType === 'emboscada' ? 2 : st.waveType === 'manada' ? 2 : 0)) {
       st.queue.shift();
-      st.enemies.push(makeEnemy(next, Math.random() < 0.65 ? 1 : -1));
-      st.spawnT = rand(0.5, 1.1);
+      const wt = st.waveType;
+      // Emboscada: aparecen alternando los dos lados y muy seguidos
+      const side = wt === 'emboscada' ? (st.ambushSide = -st.ambushSide) : (Math.random() < 0.65 ? 1 : -1);
+      const opts = {};
+      if (wt === 'elite') opts.elite = true;
+      if (wt === 'capitan' && st.captainLeft) { st.captainLeft = 0; opts.captain = true; }
+      if (wt === 'manada') opts.swarm = true;
+      st.enemies.push(makeEnemy(next, side, opts));
+      st.spawnT = wt === 'emboscada' ? rand(0.12, 0.3) : wt === 'manada' ? rand(0.25, 0.6) : rand(0.5, 1.1);
     }
   }
 
   function makeEnemy(id, side, opts = {}) {
     const d = ENEMIES[id], I = st.info;
-    const elite = !d.boss && !opts.mini && Math.random() < I.eliteChance;
+    const elite = !d.boss && !opts.mini && (opts.elite || Math.random() < I.eliteChance);
     const B = BALANCE, dmgMult = I.dmgMult * (d.boss ? B.bossDmg : 1);
     let hp = Math.round(I.hp * d.hp * (elite ? 2.2 : 1) * (opts.mini ? 0.35 : 1) * (d.boss ? B.bossHp : 1));
     const size = d.size * (elite ? 1.2 : 1) * (opts.mini ? 0.6 : 1);
@@ -674,6 +778,14 @@ const Battle = (() => {
       dead: false, deathT: 0, specialT: d.specialCd ? d.specialCd * 0.6 : 0, atkIdx: 0, enraged: false, action: null,
       strafe: Math.random() < 0.5 ? -1 : 1,
     };
+    // Un poco más de dificultad general: algo más de vida y daño, y atacan más seguido
+    if (!d.boss) { e.hp = e.maxHp = Math.round(e.maxHp * 1.1); e.atk *= 1.08; }
+    e.atkT *= 0.9;
+    if (opts.swarm) { e.hp = e.maxHp = Math.max(1, Math.round(e.maxHp * 0.55)); e.size *= 0.86; e.speed *= 1.12; }
+    if (opts.captain) {
+      // Capitán: enorme, aguanta mucho y lleva corona
+      e.captain = true; e.hp = e.maxHp = Math.round(e.maxHp * 4.2); e.atk *= 1.4; e.size *= 1.4; e.speed *= 0.9;
+    }
     const D = I.diff;
     if (D && D.spd !== 1) e.speed *= D.spd;
     if (elite && D && D.affixes) {
@@ -689,6 +801,8 @@ const Battle = (() => {
     if (e.dead) { e.deathT -= dt; return; }
     e.flash -= dt;
     if (e.guardT > 0) e.guardT -= dt;
+    if (e.evadeT > 0) e.evadeT -= dt;
+    if (e.lungeCd > 0) e.lungeCd -= dt;
     if (e.guardBroken > 0) e.guardBroken -= dt;
     if (e.blinkT > 0) e.blinkT -= dt;
     if (e.affixes && !e.furious && e.affixes.includes('furioso') && e.hp < e.maxHp * 0.4) {
@@ -781,6 +895,8 @@ const Battle = (() => {
         if (e.def.ai === 'ranged') shoot(e, e.def.proj, Math.atan2(dy, dx));
         else if (Math.abs(dx) <= e.range + 18 && Math.abs(dy) < DEPTH + 6) { if (T === p) hurtPlayer(e.atk, e.boss, e); else hurtPet(e.atk); }
         e.recover = 0.3; e.atkT = e.def.atkCd * rand(0.9, 1.15);
+        // Golpea y se aparta (Pesadilla e Infierno)
+        if (st.mob && !e.boss && e.def.ai !== 'ranged') { e.kx = -Math.sign(dx || 1) * rand(200, 300); e.ky = rand(-90, 90); e.recover = 0.15; }
       }
       return;
     }
@@ -821,21 +937,32 @@ const Battle = (() => {
       let mx = 0, my = 0;
       if (dist < 110) { mx = -Math.sign(dx); my = -Math.sign(dy) * 0.5; }
       else if (dist > e.range) { mx = Math.sign(dx); my = Math.sign(dy) * 0.6; }
-      else { my = e.strafe * 0.6; if (Math.random() < dt * 0.5) e.strafe *= -1; }
-      e.x += mx * e.speed * slow * dt; e.y += my * e.speed * 0.7 * slow * dt;
+      else { my = e.strafe * 0.6; if (Math.random() < dt * (st.mob ? 1.4 : 0.5)) e.strafe *= -1; }
+      const rs = st.mob ? 1.5 : 1;   // los tiradores se mueven mucho más en Pesadilla e Infierno
+      e.x += mx * e.speed * slow * rs * dt; e.y += my * e.speed * 0.7 * slow * rs * dt;
       if (mx || my) e.walk += dt * 10;
       if (dist <= e.range && onScreen && e.atkT <= 0 && tAlive) { e.windupMax = 0.6; e.windup = 0.6; }
       clampEnemy(e, true);
       return;
     }
 
+    // Pesadilla e Infierno: acometida rápida desde media distancia
+    if (st.mob && !e.boss && ai !== 'charger' && ai !== 'ranged' && !(e.lungeCd > 0) && dist > 75 && dist < 190 && onScreen && tAlive && Math.random() < dt * 0.9) {
+      e.lungeCd = rand(3, 5);
+      e.state = 'aim'; e.stateT = st.diff.id === 2 ? 0.3 : 0.4;
+      const d = Math.hypot(dx, dy) || 1;
+      e.tx = clamp(T.x + dx / d * 20, 10, W - 10); e.ty = clamp(T.y + dy / d * 10, fieldTop(), fieldBot());
+      st.lines.push({ e, t: e.stateT });
+      return;
+    }
     // Cuerpo a cuerpo: se coloca a un lado del jugador, a la misma profundidad
     const side = e.x < T.x ? -1 : 1;
-    const tx = T.x + side * (e.range * 0.8 + 6), ty = T.y;
+    const weave = st.mob ? Math.sin(st.time * 2.3 + e.seed * 3) * 22 : 0;   // en zigzag, más difícil de alcanzar
+    const tx = T.x + side * (e.range * 0.8 + 6), ty = clamp(T.y + weave, fieldTop(), fieldBot());
     const mx = tx - e.x, my = ty - e.y, md = Math.hypot(mx, my);
     const wobble = e.def.float ? Math.sin(st.time * 3 + e.seed) * 20 : 0;
     if (md > 4) {
-      const sp = e.speed * slow;
+      const sp = e.speed * slow * (st.mob ? (md > 110 ? 1.55 : 1.15) : 1);
       e.x += mx / md * sp * dt;
       e.y += (my / md * sp * 0.75 + wobble * 0.3) * dt;
       e.walk += dt * 10;
@@ -876,11 +1003,14 @@ const Battle = (() => {
       }
   }
 
+  /** Boca del dragón (para que el fuego salga de ahí y no de los ojos). */
+  const isDragon = e => e.def.sprite && (e.def.sprite.art === 'dragon' || e.def.sprite.shape === 'dragon');
+  const mouthOf = e => ({ x: e.x + e.face * e.size * 0.71, y: e.y - (e.z || 0) - e.size * 0.62 });
   function shoot(e, kind, ang, speed) {
-    const sp = speed || (kind === 'arrow' ? 230 : 175);
+    const sp = speed || (kind === 'arrow' ? 230 : 175), dr = isDragon(e);
     st.projs.push({
-      x: e.x + Math.cos(ang) * e.size * 0.35, y: e.y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp * 0.8,
-      hostile: true, kind: kind || 'darkorb', dmg: e.atk * (e.boss ? 0.7 : 1), life: 3.2, h: e.size * 0.55, boss: e.boss, owner: e,
+      x: dr ? mouthOf(e).x : e.x + Math.cos(ang) * e.size * 0.35, y: e.y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp * 0.8,
+      hostile: true, kind: kind || 'darkorb', dmg: e.atk * (e.boss ? 0.7 : 1), life: 3.2, h: dr ? e.size * 0.62 + (e.z || 0) : e.size * 0.55, boss: e.boss, owner: e,
     });
   }
 
@@ -1016,7 +1146,9 @@ const Battle = (() => {
       e.breath = a.t > 0.6 && a.t < 1.5;
       if (e.breath) {
         const ang = Math.atan2(a.ty - e.y, a.tx - e.x);
-        for (let i = 0; i < 3; i++) st.parts.push({ x: e.x + e.face * e.size * 0.5, y: e.y - e.size * 0.75, vx: Math.cos(ang) * rand(200, 330), vy: Math.sin(ang) * rand(120, 200) + rand(-30, 30), life: 0.7, max: 0.7, color: ['#f97316', '#fde047', '#ef4444'][i], size: rand(4, 8), grav: 120 });
+        const m = mouthOf(e);
+        e.breathAng = ang;
+        for (let i = 0; i < 4; i++) st.parts.push({ x: m.x, y: m.y, vx: Math.cos(ang) * rand(220, 360) + rand(-20, 20), vy: Math.sin(ang) * rand(130, 220) + rand(-40, 40), life: 0.6, max: 0.6, color: ['#f97316', '#fde047', '#ef4444', '#fef9c3'][i], size: rand(4, 9), grav: 60, shape: 'ember' });
       }
       if (a.t > 1.6) { e.action = null; e.breath = false; }
     } else if (a.kind === 'howl') {
@@ -1223,7 +1355,14 @@ const Battle = (() => {
     st.kills++;
     Game.S.stats.kills++;
     addCombo();
-    const mult = e.boss ? 6 : e.elite ? 3 : e.mini ? 0.3 : 1;
+    const mult = e.boss ? 6 : e.captain ? 5 : e.elite ? 3 : e.mini ? 0.3 : 1;
+    if (e.captain) {
+      showBanner('', '¡Capitán derrotado!', '#facc15', 1.3);
+      for (let i = 0; i < 3; i++) spawnDrop(e.x, e.y, { mat: rollMaterial(true), qty: lootQty(2) });
+      spawnDrop(e.x, e.y, { heart: true });
+      st.loot.gems += 1; addFloat(e.x, e.y - e.size - 30, '+1 gema', '#7dd3fc', 13);
+      Sfx.play('legendary');
+    }
     st.loot.xp += Math.round(st.info.xp * e.def.hp * mult);
     burst(e.x, e.y - e.size * 0.5, '#ffffff', 18, 170);
     const coins = Math.max(1, Math.round(st.info.coins * rand(0.7, 1.3) * (e.boss ? 12 : e.elite ? 4 : e.mini ? 0.3 : 1)));
@@ -1389,11 +1528,239 @@ const Battle = (() => {
       st.parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s + vyBias, life: rand(0.3, 0.6), max: 0.6, color, size: rand(2, 4.5), grav: 400 });
     }
   }
+  // Sin emojis en el lienzo: el texto se limpia y los iconos se dibujan
+  const noEmo = t => ((typeof UIcons !== 'undefined') && t != null ? UIcons.strip(t) : t);
+  function drawIco(c, e, x, y, s) {
+    const im = (typeof UIcons !== 'undefined') && UIcons.image(e);
+    if (im && im.complete && im.naturalWidth) { c.drawImage(im, x - s / 2, y - s / 2, s, s); return true; }
+    return false;
+  }
   function addFloat(x, y, text, color, size, big) {
+    text = noEmo(String(text));
+    if (!text) return;
     const half = Math.min(W / 2 - 4, text.length * size * 0.3);
     st.floats.push({ x: clamp(x, half + 4, W - half - 4), y, text, color, size, t: 0, life: big ? 1.1 : 0.9, big: !!big, vx: big ? rand(-25, 25) : rand(-10, 10), rot: big ? rand(-0.15, 0.15) : 0 });
   }
-  function showBanner(text, sub, color, life = 1.8) { st.banner = { text, sub, color, t: 0, life }; }
+  function showBanner(text, sub, color, life = 1.8) { st.banner = { text: noEmo(text), sub: noEmo(sub), color, t: 0, life }; }
+
+  /* ---------- Escenario interactivo ----------
+     Cosas del fondo que reaccionan al caballero: hierba que se dobla y se corta, mariposas
+     y murciélagos que huyen, velas que se apagan, nieve que se pisa, géiseres de lava… */
+  function spawnScenery() {
+    const th = st.world.theme, sc = st.scen = [];
+    st.prints = []; st.printT = 0; st.weedT = rand(3, 7);
+    const G = () => ({ x: rand(12, W - 12), y: rand(fieldTop() + 4, fieldBot()) });
+    const add = (k, n, extra) => { for (let i = 0; i < n; i++) sc.push(Object.assign({ k, bend: 0, t: Math.random() * 6 }, G(), extra ? extra(i) : {})); };
+    if (th === 'bosque') {
+      add('grass', 16, () => ({ h: rand(8, 15), cut: 0 }));
+      add('flower', 6, i => ({ col: ['#f472b6', '#facc15', '#f8fafc', '#a78bfa'][i % 4], cut: 0 }));
+      add('butterfly', 4, i => ({ z: rand(14, 40), col: ['#fde047', '#f472b6', '#7dd3fc', '#fb923c'][i], vx: 0, vy: 0, flee: 0 }));
+    } else if (th === 'desierto') {
+      add('rock', 5, () => ({ r: rand(4, 8) }));
+      add('bones', 2, () => ({}));
+      add('vulture', 2, i => ({ cx: rand(W * 0.2, W * 0.8), cy: HY * rand(0.3, 0.6), r: rand(30, 60), sp: rand(0.4, 0.7) * (i ? 1 : -1) }));
+    } else if (th === 'hielo') {
+      add('snowpile', 9, () => ({ flat: 0, r: rand(8, 14) }));
+      add('icepatch', 3, () => ({ r: rand(16, 26), crack: 0 }));
+    } else if (th === 'volcan') {
+      add('vent', 3, () => ({ cd: rand(2, 6), erupt: 0 }));
+      add('coal', 7, () => ({ r: rand(3, 6) }));
+    } else if (th === 'oscuro') {
+      add('grave', 3, () => ({}));
+      add('candle', 5, () => ({ out: 0 }));
+      add('bat', 4, () => ({ z: 0, fly: 0, vx: 0, vy: 0 }));
+    }
+  }
+  function updateScenery(dt) {
+    const p = st.p, movers = [p].concat(st.enemies.filter(e => !e.dead), st.pet && !st.pet.down ? [st.pet] : []);
+    const near = (o, r) => movers.find(m => Math.abs(m.x - o.x) < r && Math.abs(m.y - o.y) < r * 0.6);
+    const G = () => ({ x: rand(12, W - 12), y: rand(fieldTop() + 4, fieldBot()) });
+    // Huellas (y polvo en arena y volcán) al caminar
+    if (p.walk && (st.printT -= dt) <= 0 && p.dodgeT <= 0) {
+      st.printT = 0.16; st.printSide = -(st.printSide || 1);
+      st.prints.push({ x: p.x + st.printSide * 3, y: p.y + 1, t: 6, face: p.face });
+      if (st.prints.length > 70) st.prints.shift();
+      const th = st.world.theme;
+      if ((th === 'desierto' || th === 'volcan') && st.parts.length < 430) st.parts.push({ x: p.x - p.face * 6, y: p.y - 2, vx: -p.face * rand(10, 30), vy: -rand(10, 25), life: 0.5, max: 0.5, color: th === 'volcan' ? '#57534e' : '#e7c58f', size: rand(2, 4), grav: 0 });
+    }
+    for (const f of st.prints) f.t -= dt;
+    st.prints = st.prints.filter(f => f.t > 0);
+    for (const o of st.scen) {
+      o.t += dt;
+      if (o.k === 'grass' || o.k === 'flower') {
+        const m = near(o, 18), want = m ? Math.sign(o.x - m.x || 1) * 0.9 : Math.sin(st.time * 2 + o.x) * 0.12;
+        o.bend += (want - o.bend) * Math.min(1, dt * 10);
+        if (o.cut > 0) o.cut -= dt;
+      } else if (o.k === 'butterfly') {
+        const d = Math.hypot(p.x - o.x, p.y - o.y);
+        if (d < 60 && !o.flee) { o.flee = 1; o.vx = Math.sign(o.x - p.x || 1) * rand(80, 130); o.vy = -rand(20, 50); }
+        if (o.flee) { o.x += o.vx * dt; o.z += 40 * dt; o.y += o.vy * dt * 0.2; if (o.x < -30 || o.x > W + 30) { Object.assign(o, G(), { flee: 0, z: rand(14, 40) }); o.x = Math.random() < 0.5 ? -20 : W + 20; o.vx = 0; } }
+        else { o.x += Math.sin(o.t * 0.9 + o.y) * 18 * dt; o.y += Math.cos(o.t * 0.7) * 8 * dt; o.x = clamp(o.x, 8, W - 8); o.y = clamp(o.y, fieldTop(), fieldBot()); }
+      } else if (o.k === 'snowpile') {
+        if (!o.flat && near(o, 12)) { o.flat = 1; for (let i = 0; i < 6; i++) st.parts.push({ x: o.x + rand(-6, 6), y: o.y - 2, vx: rand(-40, 40), vy: -rand(30, 80), life: 0.5, max: 0.5, color: '#f8fafc', size: rand(2, 3.5), grav: 200 }); }
+      } else if (o.k === 'icepatch') {
+        if (near(o, o.r * 0.8) && o.crack < 1) o.crack = Math.min(1, o.crack + dt * 0.7);
+      } else if (o.k === 'vent') {
+        if (o.erupt > 0) {
+          o.erupt -= dt;
+          if (st.parts.length < 440) for (let i = 0; i < 2; i++) st.parts.push({ x: o.x + rand(-4, 4), y: o.y - 4, vx: rand(-25, 25), vy: -rand(140, 230), life: 0.8, max: 0.8, color: ['#f97316', '#fde047', '#ef4444'][i % 3], size: rand(3, 6), grav: 260, shape: 'ember' });
+        } else if ((o.cd -= dt) <= 0) { o.erupt = 1.2; o.cd = rand(4, 8); }
+      } else if (o.k === 'candle') {
+        if (o.out > 0) o.out -= dt;
+        else if (near(o, 22)) { o.out = 6; st.parts.push({ x: o.x, y: o.y - 14, vx: 0, vy: -20, life: 0.9, max: 0.9, color: '#9ca3af', size: 4, grav: -10 }); }
+      } else if (o.k === 'bat') {
+        if (!o.fly && Math.hypot(p.x - o.x, p.y - o.y) < 70) { o.fly = 1; o.vx = Math.sign(o.x - p.x || 1) * rand(90, 150); o.vy = -rand(70, 110); Sfx.play('tick'); }
+        if (o.fly) { o.x += o.vx * dt; o.z = (o.z || 0) - o.vy * dt; o.vx += Math.sin(o.t * 9) * 30 * dt; if (o.z > H || o.x < -40 || o.x > W + 40) Object.assign(o, G(), { fly: 0, z: 0 }); }
+      }
+    }
+    // Plantas rodadoras del desierto que cruzan el campo
+    if (st.world.theme === 'desierto' && (st.weedT -= dt) <= 0) {
+      st.weedT = rand(5, 10);
+      const fromL = Math.random() < 0.5;
+      st.scen.push({ k: 'weed', x: fromL ? -20 : W + 20, y: rand(fieldTop() + 6, fieldBot()), vx: (fromL ? 1 : -1) * rand(60, 100), z: 0, vz: 0, rot: 0, t: 0, r: rand(8, 12) });
+    }
+    for (const o of st.scen) if (o.k === 'weed') {
+      o.x += o.vx * dt; o.rot += o.vx * dt / o.r; o.vz -= 600 * dt; o.z += o.vz * dt;
+      if (o.z <= 0) { o.z = 0; o.vz = rand(90, 160); }
+      const m = near(o, 16); if (m && m === p && !o.hit) { o.hit = 1; o.vx = Math.sign(o.x - p.x || 1) * 220; o.vz = 260; burst(o.x, o.y - 8, '#a16207', 6, 80); }
+    }
+    st.scen = st.scen.filter(o => o.k !== 'weed' || (o.x > -40 && o.x < W + 40));
+  }
+  /** La espada corta la hierba y las flores que alcanza. */
+  function cutScenery(x0, x1, y) {
+    for (const o of st.scen || []) {
+      if ((o.k === 'grass' || o.k === 'flower') && o.cut <= 0 && o.x > Math.min(x0, x1) && o.x < Math.max(x0, x1) && Math.abs(o.y - y) < 24) {
+        o.cut = 8;
+        for (let i = 0; i < 5 && st.parts.length < 440; i++) st.parts.push({ x: o.x, y: o.y - 6, vx: rand(-60, 60), vy: -rand(40, 110), life: 0.7, max: 0.7, color: o.k === 'flower' ? o.col : (i % 2 ? '#65a30d' : '#84cc16'), size: rand(2, 4), grav: 240, shape: 'leaf', rot: Math.random() * 6, spin: rand(-8, 8) });
+      }
+    }
+  }
+  /** Elementos del suelo (se dibujan detrás de todo, con su profundidad). */
+  function drawSceneryGround(c) {
+    const th = st.world.theme;
+    // Huellas
+    const pc = th === 'hielo' ? '120,140,170' : th === 'desierto' ? '150,110,60' : th === 'volcan' ? '20,10,10' : th === 'oscuro' ? '10,5,20' : '40,60,20';
+    for (const f of st.prints) { c.fillStyle = `rgba(${pc},${Math.min(0.35, f.t / 6 * 0.4)})`; c.beginPath(); c.ellipse(f.x, f.y, 2.6, 1.2, 0, 0, Math.PI * 2); c.fill(); }
+    for (const o of st.scen) {
+      if (o.k === 'rock') { c.fillStyle = '#a8805a'; c.beginPath(); c.ellipse(o.x, o.y - o.r * 0.3, o.r, o.r * 0.6, 0, 0, Math.PI * 2); c.fill(); c.fillStyle = '#c9a27a'; c.beginPath(); c.ellipse(o.x - o.r * 0.3, o.y - o.r * 0.5, o.r * 0.4, o.r * 0.25, 0, 0, Math.PI * 2); c.fill(); }
+      else if (o.k === 'bones') { c.strokeStyle = '#f5f5f4'; c.lineWidth = 2; c.lineCap = 'round'; c.beginPath(); c.moveTo(o.x - 8, o.y); c.lineTo(o.x + 8, o.y - 3); c.moveTo(o.x - 3, o.y - 5); c.lineTo(o.x + 2, o.y + 2); c.stroke(); }
+      else if (o.k === 'snowpile') { c.fillStyle = o.flat ? 'rgba(241,245,249,.55)' : '#f8fafc'; c.beginPath(); c.ellipse(o.x, o.y, o.r, o.flat ? o.r * 0.25 : o.r * 0.5, 0, Math.PI, 0); c.fill(); if (!o.flat) { c.fillStyle = 'rgba(186,230,253,.6)'; c.beginPath(); c.ellipse(o.x + o.r * 0.2, o.y - o.r * 0.1, o.r * 0.5, o.r * 0.2, 0, Math.PI, 0); c.fill(); } }
+      else if (o.k === 'icepatch') {
+        c.fillStyle = 'rgba(186,230,253,.35)'; c.beginPath(); c.ellipse(o.x, o.y, o.r, o.r * 0.35, 0, 0, Math.PI * 2); c.fill();
+        c.strokeStyle = 'rgba(255,255,255,.6)'; c.lineWidth = 1; c.stroke();
+        if (o.crack > 0) { c.strokeStyle = `rgba(255,255,255,${o.crack})`; c.beginPath(); for (let i = 0; i < 4; i++) { const a = i * 1.6 + 0.3; c.moveTo(o.x, o.y); c.lineTo(o.x + Math.cos(a) * o.r * o.crack, o.y + Math.sin(a) * o.r * 0.35 * o.crack); } c.stroke(); }
+      }
+      else if (o.k === 'coal') { const g = 0.5 + Math.sin(st.time * 3 + o.x) * 0.3; c.fillStyle = '#1c1917'; c.beginPath(); c.ellipse(o.x, o.y, o.r, o.r * 0.6, 0, 0, Math.PI * 2); c.fill(); c.fillStyle = `rgba(249,115,22,${g})`; c.beginPath(); c.ellipse(o.x, o.y - 1, o.r * 0.5, o.r * 0.25, 0, 0, Math.PI * 2); c.fill(); }
+      else if (o.k === 'vent') {
+        c.fillStyle = '#292524'; c.beginPath(); c.ellipse(o.x, o.y, 12, 5, 0, 0, Math.PI * 2); c.fill();
+        const g = o.erupt > 0 ? 1 : 0.4 + Math.sin(st.time * 4 + o.x) * 0.2;
+        c.fillStyle = `rgba(249,115,22,${g})`; c.beginPath(); c.ellipse(o.x, o.y, 7, 3, 0, 0, Math.PI * 2); c.fill();
+        if (o.erupt > 0) { const gr = c.createRadialGradient(o.x, o.y - 20, 2, o.x, o.y - 20, 40); gr.addColorStop(0, 'rgba(253,186,116,.5)'); gr.addColorStop(1, 'rgba(249,115,22,0)'); c.fillStyle = gr; c.beginPath(); c.arc(o.x, o.y - 20, 40, 0, Math.PI * 2); c.fill(); }
+      }
+    }
+  }
+  /** Elementos con altura, ordenados junto a los personajes. */
+  function sceneryItems(items, c) {
+    for (const o of st.scen) {
+      if (o.k === 'grass') items.push({ y: o.y - 0.2, f: () => {
+        const h = o.cut > 0 ? 3 : o.h;
+        c.strokeStyle = o.cut > 0 ? '#4d7c0f' : '#65a30d'; c.lineWidth = 1.6; c.lineCap = 'round';
+        c.beginPath(); for (let i = -2; i <= 2; i++) { c.moveTo(o.x + i * 2, o.y); c.quadraticCurveTo(o.x + i * 2 + o.bend * h * 0.4, o.y - h * 0.6, o.x + i * 3 + o.bend * h, o.y - h * (1 - Math.abs(i) * 0.12)); } c.stroke();
+      } });
+      else if (o.k === 'flower') items.push({ y: o.y - 0.2, f: () => {
+        if (o.cut > 0) return;
+        const tx = o.x + o.bend * 8, ty = o.y - 12;
+        c.strokeStyle = '#4d7c0f'; c.lineWidth = 1.4; c.beginPath(); c.moveTo(o.x, o.y); c.quadraticCurveTo(o.x + o.bend * 3, o.y - 6, tx, ty); c.stroke();
+        c.fillStyle = o.col; for (let i = 0; i < 5; i++) { const a = i * 1.257 + o.t * 0.3; c.beginPath(); c.arc(tx + Math.cos(a) * 2.6, ty + Math.sin(a) * 2.6, 2, 0, Math.PI * 2); c.fill(); }
+        c.fillStyle = '#facc15'; c.beginPath(); c.arc(tx, ty, 1.5, 0, Math.PI * 2); c.fill();
+      } });
+      else if (o.k === 'weed') items.push({ y: o.y, f: () => {
+        c.fillStyle = 'rgba(0,0,0,.18)'; c.beginPath(); c.ellipse(o.x, o.y, o.r, o.r * 0.3, 0, 0, Math.PI * 2); c.fill();
+        c.save(); c.translate(o.x, o.y - o.r - o.z); c.rotate(o.rot); c.strokeStyle = '#a16207'; c.lineWidth = 1.2;
+        for (let i = 0; i < 7; i++) { c.beginPath(); c.arc(0, 0, o.r * (0.4 + (i % 3) * 0.25), i, i + 2.4); c.stroke(); }
+        c.restore();
+      } });
+      else if (o.k === 'grave') items.push({ y: o.y, f: () => {
+        c.fillStyle = '#374151'; c.beginPath(); c.moveTo(o.x - 9, o.y); c.lineTo(o.x - 9, o.y - 16); c.quadraticCurveTo(o.x, o.y - 26, o.x + 9, o.y - 16); c.lineTo(o.x + 9, o.y); c.fill();
+        c.strokeStyle = '#1f2937'; c.lineWidth = 1.5; c.beginPath(); c.moveTo(o.x, o.y - 18); c.lineTo(o.x, o.y - 8); c.moveTo(o.x - 4, o.y - 14); c.lineTo(o.x + 4, o.y - 14); c.stroke();
+      } });
+      else if (o.k === 'candle') items.push({ y: o.y, f: () => {
+        c.fillStyle = '#e7e5e4'; c.fillRect(o.x - 2, o.y - 10, 4, 10);
+        if (o.out <= 0) {
+          const fl = Math.sin(st.time * 18 + o.x) * 1;
+          const g = c.createRadialGradient(o.x, o.y - 13, 1, o.x, o.y - 13, 22); g.addColorStop(0, 'rgba(253,224,71,.45)'); g.addColorStop(1, 'rgba(253,224,71,0)');
+          c.fillStyle = g; c.beginPath(); c.arc(o.x, o.y - 13, 22, 0, Math.PI * 2); c.fill();
+          c.fillStyle = '#fde047'; c.beginPath(); c.ellipse(o.x + fl * 0.5, o.y - 13, 1.8, 3.5, 0, 0, Math.PI * 2); c.fill();
+        }
+      } });
+    }
+  }
+  /** Lo que vuela por encima (mariposas, murciélagos, buitres). */
+  function drawSceneryAir(c) {
+    for (const o of st.scen) {
+      if (o.k === 'butterfly') {
+        const y = o.y - o.z - Math.sin(o.t * 3) * 3, fl = Math.abs(Math.sin(o.t * 18));
+        c.fillStyle = o.col;
+        c.beginPath(); c.ellipse(o.x - 2.5 * fl, y, 3 * fl + 0.5, 2.4, 0, 0, Math.PI * 2); c.ellipse(o.x + 2.5 * fl, y, 3 * fl + 0.5, 2.4, 0, 0, Math.PI * 2); c.fill();
+        c.fillStyle = '#1c1917'; c.fillRect(o.x - 0.5, y - 2, 1, 4);
+      } else if (o.k === 'bat') {
+        const y = o.y - (o.z || 0) - (o.fly ? 0 : 4), fl = o.fly ? Math.sin(o.t * 22) : 0.2;
+        c.fillStyle = '#111827';
+        c.beginPath(); c.moveTo(o.x, y); c.quadraticCurveTo(o.x - 6, y - 6 * fl - 2, o.x - 10, y + 1); c.quadraticCurveTo(o.x - 5, y - 1, o.x, y + 2);
+        c.quadraticCurveTo(o.x + 5, y - 1, o.x + 10, y + 1); c.quadraticCurveTo(o.x + 6, y - 6 * fl - 2, o.x, y); c.fill();
+        c.fillStyle = '#ef4444'; c.fillRect(o.x - 1.5, y - 1, 1, 1); c.fillRect(o.x + 0.5, y - 1, 1, 1);
+      } else if (o.k === 'vulture') {
+        const a = st.time * o.sp, x = o.cx + Math.cos(a) * o.r, y = o.cy + Math.sin(a) * o.r * 0.3, fl = Math.sin(st.time * 4) * 2;
+        c.strokeStyle = 'rgba(41,37,36,.8)'; c.lineWidth = 1.6; c.beginPath(); c.moveTo(x - 7, y - fl); c.quadraticCurveTo(x - 3, y - 3, x, y); c.quadraticCurveTo(x + 3, y - 3, x + 7, y - fl); c.stroke();
+      }
+    }
+  }
+  /** Cielo animado de cada mundo, encima del fondo dibujado. */
+  function drawSky(c) {
+    const th = st.world.theme, t = st.time;
+    c.save();
+    if (th === 'bosque') {
+      for (let i = 0; i < 3; i++) {
+        const x = ((t * (6 + i * 3) + i * 230) % (W + 200)) - 100, y = HY * (0.18 + i * 0.12);
+        c.fillStyle = 'rgba(255,255,255,.55)';
+        for (const [dx, dy, r] of [[0, 0, 14], [14, -5, 12], [28, 0, 13], [12, 4, 12]]) { c.beginPath(); c.arc(x + dx, y + dy, r, 0, Math.PI * 2); c.fill(); }
+      }
+      // Rayos de sol entre los árboles
+      c.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 3; i++) { const x0 = W * (0.2 + i * 0.28) + Math.sin(t * 0.3 + i) * 10, a = 0.05 + Math.sin(t * 0.8 + i * 2) * 0.025; const g = c.createLinearGradient(0, 0, 0, H * 0.7); g.addColorStop(0, `rgba(255,250,200,${a})`); g.addColorStop(1, 'rgba(255,250,200,0)'); c.fillStyle = g; c.beginPath(); c.moveTo(x0, 0); c.lineTo(x0 + 30, 0); c.lineTo(x0 + 110, H * 0.7); c.lineTo(x0 + 50, H * 0.7); c.fill(); }
+    } else if (th === 'desierto') {
+      // Calor que ondula sobre el horizonte
+      c.strokeStyle = 'rgba(255,255,255,.12)'; c.lineWidth = 2;
+      for (let i = 0; i < 4; i++) { const y = HY - 6 - i * 7; c.beginPath(); for (let x = 0; x <= W; x += 12) { const yy = y + Math.sin(x * 0.05 + t * 3 + i) * 2; x ? c.lineTo(x, yy) : c.moveTo(x, yy); } c.stroke(); }
+    } else if (th === 'hielo') {
+      // Aurora boreal
+      c.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 3; i++) {
+        const g = c.createLinearGradient(0, 0, 0, HY * 0.7);
+        g.addColorStop(0, 'rgba(0,0,0,0)'); g.addColorStop(0.5, i === 1 ? 'rgba(34,211,238,.16)' : 'rgba(74,222,128,.14)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+        c.fillStyle = g; c.beginPath(); c.moveTo(0, HY * 0.1);
+        for (let x = 0; x <= W; x += 16) c.lineTo(x, HY * (0.12 + i * 0.08) + Math.sin(x * 0.012 + t * 0.6 + i * 2) * 14);
+        for (let x = W; x >= 0; x -= 16) c.lineTo(x, HY * (0.5 + i * 0.08) + Math.sin(x * 0.015 + t * 0.5 + i) * 10);
+        c.fill();
+      }
+    } else if (th === 'volcan') {
+      // Humo que sale del volcán y brillo que palpita
+      for (let i = 0; i < 6; i++) {
+        const ph = (t * 0.12 + i / 6) % 1, x = W * 0.58 + Math.sin(ph * 4 + i) * 20 + ph * 60, y = HY * 0.35 - ph * HY * 0.5, r = 10 + ph * 30;
+        c.fillStyle = `rgba(41,37,36,${0.45 * (1 - ph)})`; c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.fill();
+      }
+    } else if (th === 'oscuro') {
+      // Niebla que se arrastra y relámpagos lejanos
+      for (let i = 0; i < 2; i++) {
+        const off = (t * (8 + i * 5)) % W, y = HY + 10 + i * 40;
+        const g = c.createLinearGradient(0, y - 20, 0, y + 20); g.addColorStop(0, 'rgba(167,139,250,0)'); g.addColorStop(0.5, 'rgba(167,139,250,.1)'); g.addColorStop(1, 'rgba(167,139,250,0)');
+        c.fillStyle = g; c.save(); c.translate(-off, 0); c.fillRect(0, y - 20, W * 2, 40); c.restore();
+      }
+      const z = Math.floor(t / 4), zp = t / 4 - z;
+      if ((z * 7919) % 5 === 0 && zp < 0.08) { c.fillStyle = `rgba(221,214,254,${0.25 * (1 - zp / 0.08)})`; c.fillRect(0, 0, W, HY); }
+    }
+    c.restore();
+  }
 
   function newAmbient(initial) {
     const kind = Sprites.THEMES[st.world.theme].particle;
@@ -1444,10 +1811,20 @@ const Battle = (() => {
     c.drawImage(bg, -8, -8, W + 16, H + 16);
     if (st.world.theme === 'volcan') { c.fillStyle = `rgba(249,115,22,${0.05 + Math.sin(st.time * 2) * 0.04})`; c.fillRect(0, 0, W, H); }
 
+    drawSky(c);
+    drawSceneryGround(c);
     drawZones(c);
     // Líneas de aviso de embestida
     for (const l of st.lines) {
       const e = l.e;
+      if (l.lunge) {
+        // Estela de la estocada
+        const k = Math.max(0, l.t / 0.18), g = c.createLinearGradient(e.x, 0, e.tx, 0);
+        g.addColorStop(0, 'rgba(186,230,253,0)'); g.addColorStop(1, `rgba(240,249,255,${0.9 * k})`);
+        c.strokeStyle = g; c.lineWidth = 10 * k + 2; c.lineCap = 'round';
+        c.beginPath(); c.moveTo(e.x, e.y); c.lineTo(e.tx, e.ty); c.stroke();
+        continue;
+      }
       const a = 0.5 + Math.sin(st.time * 20) * 0.25, ang = Math.atan2(e.ty - e.y, e.tx - e.x);
       c.strokeStyle = `rgba(239,68,68,${a})`; c.lineWidth = Math.max(8, e.size * 0.3); c.lineCap = 'round';
       c.beginPath(); c.moveTo(e.x, e.y); c.lineTo(e.tx, e.ty); c.stroke();
@@ -1459,6 +1836,7 @@ const Battle = (() => {
 
     // Todo lo que está sobre el suelo se ordena por profundidad (y)
     const items = [];
+    sceneryItems(items, c);
     for (const pr of st.props) items.push({ y: pr.y, f: () => Sprites.prop(c, pr, st.time) });
     for (const d of st.drops) items.push({ y: d.y, f: () => drawDrop(c, d) });
     for (const e of st.enemies) items.push({ y: e.y, f: () => drawEnemy(c, e) });
@@ -1468,9 +1846,19 @@ const Battle = (() => {
     if (st.pet) items.push({ y: st.pet.y, f: () => drawPet(c, st.pet) });
     items.sort((a, b) => a.y - b.y);
     for (const it of items) it.f();
+    drawSceneryAir(c);
 
     // Chispas de impacto
     for (const sp of st.sparks) {
+      if (sp.slash !== undefined) {
+        // Marca del tajo atravesando al enemigo
+        const k2 = Math.max(0, sp.t / 0.16), L = (sp.sz || 40) * 0.8 * (1.25 - k2 * 0.25);
+        c.save(); c.translate(sp.x, sp.y); c.rotate(sp.slash); c.globalCompositeOperation = 'lighter';
+        const g = c.createLinearGradient(-L, 0, L, 0);
+        g.addColorStop(0, 'rgba(255,255,255,0)'); g.addColorStop(0.5, `rgba(255,255,255,${0.95 * k2})`); g.addColorStop(1, 'rgba(255,255,255,0)');
+        c.fillStyle = g; c.beginPath(); c.moveTo(-L, 0); c.quadraticCurveTo(0, -(sp.big ? 6 : 3.5) * k2 - 1, L, 0); c.quadraticCurveTo(0, (sp.big ? 6 : 3.5) * k2 + 1, -L, 0); c.fill();
+        c.restore();
+      }
       const k = sp.t / 0.16, n = sp.big ? 8 : 5, len = (sp.big ? 22 : 14) * (1.3 - k);
       c.strokeStyle = `rgba(255,248,220,${k})`; c.lineWidth = sp.big ? 2.5 : 1.8; c.lineCap = 'round';
       c.beginPath();
@@ -1569,12 +1957,12 @@ const Battle = (() => {
     for (const id of ids) {
       c.fillStyle = 'rgba(15,12,29,.75)'; c.beginPath(); c.arc(x, y, 11, 0, Math.PI * 2); c.fill();
       c.strokeStyle = '#e8b54a'; c.lineWidth = 1; c.stroke();
-      c.fillStyle = '#fff'; c.fillText(BLESSINGS[id].icon, x, y + 0.5);
+      if (!drawIco(c, BLESSINGS[id].icon, x, y, 16)) { c.fillStyle = '#fff'; c.fillText(noEmo(BLESSINGS[id].icon) || '+', x, y + 0.5); }
       if (counts[id] > 1) { c.fillStyle = '#fde047'; c.font = '900 9px system-ui, sans-serif'; c.fillText(counts[id], x + 9, y + 9); c.font = '800 11px system-ui, sans-serif'; }
       y += 25;
       if (y > H - 150) { y = 58; x -= 26; }
     }
-    if (st.shieldHits > 0) { c.fillStyle = '#bfdbfe'; c.font = '800 10px system-ui, sans-serif'; c.textAlign = 'right'; c.fillText(`🛡️ x${st.shieldHits}`, W - 30, 40); }
+    if (st.shieldHits > 0) { c.fillStyle = '#bfdbfe'; c.font = '800 10px system-ui, sans-serif'; c.textAlign = 'right'; c.fillText(`x${st.shieldHits}`, W - 30, 40); drawIco(c, '🛡️', W - 50, 40, 13); }
   }
 
   /** Silueta translúcida del caballero (estela al esquivar). */
@@ -1594,8 +1982,12 @@ const Battle = (() => {
     if (p.hp <= 0) { c.save(); c.translate(p.x, p.y); c.rotate(-Math.PI / 2 * p.face); c.translate(-p.x, -p.y); c.globalAlpha = 0.7; }
     // Parpadea (semitransparente) mientras es invulnerable tras recibir daño
     if (p.invuln > 0 && p.dodgeT <= 0 && p.hp > 0 && Math.floor(st.time * 20) % 2 === 0) c.globalAlpha = 0.45;
+    // Se agacha un poco al dar el golpe fuerte y se estira al lanzar la estocada
+    const sq = p.swing >= 0 ? (p.style === 'smash' && p.swing > 0.35 && p.swing < 0.65 ? [1.07, 0.93] : p.style === 'thrust' && p.swing < 0.5 ? [1.05, 0.97] : null) : null;
+    if (sq) { c.save(); c.translate(p.x, p.y); c.scale(sq[0], sq[1]); c.translate(-p.x, -p.y); }
     Sprites.knight(c, p.x, p.y, 1.0, { face: p.face, walk: p.walk, swing: p.swing, heavy: p.heavy, style: p.style, time: st.time,
       weaponColor: ITEMS[S.equip.weapon].color, armorColor: ITEMS[S.equip.armor].color, flash: p.flash > 0, helmet: S.settings.helmet, rank: Game.rank() });
+    if (sq) c.restore();
     c.globalAlpha = 1;
     if (p.hp <= 0) { c.restore(); c.globalAlpha = 1; }
   }
@@ -1618,6 +2010,17 @@ const Battle = (() => {
       c.save(); c.translate(e.x, e.y); c.scale(1.1, 0.85); c.translate(-e.x, -e.y); Sprites.enemy(c, e, st.time); c.restore();
     } else if (e.shadow) { c.save(); c.globalAlpha = 0.72; Sprites.enemy(c, e, st.time); c.restore(); }
     else Sprites.enemy(c, e, st.time);
+    if (e.breath && e.breathAng !== undefined) {
+      // Cono de fuego que sale de la boca
+      const m = mouthOf(e), a = e.breathAng, L = 170 + Math.sin(st.time * 30) * 12;
+      c.save(); c.globalCompositeOperation = 'lighter'; c.translate(m.x, m.y); c.rotate(a);
+      for (const [w, col] of [[34, 'rgba(220,38,38,.35)'], [22, 'rgba(249,115,22,.55)'], [11, 'rgba(254,240,138,.75)']]) {
+        const g = c.createLinearGradient(0, 0, L, 0);
+        g.addColorStop(0, col); g.addColorStop(1, 'rgba(220,38,38,0)');
+        c.fillStyle = g; c.beginPath(); c.moveTo(0, -3); c.quadraticCurveTo(L * 0.5, -w - Math.sin(st.time * 25) * 4, L, -w * 0.6); c.lineTo(L, w * 0.6); c.quadraticCurveTo(L * 0.5, w + Math.cos(st.time * 23) * 4, 0, 3); c.fill();
+      }
+      c.restore();
+    }
     // Escudo del élite
     if (e.shield > 0) {
       c.strokeStyle = `rgba(226,232,240,${0.5 + Math.sin(st.time * 6) * 0.2})`; c.lineWidth = 2;
@@ -1634,9 +2037,16 @@ const Battle = (() => {
       c.fillStyle = '#000a'; c.fillRect(x - 1, y - 1, w + 2, 6);
       c.fillStyle = e.elite ? '#facc15' : '#ef4444'; c.fillRect(x, y, w * e.hp / e.maxHp, 4);
     }
+    if (e.captain) {
+      // Corona del capitán
+      const cy = e.y - e.size - 20 - z, cx = e.x;
+      c.fillStyle = '#facc15'; c.strokeStyle = '#78350f'; c.lineWidth = 1.5;
+      c.beginPath(); c.moveTo(cx - 9, cy + 5); c.lineTo(cx - 9, cy - 3); c.lineTo(cx - 4.5, cy + 1); c.lineTo(cx, cy - 6); c.lineTo(cx + 4.5, cy + 1); c.lineTo(cx + 9, cy - 3); c.lineTo(cx + 9, cy + 5); c.closePath(); c.fill(); c.stroke();
+      if (e.hp < e.maxHp) { const w = Math.max(40, e.size), x = e.x - w / 2, y = e.y - e.size - 8 - z; c.fillStyle = '#000a'; c.fillRect(x - 1, y - 1, w + 2, 6); c.fillStyle = '#f59e0b'; c.fillRect(x, y, w * e.hp / e.maxHp, 4); }
+    }
     if (e.affixes) {
       // Nombre de los poderes del élite
-      const txt = e.affixes.map(k => ELITE_AFFIXES[k].icon + ' ' + ELITE_AFFIXES[k].name).join('  ');
+      const txt = e.affixes.map(k => ELITE_AFFIXES[k].name).join(' · ');
       c.font = '800 9px system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
       c.lineWidth = 3; c.strokeStyle = '#000c'; c.strokeText(txt, e.x, e.y - e.size - 16 - z);
       c.fillStyle = '#fde68a'; c.fillText(txt, e.x, e.y - e.size - 16 - z);
@@ -1665,8 +2075,9 @@ const Battle = (() => {
     paint(pet, pet.invuln > 0 && pet.flash > 0 ? 0.6 : 1);
     // Nivel y vida de la mascota
     c.font = '800 9px system-ui, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
-    c.lineWidth = 3; c.strokeStyle = '#000a'; c.strokeText(`Nv ${pet.lvl}`, pet.x, pet.y + 9);
-    c.fillStyle = '#fde68a'; c.fillText(`Nv ${pet.lvl}`, pet.x, pet.y + 9);
+    const label = pet.name ? `${noEmo(pet.name)} · Nv ${pet.lvl}` : `Nv ${pet.lvl}`;
+    c.lineWidth = 3; c.strokeStyle = '#000a'; c.strokeText(label, pet.x, pet.y + 9);
+    c.fillStyle = '#fde68a'; c.fillText(label, pet.x, pet.y + 9);
     const w = 26, x = pet.x - w / 2, y = pet.y + 15, k = pet.hp / pet.maxHp;
     c.fillStyle = '#000a'; c.fillRect(x - 1, y - 1, w + 2, 5);
     c.fillStyle = k > 0.5 ? '#4ade80' : k > 0.25 ? '#facc15' : '#ef4444'; c.fillRect(x, y, w * k, 3);
@@ -1773,7 +2184,7 @@ const Battle = (() => {
     const next = Object.keys(COMBO_REWARDS).map(Number).find(n => n > st.combo);
     if (next) {
       c.textAlign = 'right'; c.font = '700 10px system-ui, sans-serif'; c.lineWidth = 3; c.strokeStyle = '#1a0b00';
-      c.strokeText(`🎁 x${next}`, 0, 44); c.fillStyle = '#fde68a'; c.fillText(`🎁 x${next}`, 0, 44);
+      c.strokeText(`x${next}`, 0, 44); c.fillStyle = '#fde68a'; c.fillText(`x${next}`, 0, 44); drawIco(c, '🎁', -c.measureText(`x${next}`).width - 8, 43, 12);
     }
     c.restore();
   }
@@ -1854,7 +2265,12 @@ const Battle = (() => {
       const lvl = skillLevel(id);
       cdBtn(document.querySelector(`[data-skill="${id}"]`), 'sk' + id, st.cds[id] || 0, lvl ? skillCd(id) : 1, !lvl);
     }
-    cdBtn(H_.dodge, 'dodge', p.dodgeCd, 0.75, false);
+    if (st.mob) {
+      // Rodadas disponibles (Pesadilla e Infierno)
+      cdBtn(H_.dodge, 'dodge', p.charges > 0 ? 0 : p.chargeT, 0.9, false);
+      const t = H_.dodge.querySelector('.cdtext'), v = p.charges > 0 ? '×' + p.charges : t.textContent;
+      if (lastHud.dodgeN !== v) { lastHud.dodgeN = v; t.textContent = v; }
+    } else cdBtn(H_.dodge, 'dodge', p.dodgeCd, 0.75, false);
   }
 
   /* ---------- Fin ---------- */

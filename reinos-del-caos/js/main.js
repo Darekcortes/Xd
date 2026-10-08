@@ -4,6 +4,7 @@
    ===================================================================== */
 (function boot() {
   Game.load();
+  if ((typeof UIcons !== 'undefined')) UIcons.watch(document.body);   // cambia los emojis por iconos dibujados
   Music.setEnabled(Game.S.settings.music);
   Sprites.loadArt(() => UI.redrawArt());   // arte ilustrado (si no carga, se usan los dibujos clásicos)
   Battle.init();

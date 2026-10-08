@@ -1,10 +1,10 @@
 /* Reinos del Caos — permite instalar el juego y jugar sin internet.
    Guarda los archivos del juego la primera vez; cambia VERSION al publicar
    una versión nueva para que los teléfonos descarguen la actualización. */
-const VERSION = 'rdc-v14';
+const VERSION = 'rdc-v15';
 const FILES = [
   './', './index.html', './manifest.webmanifest', './css/style.css',
-  './js/data.js', './js/icons.js', './js/audio.js', './js/state.js', './js/sprites.js', './js/battle.js', './js/ui.js', './js/main.js',
+  './js/data.js', './js/icons.js', './js/uicons.js', './js/audio.js', './js/state.js', './js/sprites.js', './js/battle.js', './js/ui.js', './js/main.js',
   './assets/sprites.webp', './assets/icon-192.png', './assets/icon-512.png',
 ];
 self.addEventListener('install', e => {

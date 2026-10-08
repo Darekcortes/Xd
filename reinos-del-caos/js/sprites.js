@@ -197,6 +197,21 @@ const Sprites = (() => {
     g.addColorStop(0.85, `rgba(${Math.min(255, r1 + 90)},${Math.min(255, g1 + 70)},255,${0.9 * fade})`);
     g.addColorStop(1, `rgba(255,255,255,${fade})`);
     c.fillStyle = g; path(1, R); c.fill();
+    // Eco del arco (una segunda estela que llega un poco tarde)
+    c.globalAlpha = 0.35 * fade;
+    c.save(); c.translate(cx, cy); c.rotate(-0.28); c.translate(-cx, -cy); c.fillStyle = `rgba(${r1},${g1},${b1},.8)`; path(0.55, R - 5 * s); c.fill(); c.restore();
+    c.globalAlpha = 1;
+    // Destellos en la punta del arco
+    const hx = cx + Math.cos(head) * R, hy = cy + Math.sin(head) * R;
+    c.fillStyle = `rgba(255,255,255,${0.95 * fade})`;
+    for (let i = 0; i < 3; i++) {
+      const a = head - i * 0.22, rr = R - i * 2 * s, sx = cx + Math.cos(a) * rr, sy = cy + Math.sin(a) * rr, sz = (3.2 - i) * s * fade;
+      c.beginPath(); c.moveTo(sx, sy - sz * 1.8); c.lineTo(sx + sz * 0.5, sy); c.lineTo(sx, sy + sz * 1.8); c.lineTo(sx - sz * 0.5, sy); c.closePath(); c.fill();
+      c.beginPath(); c.moveTo(sx - sz * 1.8, sy); c.lineTo(sx, sy + sz * 0.5); c.lineTo(sx + sz * 1.8, sy); c.lineTo(sx, sy - sz * 0.5); c.closePath(); c.fill();
+    }
+    const hg = c.createRadialGradient(hx, hy, 0, hx, hy, 10 * s);
+    hg.addColorStop(0, `rgba(255,255,255,${0.6 * fade})`); hg.addColorStop(1, `rgba(${r1},${g1},${b1},0)`);
+    c.fillStyle = hg; c.beginPath(); c.arc(hx, hy, 10 * s, 0, TAU); c.fill();
     c.restore();
   }
   const ARC_BLUE = [59, 130, 246];

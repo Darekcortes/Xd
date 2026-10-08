@@ -1046,11 +1046,16 @@ const UI = (() => {
           <div><b>🎟️ ${S().tickets}</b> tickets · 🧩 ${S().ticketShards}/${TICKET_SHARDS}</div>
           <div class="bar thin"><i style="width:${S().ticketShards / TICKET_SHARDS * 100}%"></i></div>
         </div>
-        <button class="btn wide ${S().tickets ? 'glow' : ''}" data-act="spin" data-mode="ticket" ${S().tickets ? '' : 'disabled'}>🎟️ Girar con 1 ticket</button>
+        <div class="spin-row">
+          <button class="btn ${S().tickets ? 'glow' : ''}" data-act="spin" data-mode="ticket" ${S().tickets ? '' : 'disabled'}>🎟️ Girar con 1 ticket</button>
+          <button class="btn ${S().tickets >= 10 ? 'glow' : 'ghost'}" data-act="spin" data-mode="ticket" data-n="10" ${S().tickets >= 10 ? '' : 'disabled'}>🎟️ Girar x10</button>
+        </div>
         <div class="cost-row">${costPills(w.cost)}</div>
         <div class="spin-row">
           <button class="btn ghost" data-act="spin" data-mode="mats" ${Game.hasCost(w.cost) ? '' : 'disabled'}>🎰 Girar con materiales</button>
           <button class="btn ghost" data-act="spin" data-mode="gems" ${S().gems >= w.gemCost ? '' : 'disabled'}>Girar con 💎 ${w.gemCost}</button>
+          <button class="btn ghost" data-act="spin" data-mode="mats" data-n="10" ${Game.hasCost(wheelMatCost(w, 10)) ? '' : 'disabled'}>🎰 x10 materiales</button>
+          <button class="btn ghost" data-act="spin" data-mode="gems" data-n="10" ${S().gems >= w.gemCost * 10 ? '' : 'disabled'}>x10 · 💎 ${w.gemCost * 10}</button>
         </div>
         <p class="hint" style="text-align:center;margin:0">Consigue 🎟️ completando etapas (cada ${TICKET_SHARDS} 🧩 = 1 🎟️), venciendo jefes y élites, con combos, rachas y misiones. Si sale un objeto que ya tienes, sube un nivel.</p>`}
         <div class="odds">${odds}</div>
@@ -1074,7 +1079,9 @@ const UI = (() => {
         <div class="bar thin"><i style="width:${n / w.pity * 100}%"></i></div></div>
       <div class="spin-row">
         <button class="btn wide diamond-btn ${can ? 'glow' : ''}" data-act="spin" data-mode="gems" ${can ? '' : 'disabled'}>💎 Girar por ${w.gemCost}</button>
-        ${mc ? `<button class="btn wide ghost" data-act="spin" data-mode="mats" ${canM ? '' : 'disabled'}>${Object.keys(mc).map(k => ico(k)).join('')} Girar con ${Object.values(mc)[0]}</button>` : ''}
+        <button class="btn wide diamond-btn ${s.gems >= w.gemCost * 10 ? '' : ''}" data-act="spin" data-mode="gems" data-n="10" ${s.gems >= w.gemCost * 10 ? '' : 'disabled'}>💎 x10 por ${w.gemCost * 10}</button>
+        ${mc ? `<button class="btn wide ghost" data-act="spin" data-mode="mats" ${canM ? '' : 'disabled'}>${Object.keys(mc).map(k => ico(k)).join('')} Girar con ${Object.values(mc)[0]}</button>
+          <button class="btn wide ghost" data-act="spin" data-mode="mats" data-n="10" ${Game.hasCost(wheelMatCost(w, 10)) ? '' : 'disabled'}>${Object.keys(mc).map(k => ico(k)).join('')} x10 con ${Object.values(mc)[0] * 10}</button>` : ''}
       </div>
       <p class="hint" style="text-align:center;margin:0">${SPECIAL_TEXT[id] || ''}</p>
     </div>`;
@@ -1098,7 +1105,7 @@ const UI = (() => {
       c.rotate(a0 + seg / 2);
       c.textAlign = 'center'; c.textBaseline = 'middle';
       c.font = '56px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
-      const im = lab.id && Icons.image(lab.id);
+      const im = (lab.id && Icons.image(lab.id)) || ((typeof UIcons !== 'undefined') && UIcons.image(lab.icon));
       c.save(); c.translate(R * 0.6, 0); c.rotate(Math.PI / 2);
       if (lab.pet === 'fenix') Sprites.phoenix(c, -4, 34, 46, 0.6, 1);
       else if (lab.pet) {
@@ -1115,7 +1122,7 @@ const UI = (() => {
       }
       else if (im && im.complete && im.naturalWidth) c.drawImage(im, -40, -40, 80, 80);
       else {
-        c.fillText(lab.icon, 0, 0);
+        if (!(typeof UIcons !== 'undefined')) c.fillText(lab.icon, 0, 0);
         if (im) im.onload = () => { if (current === 'wheel' && $('wheel-cv')) drawWheel(w); };
       }
       c.restore();
@@ -1137,30 +1144,44 @@ const UI = (() => {
     return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`;
   }
 
-  function spin(mode) {
-    if (view.spinning) return;
-    const w = WHEELS[view.wheel];
-    let paid;
-    if (mode === 'ticket') { paid = S().tickets > 0; if (paid) { S().tickets--; Game.save(); } }
-    else paid = mode === 'gems' ? Game.payCost({}, 0, w.gemCost) : Game.payCost(w.gemOnly ? w.matCost || { _: 1 } : w.cost);
-    if (!paid) { toast('No tienes suficientes recursos para girar', true); return; }
-    view.spinning = true;
-    S().stats.spins++;
-    refreshTop();
-    document.querySelectorAll('[data-act="spin"], [data-act="wheel-sel"], #scr-wheel .back').forEach(b => { b.disabled = true; });
-    // Elige rareza según probabilidades y luego un premio de esa rareza
+  /** Coste de girar n veces con materiales (o null si la ruleta no gira con materiales). */
+  const wheelMatCost = (w, n = 1) => {
+    const base = w.gemOnly ? w.matCost : w.cost;
+    if (!base) return null;
+    const c = {}; for (const k in base) c[k] = base[k] * n;
+    return c;
+  };
+  /** Elige un premio (índice) según las probabilidades y el seguro de suerte. */
+  function rollWheel(w) {
     let rar = weightedPick(w.odds);
     if (w.pity) {
       // Seguro de suerte: tras varias tiradas sin premio especial, toca uno seguro
-      const P = S().wheelPity = S().wheelPity || {}, top = ['legendario', 'mitico', 'divino'];
+      const P = S().wheelPity = S().wheelPity || {}, top = ['legendario', 'mitico', 'divino', 'abismal', 'eterno'];
       P[view.wheel] = (P[view.wheel] || 0) + 1;
       if (P[view.wheel] >= w.pity) { const o = {}; for (const r of top) if (w.odds[r]) o[r] = w.odds[r]; rar = weightedPick(o); }
       if (top.includes(rar)) P[view.wheel] = 0;
-      Game.save();
     }
     const options = w.prizes.map((p, i) => i).filter(i => w.prizes[i].r === rar);
-    const idx = options[Math.floor(Math.random() * options.length)];
-    const n = w.prizes.length, segDeg = 360 / n;
+    return options[Math.floor(Math.random() * options.length)];
+  }
+  function spin(mode, count = 1) {
+    if (view.spinning) return;
+    const w = WHEELS[view.wheel], n = Math.max(1, count), N = w.prizes.length;
+    let paid;
+    if (mode === 'ticket') { paid = S().tickets >= n; if (paid) S().tickets -= n; }
+    else if (mode === 'gems') paid = Game.payCost({}, 0, w.gemCost * n);
+    else { const mc = wheelMatCost(w, n); paid = !!mc && Game.payCost(mc); }
+    if (!paid) { toast('No tienes suficientes recursos para girar', true); return; }
+    view.spinning = true;
+    S().stats.spins += n;
+    refreshTop();
+    document.querySelectorAll('[data-act="spin"], [data-act="wheel-sel"], #scr-wheel .back').forEach(b => { b.disabled = true; });
+    const picks = Array.from({ length: n }, () => rollWheel(w));
+    Game.save();
+    // La ruleta se detiene en el mejor premio de la tanda
+    const best = picks.reduce((a, b) => (RARITY_ORDER.indexOf(w.prizes[b].r) > RARITY_ORDER.indexOf(w.prizes[a].r) ? b : a), picks[0]);
+    const idx = best;
+    const segDeg = 360 / N;
     const start = view.wheelRot;
     const jitter = (Math.random() - 0.5) * segDeg * 0.7;
     const want = -(idx + 0.5) * segDeg + jitter;
@@ -1178,15 +1199,31 @@ const UI = (() => {
       if (k < 1) return requestAnimationFrame(frame);
       view.wheelRot = rot % 360;
       view.spinning = false;
-      revealPrize(w.prizes[idx]);
+      if (n === 1) revealPrize(w.prizes[idx]);
+      else revealMany(picks.map(i => w.prizes[i]));
     })(t0);
+  }
+  /** Resultado de una tirada x10: todos los premios ordenados del mejor al peor. */
+  function revealMany(list) {
+    const items = list.map(p => ({ p, text: Game.grant(p), lab: Game.prizeLabel(p), ri: RARITY_ORDER.indexOf(p.r) })).sort((a, b) => b.ri - a.ri);
+    Game.save();
+    const top = items[0];
+    const cells = items.map((o, k) => `<div class="multi-prize ${o.ri >= 4 ? 'big' : ''}" style="--rc:${rc(o.p.r)};animation-delay:${k * 0.07}s">
+      <div class="mp-ico">${o.lab.id ? ico(o.lab.id) : o.lab.icon}</div>
+      <div class="mp-name">${esc(o.p.item ? ITEMS[o.p.item].name : o.lab.full)}</div><div class="mp-rar">${RARITIES[o.p.r].name}</div></div>`).join('');
+    openModal(`<div class="reward-title ${top.ri >= 4 ? 'boss' : ''}">Tirada x${items.length}</div>
+      <div class="multi-grid">${cells}</div>
+      <div class="modal-actions"><button class="btn" data-act="close">¡Genial!</button></div>`, () => RENDER.wheel());
+    if (top.ri >= 4) { Sfx.play('legendary'); confetti(110, [rc(top.p.r), '#fde047', '#ffffff']); vibrate(120); }
+    else Sfx.play('chest');
+    refreshTop();
   }
 
   function revealPrize(p) {
     const text = Game.grant(p);
     Game.save();
     const lab = Game.prizeLabel(p), r = RARITIES[p.r], ri = RARITY_ORDER.indexOf(p.r);
-    const shout = ['Común', 'Poco común', '¡Raro!', '¡ÉPICO!', '🎉 ¡LEGENDARIO!', '🔥 ¡¡MÍTICO!!', '🌟 ¡¡¡DIVINO!!!'][ri];
+    const shout = ['Común', 'Poco común', '¡Raro!', '¡ÉPICO!', '🎉 ¡LEGENDARIO!', '🔥 ¡¡MÍTICO!!', '🌟 ¡¡¡DIVINO!!!', '🌑 ¡¡¡ABISMAL!!!', '☀️ ¡¡¡ETERNO!!!'][ri];
     let name = lab.full;
     if (p.item) name = ITEMS[p.item].name;
     openModal(`
@@ -1828,7 +1865,7 @@ const UI = (() => {
     const prog = D ? `<div class="prof-prog" style="--dc:${D.color}">${D.icon} <b>${D.name}</b> · ${L.done ? '¡Todos los mundos completados!' : `Mundo ${L.world || 1} · ${(WORLDS[(L.world || 1) - 1] || WORLDS[0]).name}`}</div>` : '';
     const pet = L && L.pet && PETS[L.pet], aura = L && L.aura && COSMETICS[L.aura], trail = L && L.trail && COSMETICS[L.trail];
     const tags = L ? [aura ? `<span class="pill">${aura.icon} ${aura.name}</span>` : '', trail ? `<span class="pill">${trail.icon} ${trail.name}</span>` : '',
-      pet ? `<span class="pill">${pet.icon} ${pet.name} · Nv ${L.petLvl || 1}</span>` : '',
+      pet ? `<span class="pill">${pet.icon} ${esc(L.petName || pet.name)} · Nv ${L.petLvl || 1}</span>` : '',
       L.weapon && ITEMS[L.weapon] ? `<span class="pill">${ico(L.weapon)} ${ITEMS[L.weapon].name}</span>` : ''].join('') : '';
     openModal(`<div class="profile-card">
       <canvas id="prof-cv" width="360" height="300" aria-label="Caballero de ${name}"></canvas>
@@ -1925,10 +1962,10 @@ const UI = (() => {
         const lvlBar = o ? (o.lvl >= PET_MAX_LEVEL ? '<div class="item-meta">⭐ Nivel máximo</div>' : `<div class="bar small"><i style="width:${Math.min(100, o.xp / petXpFor(o.lvl) * 100)}%"></i></div><div class="item-meta">${o.xp}/${petXpFor(o.lvl)} derrotas para nivel ${o.lvl + 1}</div>`) : '';
         return `<div class="card pet-card ${o ? '' : 'locked'} ${active ? 'active' : ''}">
           <canvas data-pet="${id}" width="120" height="100" ${o ? '' : 'class="dim"'}></canvas>
-          <div class="pet-body"><b>${o ? P.icon + ' ' + P.name : '🔒 ' + P.name}</b>${o ? ` <span class="pill">Nv ${o.lvl}</span>` : ''}
+          <div class="pet-body"><b>${o ? P.icon + ' ' + esc(o.name || P.name) : '🔒 ' + P.name}</b>${o ? ` <span class="pill">Nv ${o.lvl}</span>` : ''}${o && o.name ? `<div class="item-meta">${P.name}</div>` : ''}
             <div class="item-meta">${P.desc}</div>
             ${o ? `<div class="item-meta">⚔️ ${Math.round(P.dmg * petMult(o.lvl) * 100)}% de tu daño · ${P.kind === 'melee' ? 'cuerpo a cuerpo' : 'a distancia'}</div>${lvlBar}
-              <button class="btn small ${active ? 'ghost' : ''}" data-act="pet-use" data-id="${id}">${active ? '✅ Te acompaña' : '🐾 Llevar'}</button>`
+              <div class="acc-btns"><button class="btn small ${active ? 'ghost' : ''}" data-act="pet-use" data-id="${id}">${active ? '✅ Te acompaña' : '🐾 Llevar'}</button><button class="btn small ghost" data-act="pet-name" data-id="${id}">✏️ Nombre</button></div>`
               : P.wheel ? wheelHow(P.wheel) : `<div class="item-meta">Se consigue al vencer a ${ENEMIES[P.from].name}.</div>`}
           </div></div>`;
       }).join('');
@@ -2121,7 +2158,7 @@ const UI = (() => {
     abandon: () => { $('modal').hidden = true; modalOnClose = null; Battle.abandon(); },
     chest: (d, el) => openChest(el),
     'wheel-sel': d => { if (!view.spinning) { view.wheel = d.id; RENDER.wheel(); } },
-    spin: d => spin(d.mode),
+    spin: d => spin(d.mode, +d.n || 1),
     'forge-tab': d => { view.forgeTab = d.tab; RENDER.forge(); },
     'forge-open': d => { view.forgeTab = d.tab; show('forge'); },
     'enchant-off': () => { if (Game.removeEnchant()) { toast('Encantamiento quitado (puedes volver a ponerlo gratis)'); RENDER.forge(); } },
@@ -2157,6 +2194,22 @@ const UI = (() => {
     'go-wheel': d => { view.wheel = d.id; show('wheel'); },
     'cos-try': d => { view.previewCos = view.previewCos === d.id ? null : d.id; RENDER.pets(); const cv = $('style-cv'); if (cv) cv.scrollIntoView({ behavior: 'smooth', block: 'center' }); },
     'pets-open': d => { view.petTab = d.tab; show('pets'); },
+    'pet-name': d => {
+      const P = PETS[d.id], o = S().pets.owned[d.id];
+      if (!o) return;
+      openModal(`<h2>✏️ Nombre de tu mascota</h2><p class="sub">${P.icon} ${P.name}: ponle el nombre que quieras (máximo 14 letras).</p>
+        <input id="pet-name-in" class="gift-input" style="text-transform:none;width:100%" maxlength="14" value="${esc(o.name || '')}" placeholder="${esc(P.name)}">
+        <div class="modal-actions"><button class="btn" data-act="pet-name-ok" data-id="${d.id}">Guardar</button><button class="btn ghost" data-act="close">Cancelar</button></div>`);
+      setTimeout(() => { const i = $('pet-name-in'); if (i) i.focus(); }, 50);
+    },
+    'pet-name-ok': d => {
+      const o = S().pets.owned[d.id], v = ($('pet-name-in').value || '').replace(/[<>"&]/g, '').trim().slice(0, 14);
+      if (!o) return;
+      if (v && !/^[\p{L}\p{N}_ .'-]{1,14}$/u.test(v)) { toast('Usa solo letras, números y espacios', true); return; }
+      o.name = v || undefined; if (!v) delete o.name;
+      Game.save(true); Game.cloudWrite(); closeModal();
+      toast(v ? `🐾 Ahora se llama ${v}` : '🐾 Nombre quitado'); RENDER.pets();
+    },
     'pet-use': d => { S().pets.active = d.id; Game.save(); toast(`🐾 ${PETS[d.id].name} te acompaña`); RENDER.pets(); },
     'cos-buy': d => { if (Game.buyCosmetic(d.id)) { Sfx.play('chest'); Game.wearCosmetic(d.id); toast(`✨ ${COSMETICS[d.id].name}`); RENDER.pets(); refreshTop(); } },
     'cos-wear': d => { Game.wearCosmetic(d.id); RENDER.pets(); },

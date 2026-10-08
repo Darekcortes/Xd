@@ -23,8 +23,10 @@ const RARITIES = {
   legendario: { name: 'Legendario', icon: '🟠', color: '#fb923c' },
   mitico:     { name: 'Mítico',     icon: '🔴', color: '#f43f5e' },
   divino:     { name: 'Divino',     icon: '🌟', color: '#fef08a' },   // solo en dificultad Infierno y en la Ruleta de Diamantes
+  abismal:    { name: 'Abismal',    icon: '🌑', color: '#d946ef' },   // solo en la Ruleta de Pesadilla
+  eterno:     { name: 'Eterno',     icon: '☀️', color: '#22d3ee' },   // solo en la Ruleta Infernal
 };
-const RARITY_ORDER = ['comun', 'pococomun', 'raro', 'epico', 'legendario', 'mitico', 'divino'];
+const RARITY_ORDER = ['comun', 'pococomun', 'raro', 'epico', 'legendario', 'mitico', 'divino', 'abismal', 'eterno'];
 
 /* ---------- Materiales ---------- */
 const MATERIALS = {
@@ -77,6 +79,8 @@ const ITEMS = {
   espada_infernal:   { type: 'weapon', name: 'Espada infernal',       icon: '⚔️', rarity: 'legendario', dmg: 160,  color: '#ef4444', upg: 'cristal_oscuro' },
   espada_inframundo: { type: 'weapon', name: 'Espada del Inframundo', icon: '⚔️', rarity: 'legendario', dmg: 190, crit: 0.1, color: '#a855f7', upg: 'cristal_oscuro' },
   espada_divina:     { type: 'weapon', name: 'Espada Divina',         icon: '⚔️', rarity: 'divino',     dmg: 430, spd: 0.25, crit: 0.2, color: '#fffbeb', upg: 'fragmento_legendario' },
+  espada_abismal:    { type: 'weapon', name: 'Espada Abismal',        icon: '⚔️', rarity: 'abismal',    dmg: 640, spd: 0.3, crit: 0.25, color: '#d946ef', upg: 'alma_pesadilla' },
+  espada_eterna:     { type: 'weapon', name: 'Hoja Eterna',           icon: '⚔️', rarity: 'eterno',     dmg: 950, spd: 0.35, crit: 0.3, color: '#67e8f9', upg: 'brasa_infernal' },
   hoja_caos:         { type: 'weapon', name: 'Hoja del Caos',         icon: '⚔️', rarity: 'mitico',     dmg: 290, spd: 0.2, crit: 0.15, color: '#f43f5e', upg: 'fragmento_legendario' },
   // Armaduras
   ropa_viajero:       { type: 'armor', name: 'Ropa de viajero',          icon: '👕', rarity: 'comun',      def: 1,   hp: 0,   color: '#8b6b4a', upg: 'madera' },
@@ -88,12 +92,14 @@ const ITEMS = {
   armadura_lava:      { type: 'armor', name: 'Armadura de lava',         icon: '🛡️', rarity: 'epico',      def: 80,  hp: 300, color: '#b91c1c', upg: 'mineral_volcanico' },
   armadura_oscura:    { type: 'armor', name: 'Armadura del Caballero Oscuro', icon: '🛡️', rarity: 'legendario', def: 140, hp: 500, color: '#4c1d95', upg: 'cristal_oscuro' },
   armadura_divina:    { type: 'armor', name: 'Armadura Divina',          icon: '🛡️', rarity: 'divino',     def: 320, hp: 1150, color: '#fef3c7', upg: 'fragmento_legendario' },
+  peto_abismal:       { type: 'armor', name: 'Peto Abismal',             icon: '🛡️', rarity: 'abismal',    def: 470, hp: 1700, color: '#86198f', upg: 'alma_pesadilla' },
+  peto_eterno:        { type: 'armor', name: 'Peto Eterno',              icon: '🛡️', rarity: 'eterno',     def: 680, hp: 2500, color: '#0e7490', upg: 'brasa_infernal' },
   armadura_caos:      { type: 'armor', name: 'Armadura del Caos',        icon: '🛡️', rarity: 'mitico',     def: 210, hp: 760, color: '#9f1239', upg: 'fragmento_legendario' },
 };
 const MAX_ITEM_LEVEL = 5;
 const ASCEND_MAX = 10;                   // Ascensión: niveles 6-10 al terminar el Normal (oro + materiales de alto nivel)
 const ITEM_LEVEL_BONUS = 0.15;          // +15% de estadísticas por nivel
-const RARITY_VALUE = { comun: 20, pococomun: 60, raro: 150, epico: 350, legendario: 800, mitico: 2000, divino: 5000 };
+const RARITY_VALUE = { comun: 20, pococomun: 60, raro: 150, epico: 350, legendario: 800, mitico: 2000, divino: 5000, abismal: 9000, eterno: 15000 };
 
 /* ---------- Recetas de la forja ----------
    world: mundo que hay que alcanzar para ver la receta */
@@ -303,32 +309,33 @@ const WHEELS = {
   pesadilla: {
     name: 'Ruleta de Pesadilla', icon: '💀', world: 1, req: 2, wood: '#450a0a', rim: '#dc2626', gemOnly: true, gemCost: 80, matCost: { alma_pesadilla: 15 }, pity: 8,
     cost: {},
-    odds: { epico: 52, legendario: 34, mitico: 14 },
+    odds: { epico: 52, legendario: 34, abismal: 14 },
     prizes: [
       { r: 'epico', bundle: [{ tickets: 15 }, { mat: 'fragmento_legendario', qty: 12 }] },
       { r: 'legendario', pet: 'dragoncito' },
       { r: 'epico', bundle: [{ gems: 45 }, { mat: 'oro_oscuro', qty: 25 }, { mat: 'alma_maldita', qty: 3 }] },
-      { r: 'mitico', item: 'espada_divina' },
+      { r: 'abismal', item: 'espada_abismal' },
       { r: 'legendario', cosmetic: 'aura_pesadilla' },
       { r: 'epico', bundle: [{ potion: 'pocion_grande', qty: 10 }, { tickets: 10 }, { mat: 'alma_pesadilla', qty: 10 }] },
       { r: 'legendario', cosmetic: 'estela_almas' },
-      { r: 'mitico', item: 'armadura_divina' },
+      { r: 'abismal', item: 'peto_abismal' },
     ],
   },
   // Se abre al terminar la dificultad Infierno. Gira con diamantes o con Brasas infernales.
   infierno: {
     name: 'Ruleta Infernal', icon: '🔥', world: 1, req: 3, wood: '#1c0701', rim: '#f97316', gemOnly: true, gemCost: 120, matCost: { brasa_infernal: 15 }, pity: 8,
     cost: {},
-    odds: { epico: 40, legendario: 37, mitico: 18, divino: 5 },
+    odds: { epico: 40, legendario: 36, divino: 16, eterno: 8 },
     prizes: [
       { r: 'epico', bundle: [{ tickets: 25 }, { gems: 70 }] },
       { r: 'legendario', pet: 'diablillo' },
-      { r: 'mitico', item: 'espada_divina' },
+      { r: 'eterno', item: 'espada_eterna' },
       { r: 'epico', bundle: [{ mat: 'fragmento_legendario', qty: 30 }, { mat: 'brasa_infernal', qty: 12 }, { mat: 'alma_maldita', qty: 5 }] },
       { r: 'legendario', cosmetic: 'aura_infernal' },
       { r: 'divino', bundle: [{ item: 'espada_divina' }, { item: 'armadura_divina' }, { gems: 150 }] },
+      { r: 'eterno', item: 'peto_eterno' },
       { r: 'legendario', cosmetic: 'estela_infernal' },
-      { r: 'mitico', item: 'armadura_divina' },
+      { r: 'divino', bundle: [{ item: 'espada_abismal' }, { gems: 100 }] },
     ],
   },
 };
@@ -737,3 +744,14 @@ const SHOP_POOL = [
   { id: 'cofre',    give: { epicChest: true },                     price: 25000, stock: 1, w: 4, special: true, name: 'Cofre épico', icon: '🎁' },
   { id: 'gemas',    give: { gems: 5 },                             price: 20000, stock: 2, w: 3, special: true },
 ];
+
+/* ---------- Tipos de oleada (para que no sean siempre iguales) ---------- */
+const WAVE_TYPES = {
+  normal:    { w: 34, name: '' },
+  manada:    { w: 14, name: 'Manada', sub: 'Muchos enemigos más débiles', from: 2 },
+  emboscada: { w: 14, name: '¡Emboscada!', sub: 'Llegan por los dos lados a la vez', from: 2 },
+  elite:     { w: 10, name: 'Escuadrón de élite', sub: 'Pocos, pero todos son élite', from: 4 },
+  capitan:   { w: 12, name: 'Capitán', sub: 'Un enemigo enorme dirige la oleada', from: 3 },
+  invasores: { w: 9,  name: 'Invasores', sub: 'Enemigos de otro reino', from: 6 },
+  asedio:    { w: 9,  name: 'Asedio', sub: 'Tiradores a distancia y guardianes', from: 5 },
+};
