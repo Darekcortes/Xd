@@ -525,6 +525,139 @@ const Sprites = (() => {
     if (fx) fx(c, s, t, rgbOf(C.color), layer);
     else if (layer === 'back') bodyGlow(c, s, rgbOf(C.color), 0.3);
     c.restore();
+    const ex = AURA_EXTRA[id];
+    if (ex) { c.save(); ex(c, s, t, layer); c.restore(); }
+  }
+  /* Detalles extra de las auras difíciles de conseguir (logros y ruletas especiales) */
+  const blinkK = t => { const p = t % 4.2; return p < 0.12 ? 1 - p / 0.12 : p < 0.24 ? (p - 0.12) / 0.12 : 1; };
+  const AURA_EXTRA = {
+    aura_fenix(c, s, t, layer) {
+      if (layer === 'back') {
+        // Sello del fénix girando en el suelo: anillo de plumas de fuego
+        c.save(); c.globalCompositeOperation = 'lighter'; c.scale(1, 0.3); c.rotate(t * 0.5);
+        for (let i = 0; i < 14; i++) {
+          c.save(); c.rotate(i * TAU / 14);
+          const g = c.createLinearGradient(30 * s, 0, 48 * s, 0);
+          g.addColorStop(0, 'rgba(253,224,71,.8)'); g.addColorStop(1, 'rgba(234,88,12,0)');
+          c.fillStyle = g; c.beginPath(); c.moveTo(30 * s, -3 * s); c.quadraticCurveTo(42 * s, 0, 50 * s, 0); c.quadraticCurveTo(42 * s, 2 * s, 30 * s, 3 * s); c.fill();
+          c.restore();
+        }
+        c.strokeStyle = 'rgba(254,240,138,.7)'; c.lineWidth = 1.5 * s; c.beginPath(); c.arc(0, 0, 30 * s, 0, TAU); c.stroke();
+        c.restore();
+        // Eco de las alas, más grande y suave
+        c.save(); c.globalCompositeOperation = 'lighter'; c.globalAlpha = 0.25 + Math.sin(t * 2.4) * 0.08;
+        for (const side of [-1, 1]) {
+          c.save(); c.translate(side * 6 * s, -40 * s); c.scale(side * 1.35, 1.35); c.rotate(-Math.sin(t * 2.4) * 0.16);
+          const g = c.createRadialGradient(0, 0, 4 * s, 0, 0, 40 * s);
+          g.addColorStop(0, 'rgba(253,186,116,.9)'); g.addColorStop(1, 'rgba(220,38,38,0)');
+          c.fillStyle = g; c.beginPath(); c.moveTo(0, 0); c.quadraticCurveTo(30 * s, -40 * s, 44 * s, -6 * s); c.quadraticCurveTo(26 * s, 4 * s, 0, 6 * s); c.fill();
+          c.restore();
+        }
+        c.restore();
+      } else {
+        // Ráfaga de plumas cada pocos segundos
+        const cyc = t % 2.6;
+        if (cyc < 0.9) {
+          c.save(); c.globalCompositeOperation = 'lighter';
+          for (let i = 0; i < 10; i++) {
+            const a = i / 10 * TAU + Math.floor(t / 2.6), d = cyc * 55 * s;
+            c.globalAlpha = 1 - cyc / 0.9;
+            c.save(); c.translate(Math.cos(a) * d, -40 * s + Math.sin(a) * d * 0.7); c.rotate(a + Math.PI / 2);
+            c.fillStyle = i % 2 ? '#fde047' : '#fb923c'; c.beginPath(); c.ellipse(0, 0, 1.6 * s, 5 * s, 0, 0, TAU); c.fill();
+            c.restore();
+          }
+          c.restore();
+        }
+      }
+    },
+    aura_pesadilla(c, s, t, layer) {
+      if (layer === 'back') {
+        // Ojo gigante en la niebla que parpadea y te mira
+        const k = blinkK(t), ey = -66 * s;
+        const g = c.createRadialGradient(0, ey, 2 * s, 0, ey, 34 * s);
+        g.addColorStop(0, 'rgba(127,29,29,.55)'); g.addColorStop(1, 'rgba(20,0,10,0)');
+        c.fillStyle = g; c.beginPath(); c.ellipse(0, ey, 34 * s, 22 * s, 0, 0, TAU); c.fill();
+        c.save(); c.translate(0, ey); c.scale(1, Math.max(0.05, k));
+        c.fillStyle = 'rgba(254,226,226,.85)'; c.beginPath(); c.ellipse(0, 0, 18 * s, 8 * s, 0, 0, TAU); c.fill();
+        const ix = Math.sin(t * 0.7) * 6 * s;
+        c.fillStyle = '#b91c1c'; c.beginPath(); c.arc(ix, 0, 6 * s, 0, TAU); c.fill();
+        c.fillStyle = '#0a0000'; c.beginPath(); c.ellipse(ix, 0, 1.6 * s, 5 * s, 0, 0, TAU); c.fill();
+        c.restore();
+      } else {
+        // Rayos rojos que chisporrotean
+        const z = Math.floor(t * 2.5), zp = t * 2.5 - z;
+        if (hash(z + 300) > 0.5 && zp < 0.3) {
+          c.save(); c.globalCompositeOperation = 'lighter'; c.strokeStyle = `rgba(248,113,113,${1 - zp / 0.3})`; c.lineWidth = 1.4 * s;
+          let x = (hash(z + 301) - 0.5) * 40 * s, y = -80 * s;
+          c.beginPath(); c.moveTo(x, y);
+          for (let j = 1; j <= 6; j++) { x += (hash(z * 5 + j) - 0.5) * 14 * s; y += 13 * s; c.lineTo(x, y); }
+          c.stroke(); c.restore();
+        }
+      }
+    },
+    aura_infernal(c, s, t, layer) {
+      if (layer === 'back') {
+        // Cuernos de fuego detrás de la cabeza
+        c.save(); c.globalCompositeOperation = 'lighter';
+        for (const side of [-1, 1]) {
+          c.save(); c.translate(side * 8 * s, -58 * s); c.scale(side, 1);
+          const g = c.createLinearGradient(0, 0, 20 * s, -26 * s);
+          g.addColorStop(0, 'rgba(234,88,12,.85)'); g.addColorStop(1, 'rgba(254,240,138,.9)');
+          c.fillStyle = g; c.beginPath(); c.moveTo(0, 0); c.quadraticCurveTo(18 * s, -2 * s, 22 * s + Math.sin(t * 6) * s, -28 * s);
+          c.quadraticCurveTo(10 * s, -10 * s, -3 * s, -6 * s); c.closePath(); c.fill();
+          c.restore();
+        }
+        // Anillo de runas que gira en el suelo
+        c.scale(1, 0.3); c.rotate(-t * 0.8);
+        c.strokeStyle = 'rgba(249,115,22,.8)'; c.lineWidth = 1.4 * s;
+        c.beginPath(); c.arc(0, 0, 38 * s, 0, TAU); c.stroke();
+        c.fillStyle = 'rgba(253,186,116,.9)';
+        for (let i = 0; i < 10; i++) { const a = i * TAU / 10; c.fillRect(Math.cos(a) * 38 * s - 2 * s, Math.sin(a) * 38 * s - 2 * s, 4 * s, 4 * s); }
+        c.restore();
+      }
+      // Bolas de fuego que orbitan
+      for (let i = 0; i < 3; i++) {
+        const a = -t * 1.8 + i * TAU / 3, depth = Math.sin(a);
+        if ((depth > 0) !== (layer === 'front')) continue;
+        const x = Math.cos(a) * 28 * s, y = (-30 + Math.sin(t * 3 + i) * 8) * s + depth * 5 * s;
+        c.save(); c.globalCompositeOperation = 'lighter';
+        const g = c.createRadialGradient(x, y, 0, x, y, 7 * s);
+        g.addColorStop(0, '#fef9c3'); g.addColorStop(0.4, 'rgba(249,115,22,.9)'); g.addColorStop(1, 'rgba(220,38,38,0)');
+        c.fillStyle = g; c.beginPath(); c.arc(x, y, 7 * s, 0, TAU); c.fill();
+        c.restore();
+      }
+    },
+    aura_fuego(c, s, t, layer) {
+      if (layer !== 'back') return;
+      // Halo de llamas girando a la altura de la cintura
+      c.save(); c.globalCompositeOperation = 'lighter'; c.translate(0, -26 * s); c.scale(1, 0.3);
+      for (let i = 0; i < 12; i++) {
+        const a = t * 1.6 + i * TAU / 12;
+        c.fillStyle = i % 2 ? 'rgba(253,224,71,.7)' : 'rgba(249,115,22,.7)';
+        c.beginPath(); c.arc(Math.cos(a) * 30 * s, Math.sin(a) * 30 * s, (2.5 + Math.sin(t * 8 + i)) * s, 0, TAU); c.fill();
+      }
+      c.restore();
+    },
+    aura_sombra(c, s, t, layer) {
+      if (layer !== 'back') return;
+      // Tentáculos de sombra que salen del suelo
+      c.lineCap = 'round';
+      for (let i = 0; i < 6; i++) {
+        const side = i % 2 ? 1 : -1, base = (10 + (i >> 1) * 9) * s * side, sw = Math.sin(t * 2 + i) * 8 * s;
+        c.strokeStyle = `rgba(46,16,101,${0.55 + Math.sin(t * 3 + i) * 0.15})`; c.lineWidth = (4 - (i >> 1)) * s;
+        c.beginPath(); c.moveTo(base, 2 * s); c.quadraticCurveTo(base + side * 14 * s + sw, -20 * s, base + side * 6 * s - sw, -(34 + i * 4) * s); c.stroke();
+      }
+      // Ojos brillando en la oscuridad
+      const k = blinkK(t + 1.3);
+      c.fillStyle = `rgba(216,180,254,${0.85 * k})`;
+      for (const [x, y] of [[-24, -58], [22, -50]]) { c.beginPath(); c.ellipse((x - 3) * s, y * s, 1.6 * s, 1.6 * s * k, 0, 0, TAU); c.ellipse((x + 3) * s, y * s, 1.6 * s, 1.6 * s * k, 0, 0, TAU); c.fill(); }
+    },
+  };
+  /** Partículas del aura al atacar (las auras especiales dejan su marca en cada golpe). */
+  const AURA_HIT = { aura_fenix: 'estela_fuego', aura_pesadilla: 'estela_almas', aura_infernal: 'estela_infernal', aura_fuego: 'estela_fuego', aura_sombra: 'estela_caos', aura_dorada: 'estela_luz', aura_hielo: 'estela_luz' };
+  function auraPart(aura, x, y, face) {
+    const id = AURA_HIT[aura];
+    return id ? trailPart(id, x, y, face) : null;
   }
 
   /** Fénix: ave de fuego que vuela, con alas que aletean, cola de plumas y chispas. */
@@ -1701,5 +1834,5 @@ const Sprites = (() => {
     c.beginPath(); c.moveTo(x, base); c.lineTo(x, base - 36); c.moveTo(x, base - 22); c.lineTo(x - 12, base - 34); c.moveTo(x, base - 30); c.lineTo(x + 11, base - 42); c.stroke();
   }
 
-  return { loadArt, artFit, ART, knight, trailPart, drawPart, phoenix, enemy, background, coin, gem, heart, prop, crown, THEMES, rrect, shade };
+  return { loadArt, artFit, ART, knight, trailPart, drawPart, phoenix, auraPart, enemy, background, coin, gem, heart, prop, crown, THEMES, rrect, shade };
 })();

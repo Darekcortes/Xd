@@ -106,6 +106,12 @@ const Battle = (() => {
     for (let i = 0; i < 30; i++) st.ambient.push(newAmbient(true));
     spawnProps();
     showBanner(tower ? '🏰 Torre del Caos' : `Etapa ${stage}`, tower ? '¿Hasta qué piso llegarás?' : info.name, '#fde68a');
+    // Entrada con el aura: anillo y estallido de su color
+    const au = Game.S.cosmetics.aura, AC = au && COSMETICS[au];
+    if (AC) {
+      st.rings.push({ x: st.p.x, y: st.p.y, r: 8, max: 110, t: 0.8, life: 0.8, color: AC.color });
+      for (let i = 0; i < 26; i++) { const pt = Sprites.auraPart(au, st.p.x + rand(-26, 26), st.p.y + rand(-6, 6), Math.random() < 0.5 ? 1 : -1); if (pt) { pt.vy -= rand(40, 120); st.parts.push(pt); } }
+    }
     if (typeof Music !== 'undefined') Music.play(info.world.theme);
     resetInput();
     paused = false;
@@ -404,6 +410,12 @@ const Battle = (() => {
     p.x = clamp(p.x + p.face * (mv.style === 'thrust' ? 9 : heavy ? 7 : 4), 16, W - 16);
     p.swing = 0; p.heavy = heavy; p.style = mv.style;
     Sfx.play('swing');
+    // Las auras dejan su marca en cada golpe
+    const au = Game.S.cosmetics.aura;
+    if (au && st.parts.length < 420) for (let i = 0; i < (heavy ? 8 : 4); i++) {
+      const pt = Sprites.auraPart(au, p.x + p.face * rand(14, 44), p.y + rand(-4, 8), -p.face);
+      if (pt) { pt.vx = p.face * rand(40, 120); st.parts.push(pt); }
+    }
     const reach = REACH + mv.reach;
     let hit = 0;
     for (const e of st.enemies) {
@@ -1485,7 +1497,7 @@ const Battle = (() => {
     }
     for (const r of st.rings) {
       c.strokeStyle = r.color; c.globalAlpha = Math.max(0, r.t / r.life); c.lineWidth = 5;
-      c.beginPath(); c.ellipse(r.x, r.y, r.r, r.r * 0.5, 0, 0, Math.PI * 2); c.stroke();
+      c.beginPath(); c.ellipse(r.x, r.y, Math.max(0.1, r.r), Math.max(0.1, r.r * 0.5), 0, 0, Math.PI * 2); c.stroke();
       c.globalAlpha = 1;
     }
     for (const pt of st.parts) {

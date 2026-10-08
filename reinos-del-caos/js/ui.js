@@ -23,7 +23,7 @@ const UI = (() => {
   };
   const worldBg = w => WORLD_BG[w.theme] || WORLD_BG.bosque;
   const rc = r => RARITIES[r].color;
-  const stars = lvl => '★'.repeat(lvl) + '☆'.repeat(MAX_ITEM_LEVEL - lvl);
+  const stars = lvl => '★'.repeat(Math.min(lvl, MAX_ITEM_LEVEL)) + '☆'.repeat(Math.max(0, MAX_ITEM_LEVEL - lvl)) + (lvl > MAX_ITEM_LEVEL ? ` <span class="asc-stars">${'✦'.repeat(lvl - MAX_ITEM_LEVEL)}</span>` : '');
 
   /* ---------- Navegación ---------- */
   function show(id) {
@@ -129,6 +129,7 @@ const UI = (() => {
           <button class="power-chip" data-act="name" aria-label="Tu nombre de usuario">${s.username ? `<span class="uname">${esc(s.username)}</span>` : ''}<span class="rank-tag" style="color:${RANKS[Game.rank()].color}">${RANKS[Game.rank()].name}</span> 💥 <b>${fmt(P.power)}</b>${cloudIcon()}</button>
           <div class="head-btns">
             <button class="icon-btn" data-act="fullscreen" aria-label="Pantalla completa">⛶</button>
+            <button class="icon-btn" data-act="go" data-to="shop" aria-label="Mercader viajero">🏪${Game.shopToday().seen ? '' : '<span class="badge">!</span>'}</button>
             <button class="icon-btn" data-act="go" data-to="trophies" aria-label="Logros y ranking">🏆${Game.achClaimable() ? `<span class="badge">${Game.achClaimable()}</span>` : ''}</button>
             <button class="icon-btn" data-act="go" data-to="missions" aria-label="Misiones diarias">📜${claimable + (Game.loginStatus().claimable ? 1 : 0) ? `<span class="badge">${claimable + (Game.loginStatus().claimable ? 1 : 0)}</span>` : ''}</button>
             <button class="icon-btn" data-act="go" data-to="settings" aria-label="Ajustes">⚙️</button>
@@ -1290,9 +1291,9 @@ const UI = (() => {
       if (!view.upSel || !s.items[view.upSel]) view.upSel = s.equip.weapon;
       const tiles = ids.map(id => {
         const it = ITEMS[id], lvl = s.items[id].lvl, eq = s.equip.weapon === id || s.equip.armor === id;
-        const max = lvl >= MAX_ITEM_LEVEL, c = max ? null : upgradeCost(id), ready = c && Game.hasCost(c.cost, c.coins);
+        const max = lvl >= Game.itemMaxLevel(), c = max ? null : upgradeCost(id), ready = c && Game.hasCost(c.cost, c.coins);
         return `<button class="ftile ${view.upSel === id ? 'sel' : ''} ${ready ? 'ready' : ''}" style="--rc:${rc(it.rarity)}" data-act="up-sel" data-id="${id}" aria-label="${esc(it.name)}">
-          <span class="ft-ico">${ico(id)}</span>${eq ? '<span class="ft-tag eq">E</span>' : ready ? '<span class="ft-tag go">!</span>' : ''}<span class="ft-stars">${'★'.repeat(lvl)}</span></button>`;
+          <span class="ft-ico">${ico(id)}</span>${eq ? '<span class="ft-tag eq">E</span>' : ready ? '<span class="ft-tag go">!</span>' : ''}<span class="ft-stars">${'★'.repeat(Math.min(lvl, MAX_ITEM_LEVEL))}${lvl > MAX_ITEM_LEVEL ? `<i class="asc-stars">${'✦'.repeat(lvl - MAX_ITEM_LEVEL)}</i>` : ''}</span></button>`;
       }).join('');
       body = `<div class="forge-wrap">${forgeStage('upgrade', view.upSel)}<div class="forge-side"><div class="fside-title">🎒 Tus objetos</div><div class="forge-grid">${tiles}</div></div></div>`;
     }
@@ -1357,14 +1358,21 @@ const UI = (() => {
       const id = sel; d = ITEMS[id]; rar = d.rarity; lvl = s.items[id].lvl; iconId = id;
       const eq = s.equip.weapon === id || s.equip.armor === id;
       sub = `${RARITIES[rar].name} · ${d.type === 'weapon' ? 'Arma' : 'Armadura'}${eq ? ' · <b class="eq-tag">Equipado</b>' : ''}`;
-      if (lvl >= MAX_ITEM_LEVEL) { bars = itemBars(id, lvl); foot = '<div class="fs-note max">⭐ ¡Nivel máximo alcanzado!</div>'; }
+      const maxL = Game.itemMaxLevel();
+      if (lvl >= maxL) {
+        bars = itemBars(id, lvl);
+        foot = maxL > MAX_ITEM_LEVEL ? '<div class="fs-note max">✦ ¡Ascensión completa! Nivel 10</div>' : '<div class="fs-note max">⭐ Nivel 5 · <small>Termina todos los mundos del Normal para <b>ascender</b> hasta nivel 10</small></div>';
+      }
       else {
         const c = upgradeCost(id), can = Game.hasCost(c.cost, c.coins);
         bars = itemBars(id, lvl, lvl + 1);
-        foot = matSlots(c.cost, c.coins) + `<button class="btn btn-forge ${can ? 'glow' : ''}" data-act="upgrade" data-id="${id}" ${can ? '' : 'aria-disabled="true"'}>⬆️ MEJORAR · Nv ${lvl} → ${lvl + 1}</button>`;
+        const asc = lvl >= MAX_ITEM_LEVEL;
+        foot = (asc ? '<div class="fs-note asc">✦ Ascensión: cada nivel +15% más allá del máximo normal</div>' : '') + matSlots(c.cost, c.coins)
+          + `<button class="btn btn-forge ${asc ? 'asc' : ''} ${can ? 'glow' : ''}" data-act="upgrade" data-id="${id}" ${can ? '' : 'aria-disabled="true"'}>${asc ? '✦ ASCENDER' : '⬆️ MEJORAR'} · Nv ${lvl} → ${lvl + 1}</button>`;
       }
     }
-    const stars = mode === 'upgrade' ? `<div class="fs-stars" id="fs-stars">${Array.from({ length: MAX_ITEM_LEVEL }, (_, i) => `<span class="${i < lvl ? 'on' : ''}">★</span>`).join('')}</div>` : '';
+    const nStars = mode === 'upgrade' ? Game.itemMaxLevel() : 0;
+    const stars = mode === 'upgrade' ? `<div class="fs-stars ${nStars > MAX_ITEM_LEVEL ? 'ten' : ''}" id="fs-stars">${Array.from({ length: nStars }, (_, i) => `<span class="${i < lvl ? 'on' : ''} ${i >= MAX_ITEM_LEVEL ? 'asc' : ''}">${i >= MAX_ITEM_LEVEL ? '✦' : '★'}</span>`).join('')}</div>` : '';
     return `<div class="forge-stage" style="--rc:${rc(rar)}">
       <div class="fs-anvil"><canvas id="forge-cv" aria-hidden="true"></canvas><div class="fs-item" id="fs-item"><span>${ico(iconId)}</span></div>${stars}</div>
       <div class="fs-info">
@@ -1494,6 +1502,13 @@ const UI = (() => {
 
   function upgradeCost(id) {
     const it = ITEMS[id], lvl = S().items[id].lvl, ri = RARITY_ORDER.indexOf(it.rarity);
+    if (lvl >= MAX_ITEM_LEVEL) {
+      // Ascensión (6-10): mucho oro y materiales de alto nivel
+      const cost = { fragmento_legendario: 2 * (lvl - 4) };
+      if (lvl >= 6) cost.alma_pesadilla = 3 * (lvl - 5);
+      if (lvl >= 8) cost.brasa_infernal = 3 * (lvl - 7);
+      return { cost, coins: Math.round(itemValue(id) * 6 * Math.pow(lvl - 3, 2)) };
+    }
     const qty = Math.round((4 + ri * 2) * lvl);
     return { cost: { [it.upg]: qty }, coins: Math.round(itemValue(id) * 0.6 * lvl) };
   }
@@ -1532,7 +1547,7 @@ const UI = (() => {
 
   function upgrade(id) {
     const s = S();
-    if (!s.items[id] || s.items[id].lvl >= MAX_ITEM_LEVEL) return;
+    if (!s.items[id] || s.items[id].lvl >= Game.itemMaxLevel()) return;
     const c = upgradeCost(id);
     if (!Game.hasCost(c.cost, c.coins)) { toast('Te faltan materiales o monedas', true); shakeForgeBtn(); return; }
     forgeHammer(() => {
@@ -1775,7 +1790,7 @@ const UI = (() => {
     // Tu fila siempre muestra tus datos actuales
     if (me) {
       const cur = Object.assign({ id: me }, mine || {}, { name: S().username, level: S().level, power: Game.stats().power, tower: S().tower.best, combo: S().stats.bestCombo, rank: Game.rank(),
-        bosses: Object.values(S().bossKills).reduce((a, b) => a + b, 0) });
+        bosses: Object.values(S().bossKills).reduce((a, b) => a + b, 0), look: Game.lookEntry() });
       list = list.filter(r => r.id !== me).concat([cur]);
     }
     const key = field;
@@ -1785,7 +1800,7 @@ const UI = (() => {
     view.rankList = list;
     const row = (r, i) => `<div class="rank-row clickable ${r.id === me ? 'me' : ''}" data-act="rank-profile" data-i="${i}">
       <span class="pos">${i < 3 ? ['🥇', '🥈', '🥉'][i] : i + 1}</span>
-      <span class="who"><b>${esc(String(r.name || 'Guerrero').slice(0, 16))}${r.id === me ? ' (tú)' : ''}</b><small style="color:${(RANKS[r.rank] || RANKS[0]).color}">${(RANKS[r.rank] || RANKS[0]).name}</small></span>
+      <span class="who"><b>${r.look && r.look.diff ? DIFFICULTIES[r.look.diff].icon + ' ' : ''}${esc(String(r.name || 'Guerrero').slice(0, 16))}${r.id === me ? ' (tú)' : ''}</b><small style="color:${(RANKS[r.rank] || RANKS[0]).color}">${(RANKS[r.rank] || RANKS[0]).name}</small></span>
       <span class="val">${val(r)}</span></div>`;
     const top = list.slice(0, 30), myIdx = list.findIndex(r => r.id === me);
     box.innerHTML = top.map(row).join('') + (myIdx >= 30 ? `<div class="rank-sep">…</div>${row(list[myIdx], myIdx)}` : '')
@@ -1797,6 +1812,7 @@ const UI = (() => {
     const list = view.rankList || [], r = list[+i];
     if (!r) return;
     const R = RANKS[r.rank] || RANKS[0], me = Game.account.session && r.id === Game.account.session.id;
+    const L = (typeof r.look === 'string' ? (() => { try { return JSON.parse(r.look); } catch (e) { return null; } })() : r.look) || null;
     const name = esc(String(r.name || 'Guerrero').slice(0, 16));
     const pos = list.slice().sort((a, b) => (b.power || 0) - (a.power || 0)).indexOf(r) + 1;
     const when = r.updated_at ? new Date(r.updated_at) : null;
@@ -1804,10 +1820,18 @@ const UI = (() => {
       const m = Math.max(0, Math.round((Date.now() - when) / 60000));
       return m < 2 ? 'ahora mismo' : m < 60 ? `hace ${m} min` : m < 1440 ? `hace ${Math.round(m / 60)} h` : `hace ${Math.round(m / 1440)} días`;
     })() : '';
+    const D = L ? DIFFICULTIES[L.diff || 0] : null;
+    const prog = D ? `<div class="prof-prog" style="--dc:${D.color}">${D.icon} <b>${D.name}</b> · ${L.done ? '¡Todos los mundos completados!' : `Mundo ${L.world || 1} · ${(WORLDS[(L.world || 1) - 1] || WORLDS[0]).name}`}</div>` : '';
+    const pet = L && L.pet && PETS[L.pet], aura = L && L.aura && COSMETICS[L.aura], trail = L && L.trail && COSMETICS[L.trail];
+    const tags = L ? [aura ? `<span class="pill">${aura.icon} ${aura.name}</span>` : '', trail ? `<span class="pill">${trail.icon} ${trail.name}</span>` : '',
+      pet ? `<span class="pill">${pet.icon} ${pet.name} · Nv ${L.petLvl || 1}</span>` : '',
+      L.weapon && ITEMS[L.weapon] ? `<span class="pill">${ico(L.weapon)} ${ITEMS[L.weapon].name}</span>` : ''].join('') : '';
     openModal(`<div class="profile-card">
-      <canvas id="prof-cv" width="240" height="300" aria-label="Caballero de ${name}"></canvas>
+      <canvas id="prof-cv" width="360" height="300" aria-label="Caballero de ${name}"></canvas>
       <h2 style="margin:4px 0 0">${name}${me ? ' (tú)' : ''}</h2>
       <div style="color:${R.color};font-weight:800">${R.icon || '🛡️'} ${R.name}</div>
+      ${prog}
+      ${tags ? `<div class="prof-tags">${tags}</div>` : (L ? '' : '<p class="hint" style="margin:4px 0">Este jugador aún no ha actualizado el juego: no se ve su aura ni su mascota.</p>')}
       <div class="profile-stats">
         <div><b>⭐ ${r.level || 1}</b><small>Nivel</small></div>
         <div><b>💥 ${fmt(r.power || 0)}</b><small>Poder${pos ? ` · #${pos}` : ''}</small></div>
@@ -1817,18 +1841,75 @@ const UI = (() => {
       </div>
       ${ago ? `<p class="hint">Jugó por última vez ${ago}</p>` : ''}
       <div class="modal-actions"><button class="btn ghost" data-act="close">Cerrar</button></div></div>`);
-    // Caballero con el rango del jugador (equipo básico: no se publica su inventario)
+    // Su caballero con su aura, su estela y su mascota
     const cv = $('prof-cv');
     if (!cv) return;
-    const c = cv.getContext('2d'), t0 = performance.now();
+    const c = cv.getContext('2d'), t0 = performance.now(), parts = [];
+    const w = L && ITEMS[L.weapon], a = L && ITEMS[L.armor];
+    const pe = pet && !pet.custom ? { def: { sprite: { art: pet.art } }, x: 285, y: 280, size: 70, face: -1, walk: 0, flash: 0, windup: 0, windupMax: 1, recover: 0, seed: 1, frozen: 0, state: 'move' } : null;
+    if (pe) { const fit = Sprites.artFit(pe.def, 120, 110); if (fit) { pe.size = fit.size; pe.x = 290 + fit.dx; pe.y = 285 - fit.dy; } }
+    let last = t0, spawn = 0;
     (function frame(t) {
       if (!document.body.contains(cv)) return;
+      const time = (t - t0) / 1000, dt = Math.min(0.05, (t - last) / 1000); last = t;
       c.setTransform(1, 0, 0, 1, 0, 0); c.clearRect(0, 0, cv.width, cv.height);
-      Sprites.knight(c, 120, 285, 3.4, { face: 1, walk: 0, swing: -1, heavy: false, time: (t - t0) / 1000, flash: false,
-        weaponColor: '#cbd5e1', aura: '', helmet: true, rank: r.rank || 0, plain: !me });
+      if (trail) {
+        if ((spawn -= dt) <= 0 && parts.length < 120) { spawn = 0.05; parts.push(Sprites.trailPart(L.trail, 120, 285, 1, 2.6)); }
+        for (const p of parts) { p.vy += p.grav * dt; p.x += (p.vx - 90) * dt; p.y += p.vy * dt; p.life -= dt; }
+        for (let k = parts.length - 1; k >= 0; k--) if (parts[k].life <= 0) parts.splice(k, 1);
+        for (const p of parts) Sprites.drawPart(c, p);
+      }
+      Sprites.knight(c, 130, 285, 3.4, { face: 1, walk: 0, swing: -1, heavy: false, time, flash: false, aura: aura ? L.aura : '',
+        weaponColor: w ? w.color : '#cbd5e1', armorColor: a ? a.color : undefined, helmet: true, rank: r.rank || 0, plain: !me });
+      if (pet && pet.custom === 'fenix') Sprites.phoenix(c, 285, 270, 70, time, -1);
+      else if (pe) { pe.walk = 0; Sprites.enemy(c, pe, time); }
       requestAnimationFrame(frame);
     })(t0);
   }
+
+  /* ---------- Mercader viajero ---------- */
+  function shopIcon(g) {
+    if (g.mat) return ico(g.mat);
+    if (g.potion) return ico(g.potion);
+    return g.tickets ? '🎟️' : g.gems ? '💎' : g.shards ? '🧩' : g.epicChest ? '🎁' : '📦';
+  }
+  function shopName(def) {
+    const g = def.give;
+    if (def.name) return def.name;
+    if (g.mat) return `${MATERIALS[g.mat].name} x${g.qty}`;
+    if (g.potion) return `${POTIONS[g.potion].name} x${g.qty}`;
+    if (g.tickets) return `${g.tickets} ticket${g.tickets > 1 ? 's' : ''} de ruleta`;
+    if (g.gems) return `${g.gems} diamantes`;
+    if (g.shards) return `${g.shards} fragmentos de ticket`;
+    return '';
+  }
+  RENDER.shop = () => {
+    const s = S(), sh = Game.shopToday();
+    sh.seen = true;
+    const mid = new Date(); mid.setHours(24, 0, 0, 0);
+    const mins = Math.max(0, Math.round((mid - Date.now()) / 60000));
+    const cards = sh.offers.map((of, i) => {
+      const def = SHOP_POOL.find(o => o.id === of.id);
+      if (!def) return '';
+      const rar = def.give.mat ? MATERIALS[def.give.mat].rarity : def.special ? 'legendario' : def.give.gems ? 'mitico' : 'raro';
+      const can = of.stock > 0 && s.coins >= of.price;
+      return `<div class="shop-card ${of.stock <= 0 ? 'sold' : ''} ${of.deal ? 'deal' : ''} ${def.special ? 'special' : ''}" style="--rc:${rc(rar)}">
+        ${of.deal ? '<span class="shop-deal">-30% HOY</span>' : ''}
+        <div class="shop-ico">${shopIcon(def.give)}</div>
+        <div class="shop-name">${esc(shopName(def))}</div>
+        <div class="shop-stock">${of.stock > 0 ? `Quedan ${of.stock}` : 'Agotado'}</div>
+        <button class="btn small ${can ? '' : 'ghost'}" data-act="shop-buy" data-i="${i}" ${can ? '' : 'disabled'}>💰 ${fmt(of.price)}</button>
+      </div>`;
+    }).join('');
+    $('scr-shop').innerHTML = `${head('🏪 Mercader viajero')}
+      <div class="shop-top">
+        <div class="shop-merchant">🧙‍♂️<div class="shop-say">«¡Bienvenido, guerrero! Traigo tesoros de tierras lejanas. Mañana tendré otras cosas…»</div></div>
+        <div class="shop-info"><span>💰 Tienes <b>${fmt(s.coins)}</b></span><span>⏳ Nuevas ofertas en ${Math.floor(mins / 60)} h ${mins % 60} min</span>
+          <button class="btn small ghost" data-act="shop-refresh" ${s.coins >= Game.shopRefreshCost() ? '' : 'disabled'}>🔄 Renovar ofertas · 💰 ${fmt(Game.shopRefreshCost())}</button></div>
+      </div>
+      <div class="shop-grid">${cards}</div>
+      <p class="hint" style="text-align:center">Al abrir dificultades nuevas el mercader trae materiales de Pesadilla e Infierno, y los precios suben un poco.</p>`;
+  };
 
   /* ---------- Mascotas y apariencia ---------- */
   RENDER.pets = () => {
@@ -2056,6 +2137,12 @@ const UI = (() => {
     },
     'pet-tab': d => { view.petTab = d.tab; view.previewCos = null; RENDER.pets(); },
     'rank-profile': d => rankProfile(d.i),
+    'shop-buy': d => {
+      const t = Game.shopBuy(+d.i);
+      if (!t) { toast('No te alcanza el oro', true); return; }
+      Sfx.play('coin'); toast(`🛒 ${t}`); RENDER.shop(); refreshTop();
+    },
+    'shop-refresh': () => { if (Game.shopRefresh()) { Sfx.play('chest'); RENDER.shop(); refreshTop(); } },
     'go-wheel': d => { view.wheel = d.id; show('wheel'); },
     'cos-try': d => { view.previewCos = view.previewCos === d.id ? null : d.id; RENDER.pets(); const cv = $('style-cv'); if (cv) cv.scrollIntoView({ behavior: 'smooth', block: 'center' }); },
     'pets-open': d => { view.petTab = d.tab; show('pets'); },

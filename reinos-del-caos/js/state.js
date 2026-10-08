@@ -365,7 +365,7 @@ const Game = (() => {
   }
   async function supaBoard(field) {
     const cols = { power: 'power', level: 'level', tower: 'tower', combo: 'combo' };
-    const rows = await Supa.call(`/rest/v1/leaderboard?select=user_id,name,level,power,tower,combo,bosses,rank,updated_at&order=${cols[field] || 'power'}.desc&limit=30`, { headers: Supa.hdr() });
+    const rows = await Supa.call(`/rest/v1/leaderboard?select=*&order=${cols[field] || 'power'}.desc&limit=30`, { headers: Supa.hdr() });
     return (rows || []).map(r => Object.assign({ id: r.user_id }, r));
   }
 
@@ -546,8 +546,15 @@ const Game = (() => {
     const P = stats();
     return { name: S.username || (Acc.session && Acc.session.name) || 'Guerrero', level: S.level, power: P.power,
              tower: S.tower.best || 0, combo: S.stats.bestCombo || 0,
-             bosses: Object.values(S.bossKills).reduce((a, b) => a + b, 0), rank: rankOf(S.level) };
+             bosses: Object.values(S.bossKills).reduce((a, b) => a + b, 0), rank: rankOf(S.level), look: lookEntry() };
   }
+  /** Lo que ven los demás al inspeccionarte: aura, estela, mascota, equipo y hasta dónde llegaste. */
+  function lookEntry() {
+    const d = maxDiff(), P = prog(d), pet = S.pets.active;
+    return { aura: S.cosmetics.aura || null, trail: S.cosmetics.trail || null, pet: pet || null, petLvl: pet && S.pets.owned[pet] ? S.pets.owned[pet].lvl : 0,
+             diff: d, world: worldOfStage(P.unlocked).id, done: diffCleared(d), weapon: S.equip.weapon, armor: S.equip.armor };
+  }
+  let lookCol = true;   // si la tabla aún no tiene la columna «look», se sube sin ella
   async function submitScore(force) {
     const sess = Acc.session;
     if (!sess || Acc.status !== 'ok') return;
@@ -555,8 +562,13 @@ const Game = (() => {
     if (print === lastScore && !force) return;
     try {
       if (sess.provider === 'supa') {
-        await Supa.call('/rest/v1/leaderboard?on_conflict=user_id', { method: 'POST', headers: Supa.hdr(await supaToken(), { Prefer: 'resolution=merge-duplicates,return=minimal' }),
-          body: JSON.stringify(Object.assign({ user_id: sess.id }, entry, { updated_at: new Date().toISOString() })) });
+        const send = async withLook => {
+          const row = Object.assign({ user_id: sess.id }, entry, { updated_at: new Date().toISOString() });
+          if (!withLook) delete row.look;
+          await Supa.call('/rest/v1/leaderboard?on_conflict=user_id', { method: 'POST', headers: Supa.hdr(await supaToken(), { Prefer: 'resolution=merge-duplicates,return=minimal' }), body: JSON.stringify(row) });
+        };
+        if (lookCol) { try { await send(true); } catch (e) { lookCol = false; await send(false); } }
+        else await send(false);
       } else {
         const db = await accountDb();
         await db.doc('leaderboard/' + sess.id).set(Object.assign(entry, { at: Date.now() }));
@@ -781,6 +793,46 @@ const Game = (() => {
     return ups;
   }
 
+  /* ---------- Mercader viajero ---------- */
+  const todayStr = () => new Date().toISOString().slice(0, 10);
+  /** Ofertas del día (las mismas todo el día; se pueden renovar pagando oro). */
+  function shopToday() {
+    const day = todayStr();
+    if (!S.shop || S.shop.day !== day) S.shop = { day, refresh: 0, seen: false, offers: rollShop(day, 0) };
+    return S.shop;
+  }
+  function rollShop(day, n) {
+    let seed = [...(day + ':' + n)].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7);
+    const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+    const md = maxDiff(), pool = SHOP_POOL.filter(o => !o.need || md >= o.need);
+    const picked = [];
+    while (picked.length < 6 && picked.length < pool.length) {
+      const left = pool.filter(o => !picked.includes(o)), tot = left.reduce((a, o) => a + o.w, 0);
+      let r = rnd() * tot;
+      for (const o of left) { r -= o.w; if (r <= 0) { picked.push(o); break; } }
+    }
+    const deal = Math.floor(rnd() * picked.length);
+    return picked.map((o, i) => ({ id: o.id, price: Math.round(o.price * (1 + 0.25 * md) * (i === deal ? 0.7 : 1) / 50) * 50, stock: o.stock, deal: i === deal }));
+  }
+  function shopBuy(i) {
+    const sh = shopToday(), of = sh.offers[i], def = of && SHOP_POOL.find(o => o.id === of.id);
+    if (!def || of.stock <= 0 || S.coins < of.price) return null;
+    S.coins -= of.price; of.stock--;
+    const text = grant(def.give);
+    save(true);
+    return text;
+  }
+  const shopRefreshCost = () => 3000 * (shopToday().refresh + 1);
+  function shopRefresh() {
+    const sh = shopToday(), cost = shopRefreshCost();
+    if (S.coins < cost) return false;
+    S.coins -= cost; sh.refresh++; sh.offers = rollShop(sh.day, sh.refresh);
+    save(true);
+    return true;
+  }
+  /** Nivel máximo del equipo: 5, o 10 (Ascensión) al terminar el Normal. */
+  const itemMaxLevel = () => (S.cleared[MAX_STAGE] ? ASCEND_MAX : MAX_ITEM_LEVEL);
+
   /* ---------- Etapas ---------- */
   /* ---------- Dificultades ---------- */
   // Normal usa S.cleared / S.unlocked (como siempre); Pesadilla e Infierno su propio progreso
@@ -954,6 +1006,7 @@ const Game = (() => {
     load, save, reset, stats, itemStats, matCount, addMat, hasCost, payCost,
     giveItem, giveSkill, grant, prizeLabel, addXp, completeStage, highestWorld, rollChest,
     prog, diffUnlocked, setDiff, maxDiff, diffCleared, wheelOpen,
+    shopToday, shopBuy, shopRefresh, shopRefreshCost, itemMaxLevel, lookEntry,
     addShards, streakBonus, ensureDaily, track, missionText,
     connectCloud, cloudWrite, exportCode, importCode, get cloud() { return Cloud; },
     createAccount, login, logout, accountsBlocked, canSaveOnline, syncNow, accountPending, get account() { return Acc; },

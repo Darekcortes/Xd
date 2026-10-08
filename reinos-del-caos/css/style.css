@@ -990,3 +990,34 @@ body[data-diff="2"] #scr-menu .menu-ui { box-shadow: inset 0 0 110px #ea580c77; 
 .diamond-box.infierno .diamond-btn { background: linear-gradient(180deg, #fef3c7, #f97316 40%, #7c2d12); color: #fff; border-color: #fef3c7; box-shadow: 0 4px 0 #431407, 0 0 22px #f97316aa; }
 .diamond-box .spin-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .diamond-box .spin-row .btn { flex: 1 1 160px; }
+
+/* ---------- Mercader viajero ---------- */
+.shop-top { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.shop-merchant { flex: 1 1 260px; display: flex; gap: 10px; align-items: center; font-size: 2.6rem; }
+.shop-say { font-size: .9rem; color: #fde68a; background: #2a1f4a; border: 1px solid #8a6420; border-radius: 12px; padding: 8px 12px; position: relative; font-style: italic; }
+.shop-info { flex: 1 1 220px; display: flex; flex-direction: column; gap: 6px; font-size: .9rem; }
+.shop-info b { color: var(--gold); }
+.shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+.shop-card { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 8px 10px; border-radius: 14px; text-align: center;
+  background: radial-gradient(circle at 50% 25%, color-mix(in srgb, var(--rc) 25%, #251d40), #120e1e 80%); border: 2px solid color-mix(in srgb, var(--rc) 70%, #000); box-shadow: 0 3px 0 #07050e; }
+.shop-card.special { box-shadow: 0 0 16px color-mix(in srgb, var(--rc) 60%, transparent), 0 3px 0 #07050e; }
+.shop-card.deal { border-color: #4ade80; }
+.shop-card.sold { opacity: .45; filter: grayscale(.7); }
+.shop-ico { font-size: 2.2rem; line-height: 1.1; }
+.shop-ico .gi-wrap { width: 1.3em; height: 1.3em; }
+.shop-name { font-weight: 800; font-size: .88rem; color: #fff; min-height: 2.3em; }
+.shop-stock { font-size: .72rem; color: var(--muted); }
+.shop-deal { position: absolute; top: -9px; left: 50%; transform: translateX(-50%); background: #16a34a; color: #fff; font-size: .66rem; font-weight: 900; padding: 2px 8px; border-radius: 999px; white-space: nowrap; box-shadow: 0 0 0 2px #120e1e; }
+
+/* ---------- Ascensión ---------- */
+.asc-stars { color: #fb7185; text-shadow: 0 0 6px #f43f5e; font-style: normal; letter-spacing: 0; }
+.fs-stars.ten { font-size: .9rem; letter-spacing: 1px; }
+.fs-stars .asc.on { color: #fb7185; text-shadow: 0 0 8px #f43f5e, 0 2px 3px #000; }
+.fs-note.asc { color: #fda4af; background: #4c0519aa; border: 1px solid #f43f5e66; font-size: .82rem; }
+.btn-forge.asc { background: linear-gradient(180deg, #ffe4e6, #f43f5e 45%, #881337); color: #fff; border-color: #ffe4e6; box-shadow: 0 4px 0 #4c0519, 0 0 16px #f43f5e88; }
+
+/* ---------- Perfil con aura y mascota ---------- */
+.profile-card canvas#prof-cv { width: 150px; height: 125px; }
+.prof-prog { margin: 6px auto 0; display: inline-block; padding: 3px 12px; border-radius: 999px; font-size: .85rem; border: 1px solid var(--dc); background: color-mix(in srgb, var(--dc) 18%, #0f0c1d); color: #fff; }
+.prof-prog b { color: var(--dc); }
+.prof-tags { display: flex; gap: 5px; flex-wrap: wrap; justify-content: center; margin: 8px 0 0; font-size: .78rem; }

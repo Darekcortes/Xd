@@ -91,6 +91,7 @@ const ITEMS = {
   armadura_caos:      { type: 'armor', name: 'Armadura del Caos',        icon: '🛡️', rarity: 'mitico',     def: 210, hp: 760, color: '#9f1239', upg: 'fragmento_legendario' },
 };
 const MAX_ITEM_LEVEL = 5;
+const ASCEND_MAX = 10;                   // Ascensión: niveles 6-10 al terminar el Normal (oro + materiales de alto nivel)
 const ITEM_LEVEL_BONUS = 0.15;          // +15% de estadísticas por nivel
 const RARITY_VALUE = { comun: 20, pococomun: 60, raro: 150, epico: 350, legendario: 800, mitico: 2000, divino: 5000 };
 
@@ -284,7 +285,7 @@ const WHEELS = {
   diamante: {
     name: 'Ruleta de Diamantes', icon: '💎', world: 1, req: 1, wood: '#1e3a8a', rim: '#facc15', gemOnly: true, gemCost: 50, pity: 10,
     cost: {},
-    odds: { raro: 50, epico: 33, legendario: 13, mitico: 4 },
+    odds: { raro: 42, epico: 36, legendario: 17, mitico: 5 },
     prizes: [
       { r: 'raro', bundle: [{ tickets: 6 }, { mat: 'fragmento_legendario', qty: 5 }] },
       { r: 'epico', item: 'hoja_caos' },
@@ -719,3 +720,20 @@ const DIFF_CHEST_ITEMS = {
   1: { espada_infernal: 30, armadura_lava: 25, espada_inframundo: 25, armadura_oscura: 20 },
   2: { hoja_caos: 30, armadura_caos: 30, espada_inframundo: 20, armadura_oscura: 20 },
 };
+
+/* ---------- Mercader viajero ----------
+   Cada día trae 6 ofertas distintas que se pagan con oro. need: dificultad que hay que haber abierto. */
+const SHOP_POOL = [
+  { id: 'frag',     give: { mat: 'fragmento_legendario', qty: 2 }, price: 6000,  stock: 5, w: 10 },
+  { id: 'alma',     give: { mat: 'alma_pesadilla', qty: 3 },       price: 9000,  stock: 4, w: 8, need: 1 },
+  { id: 'brasa',    give: { mat: 'brasa_infernal', qty: 2 },       price: 15000, stock: 3, w: 6, need: 2 },
+  { id: 'ticket',   give: { tickets: 1 },                          price: 2500,  stock: 5, w: 10 },
+  { id: 'pocion',   give: { potion: 'pocion_grande', qty: 2 },     price: 1500,  stock: 5, w: 7 },
+  { id: 'oscuro',   give: { mat: 'cristal_oscuro', qty: 10 },      price: 3000,  stock: 4, w: 8 },
+  { id: 'orooscuro',give: { mat: 'oro_oscuro', qty: 8 },           price: 4000,  stock: 4, w: 8 },
+  { id: 'demon',    give: { mat: 'esencia_demoniaca', qty: 6 },    price: 4000,  stock: 4, w: 8 },
+  { id: 'maldita',  give: { mat: 'alma_maldita', qty: 1 },         price: 12000, stock: 2, w: 4 },
+  { id: 'shards',   give: { shards: 3 },                           price: 3500,  stock: 3, w: 6 },
+  { id: 'cofre',    give: { epicChest: true },                     price: 25000, stock: 1, w: 4, special: true, name: 'Cofre épico', icon: '🎁' },
+  { id: 'gemas',    give: { gems: 5 },                             price: 20000, stock: 2, w: 3, special: true },
+];

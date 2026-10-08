@@ -39,3 +39,6 @@ create policy "subir mi marca" on public.leaderboard for update using (auth.uid(
 
 grant select on public.leaderboard to anon, authenticated;
 grant select, insert, update on public.saves, public.leaderboard to authenticated;
+
+-- Perfil al inspeccionar: aura, mascota, dificultad y mundo alcanzado (añadido después)
+alter table public.leaderboard add column if not exists look jsonb;
