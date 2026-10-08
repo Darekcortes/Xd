@@ -2068,6 +2068,7 @@ const UI = (() => {
              ${Game.online === false ? '' : '<div class="acc-btns"><button class="btn small" data-act="acc-create">🆕 Crear cuenta</button><button class="btn small ghost" data-act="acc-login">🔑 Iniciar sesión</button></div>'}`}
         <p class="hint" style="margin:10px 0 8px">${cloudText()}</p>
         <div class="acc-btns"><button class="btn small" data-act="save-now">☁️ Guardar ahora</button><button class="btn small ghost" data-act="save-code">💾 Código de guardado</button></div>
+        <div class="gift-row"><input id="gift-code" class="gift-input" placeholder="🎁 Código de regalo" autocomplete="off" autocapitalize="characters" maxlength="24"><button class="btn small" data-act="gift-redeem">Canjear</button></div>
       </div>
       <div class="card setting"><div><b>⛶ Pantalla completa</b><div class="item-meta">${canFullscreen() ? 'Activa o desactiva la pantalla completa' : 'No disponible aquí: abre el archivo descargado en Chrome'}</div></div><button class="btn small ghost" data-act="fullscreen">${isFullscreen() ? 'Salir' : 'Activar'}</button></div>
       <div class="card setting"><div><b>📱 Horizontal y pantalla completa</b><div class="item-meta">Pantalla completa al tocar y pide girar el teléfono al combatir</div></div><button class="switch ${s.settings.landscape ? 'on' : ''}" data-act="toggle" data-key="landscape" aria-label="Combate en horizontal"></button></div>
@@ -2147,6 +2148,12 @@ const UI = (() => {
       Sfx.play('coin'); toast(`🛒 ${t}`); RENDER.shop(); refreshTop();
     },
     'shop-refresh': () => { if (Game.shopRefresh()) { Sfx.play('chest'); RENDER.shop(); refreshTop(); } },
+    'gift-redeem': () => {
+      const inp = $('gift-code'), r = Game.redeemCode(inp ? inp.value : '');
+      if (r.error) { toast(r.error, true); return; }
+      toast(r.text); Sfx.play('legendary'); confetti(80, ['#7dd3fc', '#fde047', '#fff']);
+      Game.cloudWrite(); refreshTop(); RENDER.settings();
+    },
     'go-wheel': d => { view.wheel = d.id; show('wheel'); },
     'cos-try': d => { view.previewCos = view.previewCos === d.id ? null : d.id; RENDER.pets(); const cv = $('style-cv'); if (cv) cv.scrollIntoView({ behavior: 'smooth', block: 'center' }); },
     'pets-open': d => { view.petTab = d.tab; show('pets'); },

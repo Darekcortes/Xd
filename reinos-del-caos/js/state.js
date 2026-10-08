@@ -843,6 +843,25 @@ const Game = (() => {
     save(true);
     return got.map(g => g.text).join(' · ');
   }
+  /* Códigos de regalo (se guarda solo su huella, no el código) */
+  const cyrb53 = (str, seed = 0) => {
+    let h1 = 0xdeadbeef ^ seed, h2 = 0x41c6ce57 ^ seed;
+    for (let i = 0, ch; i < str.length; i++) { ch = str.charCodeAt(i); h1 = Math.imul(h1 ^ ch, 2654435761); h2 = Math.imul(h2 ^ ch, 1597334677); }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(36);
+  };
+  const GIFT_CODES = { '7l8jq10h1g': { id: 'darek500', gems: 500 } };
+  /** Canjea un código: devuelve el texto del premio o un error. */
+  function redeemCode(code) {
+    const key = cyrb53(String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, ''), 77), g = GIFT_CODES[key];
+    if (!g) return { error: 'Ese código no existe' };
+    S.gifts = S.gifts || {};
+    if (S.gifts[g.id]) return { error: 'Ya canjeaste este regalo en esta partida' };
+    S.gifts[g.id] = true; S.gems += g.gems;
+    save(true);
+    return { text: `🎁 ¡Código canjeado: +${g.gems} 💎!` };
+  }
   /** Nivel máximo del equipo: 5, o 10 (Ascensión) al terminar el Normal. */
   const itemMaxLevel = () => (S.cleared[MAX_STAGE] ? ASCEND_MAX : MAX_ITEM_LEVEL);
 
@@ -1019,7 +1038,7 @@ const Game = (() => {
     load, save, reset, stats, itemStats, matCount, addMat, hasCost, payCost,
     giveItem, giveSkill, grant, prizeLabel, addXp, completeStage, highestWorld, rollChest,
     prog, diffUnlocked, setDiff, maxDiff, diffCleared, wheelOpen,
-    claimGifts, shopToday, shopBuy, shopRefresh, shopRefreshCost, itemMaxLevel, lookEntry,
+    claimGifts, redeemCode, shopToday, shopBuy, shopRefresh, shopRefreshCost, itemMaxLevel, lookEntry,
     addShards, streakBonus, ensureDaily, track, missionText,
     connectCloud, cloudWrite, exportCode, importCode, get cloud() { return Cloud; },
     createAccount, login, logout, accountsBlocked, canSaveOnline, syncNow, accountPending, get account() { return Acc; },
