@@ -1103,3 +1103,261 @@ body[data-diff="2"] #scr-menu .menu-ui { box-shadow: inset 0 0 110px #ea580c77; 
   .menu-head .head-btns { width: 100%; justify-content: space-between; gap: 4px; }
   .menu-head .icon-btn { width: 40px; height: 40px; font-size: 1rem; }
 }
+
+/* =====================================================================
+   DISEÑO 2.0 — Reino nocturno forjado en oro
+   Paneles enmarcados con esquinas de oro, títulos grabados, botones de
+   metal, fondo de piedra con brasas y transiciones suaves en todo.
+   ===================================================================== */
+:root {
+  --frame: #8a6420;
+  --frame-hi: #e8b54a;
+  --slab: linear-gradient(180deg, #2a2249, #1a1530);
+  --corner: #c9952f;
+  --corners:
+    linear-gradient(135deg, var(--corner) 0 5px, transparent 5px) top left / 14px 14px no-repeat,
+    linear-gradient(225deg, var(--corner) 0 5px, transparent 5px) top right / 14px 14px no-repeat,
+    linear-gradient(45deg, var(--corner) 0 5px, transparent 5px) bottom left / 14px 14px no-repeat,
+    linear-gradient(315deg, var(--corner) 0 5px, transparent 5px) bottom right / 14px 14px no-repeat;
+}
+
+/* ---------- Fondo: piedra oscura, niebla violeta y brasas que suben ---------- */
+body {
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -8%, #3b2370 0%, transparent 70%),
+    radial-gradient(ellipse 60% 40% at 100% 100%, #3a0f2a66 0%, transparent 70%),
+    radial-gradient(ellipse 60% 40% at 0% 100%, #0f2a4a55 0%, transparent 70%),
+    var(--bg);
+  background-attachment: fixed;
+}
+body::before {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: .5;
+  background-image:
+    radial-gradient(1.5px 1.5px at 12% 80%, #fbbf24, transparent),
+    radial-gradient(1px 1px at 33% 60%, #f0abfc, transparent),
+    radial-gradient(2px 2px at 58% 90%, #fb923c, transparent),
+    radial-gradient(1px 1px at 76% 70%, #fde68a, transparent),
+    radial-gradient(1.5px 1.5px at 90% 85%, #c4b5fd, transparent);
+  background-size: 420px 520px;
+  animation: embers 26s linear infinite;
+}
+@keyframes embers { from { background-position: 0 0; } to { background-position: 60px -1040px; } }
+body::after {
+  /* grano de piedra muy suave */
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0; opacity: .07; mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='180' height='180'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+#app { position: relative; z-index: 1; }
+#screens { position: relative; }
+#scr-battle.active ~ * { }
+.screen.active { animation: enter2 .32s cubic-bezier(.2, .8, .3, 1); }
+@keyframes enter2 { from { opacity: 0; transform: translateY(10px) scale(.985); filter: blur(2px); } to { opacity: 1; transform: none; filter: none; } }
+
+/* Barras de desplazamiento a juego */
+* { scrollbar-width: thin; scrollbar-color: #8a6420 #0b0816; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: #0b0816; }
+::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #e8b54a, #8a6420); border-radius: 8px; border: 2px solid #0b0816; }
+
+/* ---------- Barra superior ---------- */
+#topbar {
+  background: linear-gradient(180deg, #221842 0%, #140e28 60%, #0c0818 100%);
+  border-bottom: 0;
+  box-shadow: 0 1px 0 #e8b54a, 0 2px 0 #6b4a12, 0 3px 0 #000, 0 8px 18px #000a;
+}
+#topbar::after {
+  content: ''; position: absolute; left: 50%; bottom: -6px; width: 12px; height: 12px; transform: translateX(-50%) rotate(45deg);
+  background: linear-gradient(135deg, #fff3c4, #e8b54a 50%, #8a5a10); box-shadow: 0 0 0 2px #2a1a04, 0 0 10px #e8b54a88;
+}
+.tb-stat {
+  background: linear-gradient(180deg, #33295a 0%, #1b1533 55%, #120d22 100%);
+  border: 1px solid #b8862b; padding: 4px 10px 4px 6px;
+  box-shadow: inset 0 1px 0 #ffffff26, inset 0 -2px 4px #0008, 0 2px 0 #000, 0 0 0 1px #000;
+}
+.tb-stat b { text-shadow: 0 1px 2px #000; }
+.tb-level span { font-family: var(--font-display); font-weight: 900; color: #e9d5ff; text-shadow: 0 1px 2px #000; }
+
+/* ---------- Cabecera de pantalla: estandarte con el título grabado ---------- */
+.screen-head {
+  position: relative; padding: 6px 16px 6px 6px; border-radius: 16px;
+  background: linear-gradient(90deg, #2e2054 0%, #1c1336 55%, #1c133600 100%);
+  border: 1px solid #6b4a12; border-right-color: transparent;
+  box-shadow: inset 0 1px 0 #ffffff14, 0 6px 16px #0006;
+}
+.screen-head::after {
+  content: ''; position: absolute; left: 60px; right: 0; bottom: -1px; height: 2px;
+  background: linear-gradient(90deg, #e8b54a, #e8b54a66 40%, transparent);
+}
+.screen-head h2 {
+  font-size: 1.5rem; font-weight: 900; color: #fde68a; letter-spacing: .04em;
+  text-shadow: 0 1px 0 #7a4b0c, 0 2px 0 #3b2405, 0 3px 6px #000, 0 0 18px #e8b54a44;
+}
+.back {
+  width: 48px; min-width: 48px; height: 48px; border-radius: 50%; display: grid; place-items: center;
+  background: radial-gradient(circle at 38% 30%, #4a3d80, #1a1430 70%); border: 0; color: #fde68a; font-weight: 900;
+  box-shadow: 0 0 0 2px #2a1a04, 0 0 0 4px #c9952f, 0 4px 0 3px #07050e, inset 0 2px 5px #ffffff22, inset 0 -5px 8px #0008;
+  transition: transform .1s, filter .15s;
+}
+.back:hover { filter: brightness(1.2); }
+.back:active { transform: translateY(2px) scale(.95); }
+
+/* ---------- Botones de metal ---------- */
+.btn:where(:not(.btn-play)) {
+  background: linear-gradient(180deg, #fff3c4 0%, #f6cf6e 20%, #e8b54a 50%, #b07a1c 86%, #8a5a10 100%);
+  border: 1px solid #fff3c4; color: #2a1500; text-shadow: 0 1px 0 #ffffff70;
+  box-shadow: 0 0 0 2px #3b2405, 0 4px 0 2px #2a1a04, 0 8px 18px #000a, inset 0 1px 0 #ffffffb0, inset 0 -4px 8px #6b451055;
+}
+.btn:where(:not(.btn-play)):hover { filter: brightness(1.08); }
+.btn:where(:not(.btn-play)):active { transform: translateY(3px); box-shadow: 0 0 0 2px #3b2405, 0 1px 0 2px #2a1a04, 0 3px 8px #000a, inset 0 2px 6px #6b451077; }
+.btn.ghost {
+  background: linear-gradient(180deg, #423972 0%, #2a2250 50%, #1b1534 100%);
+  border: 1px solid #8b7bd0; color: var(--ink); text-shadow: 0 1px 2px #000;
+  box-shadow: 0 0 0 2px #0b0816, 0 4px 0 2px #07050e, 0 8px 16px #0008, inset 0 1px 0 #ffffff30, inset 0 -4px 8px #0006;
+}
+.btn.ghost:active { box-shadow: 0 0 0 2px #0b0816, 0 1px 0 2px #07050e, inset 0 2px 6px #0008; }
+.btn.danger {
+  background: linear-gradient(180deg, #fecaca 0%, #ef4444 28%, #b91c1c 75%, #7f1d1d 100%); border-color: #fecaca; color: #fff; text-shadow: 0 1px 2px #0008;
+  box-shadow: 0 0 0 2px #3b0505, 0 4px 0 2px #2a0404, 0 8px 18px #000a, inset 0 1px 0 #ffffff80;
+}
+.btn:disabled, .btn.ghost:disabled { filter: grayscale(.85) brightness(.6); box-shadow: 0 0 0 2px #0b0816, 0 3px 0 2px #07050e; }
+
+/* ---------- Pestañas: placas grabadas ---------- */
+.tab {
+  position: relative; background: linear-gradient(180deg, #2d2552 0%, #1c1636 100%); border: 1px solid #4d3f80; color: #c4b5fd;
+  box-shadow: inset 0 1px 0 #ffffff18, 0 3px 0 #07050e; transition: transform .1s, filter .15s; text-shadow: 0 1px 2px #000;
+}
+.tab:hover { filter: brightness(1.15); }
+.tab:active { transform: translateY(2px); }
+.tab.active {
+  background: linear-gradient(180deg, #5a3f12 0%, #3a280a 55%, #241806 100%); border-color: #e8b54a; color: #fde68a;
+  box-shadow: inset 0 1px 0 #ffe3a366, 0 3px 0 #07050e, 0 0 16px #e8b54a55;
+}
+.tab.active::after {
+  content: ''; position: absolute; left: 50%; bottom: -5px; width: 9px; height: 9px; transform: translateX(-50%) rotate(45deg);
+  background: linear-gradient(135deg, #fff3c4, #e8b54a); box-shadow: 0 0 6px #e8b54a; border: 1px solid #3b2405;
+}
+
+/* ---------- Paneles enmarcados ---------- */
+.card {
+  background: var(--corners), radial-gradient(ellipse at 50% 0%, #ffffff0c, transparent 60%), var(--slab);
+  border: 1px solid #5a4a92; border-radius: 14px;
+  box-shadow: inset 0 1px 0 #ffffff14, inset 0 0 0 1px #00000066, 0 6px 16px #0008;
+  transition: transform .15s, box-shadow .15s;
+}
+.card:hover { box-shadow: inset 0 1px 0 #ffffff1a, inset 0 0 0 1px #00000066, 0 8px 22px #000a, 0 0 0 1px #e8b54a55; }
+.info-row, .stat-row {
+  background: linear-gradient(90deg, #ffffff10, #00000040 70%); border: 1px solid #ffffff0d; border-left: 3px solid #b8862b;
+  box-shadow: inset 0 1px 0 #ffffff0a;
+}
+.stat-row.power { border-left-color: #fde68a; }
+.pill { background: linear-gradient(180deg, #ffffff12, #00000055); box-shadow: inset 0 1px 0 #ffffff14; }
+.badge { background: radial-gradient(circle at 35% 30%, #f87171, #b91c1c 70%); box-shadow: 0 0 0 2px #1a0505, 0 0 0 3px #fca5a5, 0 2px 6px #000; animation: badgepop 2.2s ease-in-out infinite; }
+@keyframes badgepop { 0%, 86%, 100% { transform: scale(1); } 92% { transform: scale(1.18); } }
+.hint { color: #b9aed8; }
+
+/* ---------- Ventanas: marco de oro con filigrana ---------- */
+.modal { background: radial-gradient(ellipse at center, #120a26cc 0%, #030108f0 80%); backdrop-filter: blur(4px); }
+.modal-card {
+  --corner: #e8b54a;
+  background:
+    var(--corners),
+    radial-gradient(ellipse 90% 45% at 50% 0%, #4a2f86aa 0%, transparent 70%),
+    radial-gradient(ellipse 70% 30% at 50% 100%, #2a0f3a99 0%, transparent 70%),
+    linear-gradient(180deg, #251c45, #130f24);
+  border: 1px solid #e8b54a; border-radius: 18px;
+  box-shadow: 0 0 0 1px #000, 0 0 0 5px #24180a, 0 0 0 6px #8a6420, 0 0 0 7px #000, 0 26px 70px #000e, inset 0 1px 0 #ffffff26, inset 0 0 50px #0009;
+  animation: pop2 .32s cubic-bezier(.2, 1.3, .4, 1);
+}
+@keyframes pop2 { from { transform: scale(.82) translateY(14px); opacity: 0; filter: blur(3px); } }
+.modal-card h2 { color: #fde68a; text-shadow: 0 1px 0 #7a4b0c, 0 2px 0 #3b2405, 0 0 18px #e8b54a55; }
+.modal-card h2::after, .reward-title::after {
+  content: ''; display: block; width: min(70%, 260px); height: 10px; margin: 6px auto 0;
+  background:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'><path d='M5 0 L10 5 L5 10 L0 5Z' fill='%23fde68a' stroke='%238a5a10' stroke-width='1'/></svg>") center / 10px 10px no-repeat,
+    linear-gradient(90deg, transparent, #e8b54a 30%, transparent 45%, transparent 55%, #e8b54a 70%, transparent) center / 100% 2px no-repeat;
+}
+.reward-title.lose::after { filter: hue-rotate(-40deg) saturate(1.4); }
+.levelup { border: 1px solid #c084fc88; box-shadow: inset 0 1px 0 #ffffff1c, 0 0 14px #a855f733; }
+.loot { background: linear-gradient(180deg, #ffffff10, #00000066); box-shadow: inset 0 1px 0 #ffffff14, 0 0 10px color-mix(in srgb, var(--rc, transparent) 30%, transparent); }
+
+/* ---------- Avisos: cinta de oro ---------- */
+.toast {
+  background: linear-gradient(180deg, #fff3c4 0%, #f6cf6e 35%, #d9a23a 100%); border: 1px solid #fff3c4;
+  box-shadow: 0 0 0 2px #3b2405, 0 10px 24px #000c, inset 0 1px 0 #ffffffb0;
+  clip-path: polygon(10px 0, calc(100% - 10px) 0, 100% 50%, calc(100% - 10px) 100%, 10px 100%, 0 50%);
+  padding: 10px 26px; border-radius: 0;
+}
+.toast.bad { background: linear-gradient(180deg, #fecaca, #ef4444 40%, #991b1b); border-color: #fecaca; }
+
+/* ---------- Mapa ---------- */
+.world {
+  border: 1px solid #c9952f; border-radius: 18px;
+  box-shadow: 0 0 0 1px #000, 0 0 0 4px #1a1206, 0 0 0 5px #6b4a12, 0 10px 24px #000a, inset 0 0 60px #000a, inset 0 1px 0 #ffffff26;
+}
+.world::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(180deg, #0000 40%, #0007), radial-gradient(ellipse at 80% 0%, #ffffff18, transparent 50%);
+}
+.world > * { position: relative; }
+.world-head { padding: 6px 10px; border-radius: 12px; background: linear-gradient(90deg, #000a, #0004 70%, transparent); }
+.world-head h3 { font-weight: 900; color: #fff7dd; text-shadow: 0 2px 0 #000, 0 0 12px #0008; }
+.node { box-shadow: 0 4px 0 #0009, inset 0 2px 4px #ffffff30, inset 0 -6px 10px #0007; transition: transform .12s; }
+.node:not(.locked):hover { transform: translateY(-2px) scale(1.05); }
+.node.done { background: radial-gradient(circle at 40% 30%, #22c55e, #14532d 75%); }
+.node.boss { border-radius: 16px; }
+.star-bar { box-shadow: inset 0 1px 0 #ffffff14, 0 6px 16px #0007; }
+
+/* ---------- Combate ---------- */
+#arena { border: 2px solid #6b4a12; box-shadow: 0 0 0 1px #000, 0 0 0 3px #1a1206, 0 10px 30px #000c; }
+.bar { border: 1px solid #c9952f; box-shadow: 0 0 0 1px #000, 0 2px 6px #0009; }
+.bar::after { content: ''; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(180deg, #ffffff45 0%, #ffffff10 45%, transparent 50%, #0003 100%); }
+.bar.hp i { background: linear-gradient(90deg, #14532d, #16a34a 40%, #4ade80); box-shadow: 0 0 10px #4ade8066; }
+.boss-bar .bar { border-color: #f87171; }
+.ctl { box-shadow: 0 0 0 2px #000, 0 0 0 3px #8a6420, 0 4px 0 3px #07050e, inset 0 2px 6px #ffffff22, inset 0 -6px 10px #0007; }
+.ctl.attack { box-shadow: 0 0 0 2px #2a1a04, 0 0 0 4px #e8b54a, 0 5px 0 4px #2a1a04, 0 0 24px #e8b54a66, inset 0 3px 8px #ffffffaa, inset 0 -8px 14px #6b451088; }
+.ctl.skill.ready, .ctl.dodge.ready { box-shadow: 0 0 0 2px #000, 0 0 0 3px #fde68a, 0 4px 0 3px #07050e, 0 0 16px #fde68a88, inset 0 2px 6px #ffffff33; }
+.b-top { padding: 4px 8px; border-radius: 12px; background: linear-gradient(90deg, #000a, #0005 60%, transparent); }
+.b-stage { font-family: var(--font-display); font-weight: 900; color: #fde68a; text-shadow: 0 1px 0 #3b2405, 0 2px 4px #000; }
+
+/* ---------- Tarjetas especiales ---------- */
+.talent, .shop-card, .daily-card, .multi-prize { box-shadow: inset 0 1px 0 #ffffff18, 0 6px 16px #0008; }
+.talent { transition: transform .15s, box-shadow .15s; }
+.talent:hover { transform: translateY(-2px); box-shadow: inset 0 1px 0 #ffffff18, 0 10px 22px #000a, 0 0 18px color-mix(in srgb, var(--tc) 35%, transparent); }
+.goal { box-shadow: inset 0 1px 0 #ffffff1c, 0 3px 0 #000, 0 0 0 1px #000; }
+
+@media (prefers-reduced-motion: reduce) {
+  body::before, .badge { animation: none; }
+  .screen.active, .modal-card { animation: none; }
+}
+
+/* Retratos de enemigos y del héroe con marco */
+.foe {
+  background: radial-gradient(ellipse at 50% 85%, #ffffff14, transparent 60%), linear-gradient(180deg, #2a2249, #120e22);
+  border: 1px solid #5a4a92; box-shadow: inset 0 1px 0 #ffffff14, 0 4px 10px #0008; transition: transform .15s;
+}
+.foe:hover { transform: translateY(-2px); }
+.foe figcaption { color: #e9e3ff; }
+.foe.boss {
+  background: radial-gradient(ellipse at 50% 80%, #ef444444, transparent 65%), linear-gradient(180deg, #4a0d0d, #1a0505);
+  border-color: #f87171; box-shadow: 0 0 0 1px #000, 0 0 16px #ef444466, inset 0 1px 0 #ffffff1c;
+}
+.foe.boss figcaption { color: #fecaca; }
+.char-top canvas {
+  border: 1px solid #c9952f;
+  background: radial-gradient(ellipse at 50% 85%, #e8b54a33, transparent 55%), radial-gradient(circle at 50% 40%, #3b2f6b, #0e0a1c 75%);
+  box-shadow: 0 0 0 1px #000, 0 0 0 4px #1a1206, 0 0 0 5px #6b4a12, 0 10px 24px #000a, inset 0 0 30px #000a;
+}
+/* Floritura en la cabecera de cada pantalla */
+.screen-head::before {
+  content: ''; position: absolute; right: 18px; top: 50%; width: 120px; height: 22px; transform: translateY(-50%); opacity: .55; pointer-events: none;
+  background: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 22'><g fill='none' stroke='%23e8b54a' stroke-width='1.4' stroke-linecap='round'><path d='M2 11 H44'/><path d='M44 11 C52 2 60 2 60 11 C60 20 68 20 76 11'/><path d='M76 11 H118'/><circle cx='60' cy='11' r='3' fill='%23e8b54a'/><path d='M30 11 C34 6 38 6 40 9'/><path d='M90 11 C86 16 82 16 80 13'/></g></svg>") center / contain no-repeat;
+}
+@media (max-width: 560px) { .screen-head::before { display: none; } }
+/* Cartas de objeto teñidas por su rareza */
+.card.item-card[style*="--rc"] {
+  --corner: var(--rc);
+  background: var(--corners), radial-gradient(ellipse 90% 60% at 20% 0%, color-mix(in srgb, var(--rc) 22%, transparent), transparent 70%), var(--slab);
+  border-color: color-mix(in srgb, var(--rc) 55%, #2a2249);
+}
+.card.item-card[style*="--rc"]:hover { box-shadow: inset 0 1px 0 #ffffff1a, 0 8px 22px #000a, 0 0 18px color-mix(in srgb, var(--rc) 40%, transparent); }
+.item-icon { background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--rc, #000) 30%, #0008), #000a 75%); }
