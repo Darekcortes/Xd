@@ -129,6 +129,8 @@ const UI = (() => {
           <button class="power-chip" data-act="name" aria-label="Tu nombre de usuario">${s.username ? `<span class="uname">${esc(s.username)}</span>` : ''}<span class="rank-tag" style="color:${RANKS[Game.rank()].color}">${RANKS[Game.rank()].name}</span> 💥 <b>${fmt(P.power)}</b>${cloudIcon()}</button>
           <div class="head-btns">
             <button class="icon-btn" data-act="fullscreen" aria-label="Pantalla completa">⛶</button>
+            ${s.cleared[STAGES_PER_WORLD] ? `<button class="icon-btn" data-act="go" data-to="daily" aria-label="Desafío del día">📅${Game.dailyChallenge().done ? '' : '<span class="badge">!</span>'}</button>` : ''}
+            <button class="icon-btn" data-act="go" data-to="talents" aria-label="Talentos">🔮${talentReady() ? '<span class="badge">!</span>' : ''}</button>
             <button class="icon-btn" data-act="go" data-to="shop" aria-label="Mercader viajero">🏪${Game.shopToday().seen ? '' : '<span class="badge">!</span>'}</button>
             <button class="icon-btn" data-act="go" data-to="trophies" aria-label="Logros y ranking">🏆${Game.achClaimable() ? `<span class="badge">${Game.achClaimable()}</span>` : ''}</button>
             <button class="icon-btn" data-act="go" data-to="missions" aria-label="Misiones diarias">📜${claimable + (Game.loginStatus().claimable ? 1 : 0) ? `<span class="badge">${claimable + (Game.loginStatus().claimable ? 1 : 0)}</span>` : ''}</button>
@@ -581,6 +583,9 @@ const UI = (() => {
     const d = Game.ensureDaily();
     const claim = d.missions.find(m => m.progress >= m.goal && !m.claimed);
     if (claim) out.push({ text: '📜 ¡Misión lista!', to: 'missions', ready: true });
+    if (s.cleared[STAGES_PER_WORLD] && !Game.dailyChallenge().done) out.push({ text: '📅 Desafío del día', to: 'daily', ready: true });
+    if (Game.starChestsReady()) out.push({ text: '⭐ ¡Cofre de estrellas!', to: 'map', ready: true });
+    if (talentReady()) out.push({ text: '🔮 Talento disponible', to: 'talents', ready: true });
     if (s.points) out.push({ text: `👤 ${s.points} puntos`, to: 'char', ready: true });
     if (s.tickets) out.push({ text: `🎟️ ${s.tickets} tirada${s.tickets > 1 ? 's' : ''}`, to: 'wheel', ready: true });
     if (SKILL_ORDER.some(id => s.skills[id] && s.skills[id] < MAX_SKILL_LEVEL && s.coins >= SKILL_UPGRADE(s.skills[id]).coins && s.gems >= SKILL_UPGRADE(s.skills[id]).gems)) out.push({ text: '✨ Mejora una habilidad', to: 'char', ready: true });
@@ -665,6 +670,11 @@ const UI = (() => {
   RENDER.map = () => {
     const s = S(), pg = PG(), D = DIF();
     let html = head(`🗺️ Mapa${D.id ? ` · <span style="color:${D.color}">${D.icon} ${D.name}</span>` : ''}`);
+    const tS = Game.totalStars(), ready = Game.starChestsReady(), nextAt = (s.starChests + 1) * STAR_CHEST_EVERY;
+    html += `<div class="star-bar"><div class="sb-txt">★ <b>${tS}</b> estrellas <small>de ${MAX_STAGE * 3 * (Game.maxDiff() + 1)}</small></div>
+      <div class="sb-prog"><i style="width:${ready ? 100 : Math.round((tS % STAR_CHEST_EVERY) / STAR_CHEST_EVERY * 100)}%"></i></div>
+      ${ready ? `<button class="btn small" data-act="star-chest">🎁 Abrir cofre de estrellas${ready > 1 ? ` (${ready})` : ''}</button>` : `<small>Cofre a las ${nextAt} ★</small>`}</div>
+      <p class="hint star-help">★ Gana · ★★ Termina con más de la mitad de vida · ★★★ Termina a tiempo</p>`;
     if (Game.maxDiff()) html += `<div class="diff-pick map">${DIFFICULTIES.map(d => `<button class="diff-chip ${d.id === D.id ? 'on' : ''}" style="--dc:${d.color}" data-act="diff" data-d="${d.id}" ${Game.diffUnlocked(d.id) ? '' : 'disabled'}>${Game.diffUnlocked(d.id) ? d.icon : '🔒'} ${d.name}</button>`).join('')}</div>`;
     for (const w of WORLDS) {
       const first = (w.id - 1) * STAGES_PER_WORLD + 1, last = first + STAGES_PER_WORLD - 1;
@@ -675,7 +685,8 @@ const UI = (() => {
         const boss = isBossStage(st);
         const cls = pg.cleared[st] ? 'done' : st === pg.unlocked ? 'current' : st > pg.unlocked ? 'locked' : '';
         const label = boss ? '👹' : st > pg.unlocked ? '🔒' : st;
-        route += `<button class="node ${cls} ${boss ? 'boss' : ''}" data-act="stage" data-stage="${st}" aria-label="Etapa ${st}${boss ? ' (jefe)' : ''}">${label}</button>`;
+        const nS = Game.starsOf(D.id, st);
+        route += `<button class="node ${cls} ${boss ? 'boss' : ''}" data-act="stage" data-stage="${st}" aria-label="Etapa ${st}${boss ? ' (jefe)' : ''}">${label}${pg.cleared[st] ? `<span class="nstars">${'★'.repeat(nS)}<i>${'★'.repeat(3 - nS)}</i></span>` : ''}</button>`;
         if (st < last) route += '<span class="arrow">→</span>';
       }
       html += `
@@ -710,6 +721,7 @@ const UI = (() => {
         <div class="info-row"><span>Poder recomendado</span><b style="color:${powerOk ? '#86efac' : '#fca5a5'}">💥 ${fmt(rec)}</b></div>
         ${D.id ? `<div class="info-row"><span>Dificultad</span><b style="color:${D.color}">${D.icon} Élites con ${D.affixes} poder${D.affixes > 1 ? 'es' : ''} · botín ×${D.loot}</b></div>` : ''}
         <div class="info-row"><span>Tu poder</span><b>💥 ${fmt(P.power)}</b></div>
+        <div class="info-row"><span>Estrellas</span><b class="stars-inline">${'★'.repeat(Game.starsOf(D.id, stage))}<i>${'★'.repeat(3 - Game.starsOf(D.id, stage))}</i> <small>· ★★★ en menos de ${STAR_PAR(info)} s</small></b></div>
         <div class="info-row"><span>Materiales</span><span class="icons">${drops}${info.boss ? ico(info.world.bossDrop) : ''}</span></div>
         <div class="info-row"><span>Completada</span><b>${pg.cleared[stage] ? `✅ ${pg.cleared[stage]} ${pg.cleared[stage] === 1 ? 'vez' : 'veces'}` : `No · primera vez: +${(info.boss ? 5 : 1) * (1 + D.id * 2)} 💎`}</b></div>
       </div>
@@ -804,13 +816,14 @@ const UI = (() => {
       const q = Math.floor(r.loot.mats[id] * k);
       if (q > 0) { Game.addMat(id, q); mats[id] = q; if (RARITY_ORDER.indexOf(MATERIALS[id].rarity) >= 2) rareCount += q; }
     }
-    const coins = Math.floor(r.loot.coins * k * (1 + bonus));
+    const coins = Math.floor(r.loot.coins * k * (1 + bonus) * (1 + Game.talent('codicia')));
     s.coins += coins;
     // Premios de combo y élites (se conservan aunque pierdas)
     s.tickets += r.loot.tickets; s.gems += r.loot.gems;
     const extra = { tickets: r.loot.tickets, gems: r.loot.gems, shards: r.loot.shards };
     let made = Game.addShards(r.loot.shards);
     let xp = Math.floor(r.loot.xp * k * (1 + bonus));
+    let stars = null;
     let first = false, gems = 0;
     const gifts = [];          // recompensas destacadas { icon, text }
     if (r.victory) {
@@ -818,6 +831,10 @@ const UI = (() => {
       xp += Math.round(info.xp * (r.boss ? 10 : 4) * (1 + bonus));
       const dId = r.diff || 0, wasMax = Game.maxDiff();
       first = Game.completeStage(r.stage);
+      // Estrellas: victoria, más de la mitad de vida y a tiempo
+      const n = 1 + (r.hpPct >= 0.5 ? 1 : 0) + (r.time <= r.par ? 1 : 0);
+      stars = { n, gain: Game.setStars(dId, r.stage, n), hp: r.hpPct >= 0.5, fast: r.time <= r.par, time: Math.round(r.time), par: r.par };
+      if (stars.gain && Game.starChestsReady()) gifts.push({ icon: '⭐', text: '¡Cofre de estrellas listo! Ábrelo en el Mapa' });
       gems = (first ? (r.boss ? 5 : 1) : (r.boss ? 2 : 0)) * (1 + dId * 2);
       if (Game.maxDiff() > wasMax) {
         const nd = DIFFICULTIES[Game.maxDiff()];
@@ -875,6 +892,7 @@ const UI = (() => {
     s.stats.bestCombo = Math.max(s.stats.bestCombo, r.maxCombo || 0);
     const petUp = Game.petGainXp(r.kills || 0);
     if (petUp) gifts.push({ icon: '🐾', text: `${PETS[s.pets.active].name} subió a nivel ${petUp}` });
+    xp = Math.floor(xp * (1 + Game.talent('sabiduria')));
     const ups = Game.addXp(xp);
     const rankNow = Game.rank(), rankUp = rankNow > s.rank ? rankNow : null;
     s.rank = Math.max(s.rank, rankNow);
@@ -882,7 +900,7 @@ const UI = (() => {
     const newItems = Object.keys(s.items).filter(id => !itemsBefore.has(id));
     Game.save(true); Game.cloudWrite();   // al terminar cada combate se sube enseguida a la cuenta
     if (ups) Sfx.play('levelup');
-    showResults({ r, mats, coins, xp, first, gems, gifts, extra, made, ups, rankUp, newSkills, newItems, done, bonus, lostStreak });
+    showResults({ r, mats, coins, xp, first, gems, gifts, extra, made, ups, rankUp, newSkills, newItems, done, bonus, lostStreak, stars });
   }
 
   function lootChips(mats, coins, extra) {
@@ -940,8 +958,12 @@ const UI = (() => {
     const missionsDone = (o.done.length ? `<div class="levelup mission">📜 Misión completada: ${o.done.map(m => esc(Game.missionText(m))).join(' · ')} — reclámala en Misiones</div>` : '')
       + (Game.achClaimable() ? '<div class="levelup mission">🏅 ¡Tienes logros por reclamar en 🏆 Logros!</div>' : '');
     const nextShard = TICKET_SHARDS - s.ticketShards;
+    const st_ = o.stars;
+    const starRow = st_ ? `<div class="result-stars">${[0, 1, 2].map(i => `<span class="rs ${i < st_.n ? 'on' : ''}" style="animation-delay:${0.25 + i * 0.28}s">★</span>`).join('')}</div>
+      <div class="star-why"><span class="${'ok'}">★ Victoria</span><span class="${st_.hp ? 'ok' : ''}">★ Vida &gt; 50%</span><span class="${st_.fast ? 'ok' : ''}">★ ${st_.time}s / ${st_.par}s</span>${st_.gain ? `<b>+${st_.gain} ★ nueva${st_.gain > 1 ? 's' : ''}</b>` : ''}</div>` : '';
     openModal(`
       ${title}
+      ${starRow}
       ${streakLine}
       ${skillCards}${rankCard}${o.newItems.map(equipCard).join('')}
       ${o.ups ? `<div class="levelup">⭐ ¡Subiste a nivel ${s.level}! +${o.ups * BALANCE.pointsPerLevel} puntos de estadística · +${o.ups} 💎</div>` : ''}
@@ -1924,6 +1946,86 @@ const UI = (() => {
     if (g.shards) return `${g.shards} fragmentos de ticket`;
     return '';
   }
+  /* ---------- Talentos (se compran con oro) ---------- */
+  const talentReady = () => TALENT_ORDER.some(id => Game.talentLvl(id) < TALENTS[id].max && S().coins >= talentCost(id, Game.talentLvl(id)));
+  RENDER.talents = () => {
+    const s = S();
+    const cards = TALENT_ORDER.map(id => {
+      const T = TALENTS[id], l = Game.talentLvl(id), maxed = l >= T.max, c = maxed ? 0 : talentCost(id, l), can = !maxed && s.coins >= c;
+      const pips = Array.from({ length: Math.min(T.max, 25) }, (_, i) => `<i class="${i < l ? 'on' : ''}"></i>`).join('');
+      return `<div class="talent ${maxed ? 'maxed' : ''}" style="--tc:${T.color}">
+        <div class="t-ico">${T.icon}</div>
+        <div class="t-body">
+          <div class="t-name">${T.name} <small>Nv ${l}/${T.max}</small></div>
+          <div class="t-desc">${l ? T.desc(l * T.per) : 'Sin mejorar'}${maxed ? '' : ` → <b>${T.desc((l + 1) * T.per)}</b>`}</div>
+          <div class="t-pips">${pips}</div>
+        </div>
+        ${maxed ? '<span class="t-max">MÁX</span>' : `<button class="btn small ${can ? '' : 'ghost'}" data-act="talent-buy" data-id="${id}" ${can ? '' : 'disabled'}>💰 ${fmt(c)}</button>`}
+      </div>`;
+    }).join('');
+    const spent = TALENT_ORDER.reduce((t, id) => { let x = 0; for (let i = 0; i < Game.talentLvl(id); i++) x += talentCost(id, i); return t + x; }, 0);
+    $('scr-talents').innerHTML = `${head('🔮 Talentos')}
+      <div class="talent-top"><span>💰 Tienes <b>${fmt(s.coins)}</b></span><span>Invertido: <b>${fmt(spent)}</b></span></div>
+      <p class="hint" style="text-align:center;margin:0 0 8px">Mejoras permanentes para siempre. Usa tu oro para hacer a tu caballero más fuerte.</p>
+      <div class="talent-grid">${cards}</div>`;
+  };
+
+  /* ---------- Desafío del día ---------- */
+  RENDER.daily = () => {
+    const s = S(), ch = Game.dailyChallenge(), D = DIFFICULTIES[ch.diff], info = applyDiff(stageInfo(ch.stage), D), boss = ENEMIES[info.world.boss];
+    const mid = new Date(); mid.setHours(24, 0, 0, 0);
+    const mins = Math.max(0, Math.round((mid - Date.now()) / 60000));
+    $('scr-daily').innerHTML = `${head('📅 Desafío del día')}
+      <div class="daily-card ${ch.done ? 'done' : ''}" style="--wbg:${worldBg(info.world)}">
+        <div class="daily-foe"><canvas data-foe="${info.world.boss}" width="160" height="150"></canvas></div>
+        <div class="daily-body">
+          <div class="daily-kicker">Jefe de hoy · <span style="color:${D.color}">${D.icon} ${D.name}</span></div>
+          <h3>${boss.name}</h3>
+          <small>${info.world.icon} Mundo ${info.world.id} · ${info.world.name} · Poder recomendado 💥 ${fmt(info.power)}</small>
+          <div class="daily-mods">${ch.mods.map(k => { const M = DAILY_MODS[k]; return `<div class="dmod ${M.bad ? 'bad' : 'good'}"><span>${M.icon}</span><div><b>${M.name}</b><small>${M.desc}</small></div></div>`; }).join('')}</div>
+          <div class="daily-reward">${ch.done ? '✅ ¡Desafío superado hoy! Puedes repetirlo por el botín.' : `Premio al ganar: 💎 ${DAILY_REWARD.gems} · 🎟️ ${DAILY_REWARD.tickets} · cofre real`}</div>
+          <button class="btn" data-act="daily-go">⚔️ ${ch.done ? 'Repetir' : '¡Aceptar el desafío!'}</button>
+          <small class="daily-time">⏳ Nuevo desafío en ${Math.floor(mins / 60)} h ${mins % 60} min · Superados: ${s.dailyCh.wins || 0}</small>
+        </div>
+      </div>`;
+    drawFoes();
+  };
+  function enterDaily() {
+    const ch = Game.dailyChallenge();
+    if (S().settings.landscape) goLandscape();
+    show('battle');
+    Battle.start(ch.stage, onDailyEnd, { daily: ch });
+    checkOrientation();
+  }
+  function onDailyEnd(r) {
+    const s = S(), k = r.victory ? 1 : 0.5;
+    const mats = {};
+    for (const id in r.loot.mats) { const q = Math.floor(r.loot.mats[id] * k); if (q > 0) { Game.addMat(id, q); mats[id] = q; } }
+    const coins = Math.floor(r.loot.coins * k * (r.mods.includes('oro') ? 3 : 1) * (1 + Game.talent('codicia')));
+    s.coins += coins; s.tickets += r.loot.tickets; s.gems += r.loot.gems;
+    const extra = { tickets: r.loot.tickets, gems: r.loot.gems, shards: r.loot.shards };
+    Game.addShards(r.loot.shards);
+    const xp = Math.floor((r.loot.xp + (r.victory ? stageInfo(r.stage).xp * 10 : 0)) * k * (1 + Game.talent('sabiduria')));
+    const ups = Game.addXp(xp);
+    const prize = r.victory ? Game.finishDaily() : null;
+    Game.track('kill', r.kills || 0); Game.track('elite', r.elites || 0);
+    if (!r.victory) s.stats.deaths++;
+    Game.save(true); Game.cloudWrite();
+    if (ups) Sfx.play('levelup');
+    openModal(`
+      ${r.victory ? '<div class="reward-title boss">🏆 ¡Desafío superado!</div>' : `<div class="reward-title lose">${r.abandoned ? '🏳️ Desafío abandonado' : '💀 Has caído'}</div><p class="sub">El desafío sigue disponible hasta medianoche.</p>`}
+      ${prize ? `<div class="levelup">📅 Premio del día: ${esc(prize)}</div>` : r.victory ? '<p class="sub">Ya habías cobrado el premio de hoy.</p>' : ''}
+      ${ups ? `<div class="levelup">⭐ ¡Subiste a nivel ${s.level}!</div>` : ''}
+      <div class="info-rows"><div class="info-row"><span>Experiencia</span><b>⭐ +${fmt(xp)} XP</b></div><div class="info-row"><span>Tiempo</span><b>⏱️ ${Math.round(r.time)} s</b></div></div>
+      <div class="loot-grid">${lootChips(mats, coins, extra)}</div>
+      ${prize ? `<div class="chest-wrap"><button class="chest gold" id="chest" data-act="chest" data-stage="${r.stage}" data-boss="1" aria-label="Abrir cofre">👑</button><div class="chest-hint" id="chest-hint">Toca el cofre real para abrirlo</div><div class="loot-grid" id="chest-loot"></div></div>` : ''}
+      <div class="modal-actions" id="result-actions" ${prize ? 'hidden' : ''}>
+        <button class="btn ${r.victory ? 'ghost' : ''}" data-act="daily-go">🔁 ${r.victory ? 'Repetir' : 'Reintentar'}</button>
+        <button class="btn ghost" data-act="go" data-to="menu">🏠 Menú</button>
+      </div>`);
+    if (r.victory) confetti(90);
+  }
+
   RENDER.shop = () => {
     const s = S(), sh = Game.shopToday();
     sh.seen = true;
@@ -2051,10 +2153,10 @@ const UI = (() => {
     const s = S(), floor = r.tower ? r.tower.floor : 1;
     const mats = {};
     for (const id in r.loot.mats) { const q = r.loot.mats[id]; if (q > 0) { Game.addMat(id, q); mats[id] = q; } }
-    const coins = r.loot.coins; s.coins += coins;
+    const coins = Math.round(r.loot.coins * (1 + Game.talent('codicia'))); s.coins += coins;
     s.tickets += r.loot.tickets; s.gems += r.loot.gems;
     const made = Game.addShards(r.loot.shards);
-    const xp = r.loot.xp;
+    const xp = Math.round(r.loot.xp * (1 + Game.talent('sabiduria')));
     const record = floor > s.tower.best;
     s.tower.best = Math.max(s.tower.best, floor); s.tower.runs++;
     s.stats.elites += r.elites || 0;
@@ -2140,6 +2242,24 @@ const UI = (() => {
      ================================================================= */
   const ACTIONS = {
     go: d => { closeModal(); show(d.to); },
+    'talent-buy': d => {
+      if (!Game.buyTalent(d.id)) { toast('No tienes suficiente oro', true); return; }
+      const T = TALENTS[d.id];
+      Sfx.play('levelup'); vibrate(30);
+      RENDER.talents(); refreshTop();
+      const el = document.querySelector(`[data-act="talent-buy"][data-id="${d.id}"]`);
+      const card = el ? el.closest('.talent') : document.querySelector('.talent.maxed');
+      if (card) { card.classList.remove('pop'); void card.offsetWidth; card.classList.add('pop'); }
+    },
+    'star-chest': () => {
+      const t = Game.claimStarChest();
+      if (!t) return;
+      Sfx.play('legendary'); confetti(70, ['#fde047', '#facc15', '#ffffff']);
+      openModal(`<div class="reward-title">⭐ Cofre de estrellas</div><div class="levelup">${esc(t)}</div>
+        <div class="modal-actions"><button class="btn" data-act="close">¡Genial!</button></div>`, () => { if (current === 'map') RENDER.map(); });
+      refreshTop();
+    },
+    'daily-go': () => { closeModal(); enterDaily(); },
     play: () => openStage(PG().unlocked),
     diff: d => {
       const id = +d.d;

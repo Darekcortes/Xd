@@ -58,9 +58,9 @@ const Battle = (() => {
   }
 
   /* ---------- Inicio de etapa ---------- */
-  function start(stage, cb) {
-    const tower = stage === 'tower';
-    const D = tower ? DIFFICULTIES[0] : DIFFICULTIES[Game.S.diff || 0];
+  function start(stage, cb, opts = {}) {
+    const tower = stage === 'tower', daily = opts.daily || null;
+    const D = tower ? DIFFICULTIES[0] : DIFFICULTIES[daily ? daily.diff : (Game.S.diff || 0)];
     let info = tower ? towerInfo(1) : stageInfo(stage);
     if (D.id) info = applyDiff(info, D);
     const P = Game.stats();
@@ -92,6 +92,8 @@ const Battle = (() => {
       ult: 0, ultT: 0, potionsUsed: 0, sparks: [], pet: makePet(P), diff: D,
       bless: {}, blessList: [], base: { dmg: P.dmg, maxHp: P.maxHp, crit: P.crit }, moveMult: 1, shieldHits: 0, boltT: 4,
       lava: [], meteorT: 3, darkness: 0, phoenixUsed: false, mob: D.id > 0,
+      daily: !!daily, mods: new Set(daily ? daily.mods : []), spins: [],
+      ultMult: (1 + Game.talent('furia')) * (daily && daily.mods.includes('furia') ? 2 : 1),
       p: { x: W * 0.3, y: (fieldTop() + fieldBot()) / 2, hp: P.maxHp, maxHp: P.maxHp, dmg: P.dmg, def: P.def,
            spd: P.spd, crit: P.crit, face: 1, atkT: 0, swing: -1, heavy: false, walk: 0, flash: 0, invuln: 0,
            chain: 0, chainT: 0, dodgeT: 0, dodgeCd: 0, dx: 1, dy: 0, ghostT: 0, charges: 2, chargeT: 0, moveT: 0, lungeT: 0, sinceDodge: 9 },
@@ -106,11 +108,13 @@ const Battle = (() => {
       shake: 0, hurtFlash: 0, whiteFlash: 0, slowT: 0, hitStop: 0,
       ended: false, endT: 0, victory: false, boss: null, bossDefeated: false, specialDrop: null, banner: null,
     };
+    if (st.mods.has('cristal')) { st.p.dmg = Math.round(st.p.dmg * 2); st.p.maxHp = st.p.hp = Math.max(1, Math.round(st.p.maxHp * 0.5)); }
     bg = Sprites.background(info.world.theme, W, H, HY, dpr);
     for (let i = 0; i < 30; i++) st.ambient.push(newAmbient(true));
     spawnProps();
     spawnScenery();
-    showBanner(tower ? '🏰 Torre del Caos' : `Etapa ${stage}`, tower ? '¿Hasta qué piso llegarás?' : info.name, '#fde68a');
+    if (daily) showBanner('Desafío del día', daily.mods.map(k => DAILY_MODS[k].name).join(' · '), '#f0abfc', 2.6);
+    else showBanner(tower ? '🏰 Torre del Caos' : `Etapa ${stage}`, tower ? '¿Hasta qué piso llegarás?' : info.name, '#fde68a');
     // Entrada con el aura: anillo y estallido de su color
     const au = Game.S.cosmetics.aura, AC = au && COSMETICS[au];
     if (AC) {
@@ -390,6 +394,7 @@ const Battle = (() => {
     // Pesadilla e Infierno: 2 rodadas seguidas que se recargan solas
     if (st.mob && p.charges < 2 && (p.chargeT -= dt) <= 0) { p.charges++; p.chargeT = 0.9; }
     if (p.swing >= 0) { p.swing += dt / (p.swingDur || 0.22); if (p.swing >= 1) p.swing = -1; }
+    if (p.spinTickT > 0) { p.spinTickT -= dt; if (p.spinTickT <= 0 && p.hp > 0) spinHit(); }
     if (st.ended || p.hp <= 0) { p.walk = 0; return; }
     const mv = moveInput();
     if (p.lungeT > 0) {
@@ -446,7 +451,35 @@ const Battle = (() => {
     { style: 'slash',  dur: 0.2,  mult: 1,   reach: 0,  depth: 0,  knock: 5,  extra: 0 },
     { style: 'thrust', dur: 0.2,  mult: 1.1, reach: 16, depth: -6, knock: 8,  extra: 0 },
     { style: 'smash',  dur: 0.3,  mult: 1.9, reach: 8,  depth: 10, knock: 30, extra: 0.12 },
+    { style: 'spin',   dur: 0.42, mult: 1.25, reach: 0, depth: 0,  knock: 24, extra: 0.18 },   // Remolino: golpea todo alrededor (2 veces)
   ];
+
+  /** Remolino: el 4.º golpe del combo gira y golpea a todos los que te rodean. */
+  function spinHit() {
+    const p = st.p, R = 74, mult = COMBO[3].mult * (1 + Game.talent('remolino'));
+    let hit = 0;
+    for (const e of st.enemies) {
+      if (e.dead || (e.z || 0) > 25) continue;
+      if (Math.hypot(e.x - p.x, (e.y - p.y) * 2.2) < R + e.size * 0.35) {
+        damageEnemy(e, p.dmg * BALANCE.hitDamage * mult, { knock: COMBO[3].knock, canCrit: true, combo: true, melee: true, heavy: true });
+        const f = Math.sign(e.x - p.x) || 1;
+        st.sparks.push({ x: e.x - f * e.size * 0.15, y: e.y - e.size * 0.55 - (e.z || 0), t: 0.18, ang: Math.random() * 6, big: true, slash: -0.2 * f, face: f, sz: e.size });
+        hit++;
+      }
+    }
+    cutScenery(p.x - R, p.x + R, p.y);
+    for (const pr of st.props) if (!pr.dead && Math.hypot(pr.x - p.x, (pr.y - p.y) * 2) < R + 8) breakProp(pr);
+    for (const pr of st.projs) {
+      if (pr.hostile && Math.hypot(pr.x - p.x, (pr.y - p.y) * 1.6) < R + 14) {
+        pr.hostile = false; pr.vx = -pr.vx * 1.4; pr.vy = -pr.vy * 1.4; pr.dmg = p.dmg * 1.5; pr.life = 2;
+        Sfx.play('deflect');
+      }
+    }
+    st.rings.push({ x: p.x, y: p.y, r: 12, max: R + 12, t: 0.26, life: 0.26, color: 'rgba(147,197,253,.95)' });
+    for (let i = 0; i < 10 && st.parts.length < 440; i++) { const a = Math.random() * Math.PI * 2; st.parts.push({ x: p.x + Math.cos(a) * 30, y: p.y - 4 + Math.sin(a) * 10, vx: Math.cos(a) * 140, vy: Math.sin(a) * 50 - 40, life: 0.4, max: 0.4, color: i % 2 ? '#bfdbfe' : '#e0f2fe', size: rand(2, 4), grav: 200 }); }
+    if (hit) { st.hitStop = Math.max(st.hitStop, 0.045); st.ult = Math.min(1, st.ult + ULTIMATE.fillHit * st.ultMult * Math.min(3, hit)); st.shake = Math.max(st.shake, 5); }
+    Sfx.play('swing');
+  }
 
   /** Estocada (Pesadilla e Infierno): atacar justo al rodar lanza un tajo que atraviesa enemigos. */
   function lunge() {
@@ -474,11 +507,18 @@ const Battle = (() => {
   function attack() {
     const p = st.p;
     if (st.mob && (p.dodgeT > 0 || p.sinceDodge < 0.22)) { lunge(); return; }
-    p.chain = p.chainT > 0 ? (p.chain % 3) + 1 : 1;
+    p.chain = p.chainT > 0 ? (p.chain % 4) + 1 : 1;
     const mv = COMBO[p.chain - 1];
     p.atkT = 1 / (p.spd * BALANCE.attackRate) + mv.extra;
     p.chainT = p.atkT + 0.45;
     p.swingDur = mv.dur;
+    if (mv.style === 'spin') {
+      p.swing = 0; p.heavy = false; p.style = 'spin'; p.spinTickT = mv.dur * 0.5;
+      st.spins.push({ t: 0, life: mv.dur + 0.08 });
+      if (!st.spinShown) { st.spinShown = true; addFloat(p.x, p.y - 74, '¡Remolino!', '#93c5fd', 14, true); }
+      spinHit();
+      return;
+    }
     const heavy = mv.style === 'smash';
     const near = nearestEnemy(p.x, p.y, 150);
     if (near) {
@@ -542,7 +582,7 @@ const Battle = (() => {
         Sfx.play('deflect');
       }
     }
-    if (hit) { st.hitStop = heavy ? 0.08 : 0.035; st.ult = Math.min(1, st.ult + ULTIMATE.fillHit * Math.min(3, hit)); }
+    if (hit) { st.hitStop = heavy ? 0.08 : 0.035; st.ult = Math.min(1, st.ult + ULTIMATE.fillHit * st.ultMult * Math.min(3, hit)); }
     if (heavy) st.shake = Math.max(st.shake, hit ? 6 : 3);
   }
 
@@ -597,7 +637,7 @@ const Battle = (() => {
     addFloat(p.x, p.y - 64, `-${dmg}`, '#f87171', 17);
     st.shake = Math.max(st.shake, 6);
     st.hurtFlash = 0.3;
-    st.ult = Math.min(1, st.ult + ULTIMATE.fillHurt);
+    st.ult = Math.min(1, st.ult + ULTIMATE.fillHurt * st.ultMult);
     Sfx.play('hurt');
     UI.vibrate(35);
     return true;
@@ -768,7 +808,7 @@ const Battle = (() => {
 
   function makeEnemy(id, side, opts = {}) {
     const d = ENEMIES[id], I = st.info;
-    const elite = !d.boss && !opts.mini && (opts.elite || Math.random() < I.eliteChance);
+    const elite = !d.boss && !opts.mini && (opts.elite || Math.random() < (st.mods.has('elites') ? 0.75 : I.eliteChance));
     const B = BALANCE, dmgMult = I.dmgMult * (d.boss ? B.bossDmg : 1);
     let hp = Math.round(I.hp * d.hp * (elite ? 2.2 : 1) * (opts.mini ? 0.35 : 1) * (d.boss ? B.bossHp : 1));
     const size = d.size * (elite ? 1.2 : 1) * (opts.mini ? 0.6 : 1);
@@ -792,6 +832,9 @@ const Battle = (() => {
       // Capitán: enorme, aguanta mucho y lleva corona
       e.captain = true; e.hp = e.maxHp = Math.round(e.maxHp * 4.2); e.atk *= 1.4; e.size *= 1.4; e.speed *= 0.9;
     }
+    // Desafío del día
+    if (st.mods.has('rapidos')) e.speed *= 1.35;
+    if (st.mods.has('gigantes')) { e.size *= d.boss ? 1.12 : 1.25; e.hp = e.maxHp = Math.round(e.maxHp * (d.boss ? 1.3 : 1.6)); e.atk *= 1.2; }
     const D = I.diff;
     if (D && D.spd !== 1) e.speed *= D.spd;
     if (elite && D && D.affixes) {
@@ -1237,7 +1280,7 @@ const Battle = (() => {
   /** Mundo 4: caen meteoritos que dejan charcos de lava. Torre: rayos de la mejora «Tormenta». */
   function updateHazards(dt) {
     const p = st.p;
-    if (!st.tower && st.world.theme === 'volcan' && !st.ended && st.waveIdx >= 0) {
+    if (!st.tower && (st.world.theme === 'volcan' || st.mods.has('meteoros')) && !st.ended && st.waveIdx >= 0) {
       st.meteorT -= dt;
       if (st.meteorT <= 0) {
         st.meteorT = rand(3, 5.2) * (st.info.boss ? 1.4 : 1);
@@ -1315,7 +1358,7 @@ const Battle = (() => {
     burst(e.x, e.y - e.size * 0.5 - (e.z || 0), crit ? '#fde047' : (o.color || '#ffffff'), crit ? 14 : 7, 150);
     if (!o.silent) Sfx.play(crit ? 'crit' : 'hit');
     if (crit) { st.shake = Math.max(st.shake, 4); st.hitStop = Math.max(st.hitStop, 0.06); }
-    if (e.hp <= 0) { killEnemy(e); if (!o.ult) st.ult = Math.min(1, st.ult + ULTIMATE.fillKill); }
+    if (e.hp <= 0) { killEnemy(e); if (!o.ult) st.ult = Math.min(1, st.ult + ULTIMATE.fillKill * st.ultMult); }
   }
 
   function rollMaterial(rare) {
@@ -1361,6 +1404,7 @@ const Battle = (() => {
     st.kills++;
     Game.S.stats.kills++;
     addCombo();
+    if (st.mods.has('sangre') && st.p.hp > 0) { const h = Math.round(st.p.maxHp * 0.04); st.p.hp = Math.min(st.p.maxHp, st.p.hp + h); addFloat(st.p.x, st.p.y - 70, '+' + h, '#86efac', 12); }
     const mult = e.boss ? 6 : e.captain ? 5 : e.elite ? 3 : e.mini ? 0.3 : 1;
     if (e.captain) {
       showBanner('', '¡Capitán derrotado!', '#facc15', 1.3);
@@ -1991,7 +2035,18 @@ const Battle = (() => {
     // Se agacha un poco al dar el golpe fuerte y se estira al lanzar la estocada
     const sq = p.swing >= 0 ? (p.style === 'smash' && p.swing > 0.35 && p.swing < 0.65 ? [1.07, 0.93] : p.style === 'thrust' && p.swing < 0.5 ? [1.05, 0.97] : null) : null;
     if (sq) { c.save(); c.translate(p.x, p.y); c.scale(sq[0], sq[1]); c.translate(-p.x, -p.y); }
-    Sprites.knight(c, p.x, p.y, 1.0, { face: p.face, walk: p.walk, swing: p.swing, heavy: p.heavy, style: p.style, time: st.time,
+    const spinning = p.style === 'spin' && p.swing >= 0;
+    if (spinning) {
+      // Remolino: estela circular alrededor del caballero
+      const a0 = p.swing * Math.PI * 4;
+      c.save(); c.lineCap = 'round';
+      for (let k = 0; k < 3; k++) {
+        c.strokeStyle = `rgba(${k ? '191,219,254' : '255,255,255'},${0.75 - k * 0.22})`; c.lineWidth = 7 - k * 2;
+        c.beginPath(); c.ellipse(p.x, p.y - 22, 54 + k * 6, 20 + k * 2, 0, a0 - k * 0.5, a0 + 2.2 - k * 0.5); c.stroke();
+      }
+      c.restore();
+    }
+    Sprites.knight(c, p.x, p.y, 1.0, { face: spinning ? (Math.sin(p.swing * Math.PI * 4) > 0 ? 1 : -1) : p.face, walk: p.walk, swing: p.swing, heavy: p.heavy, style: spinning ? 'slash' : p.style, time: st.time,
       weaponColor: ITEMS[S.equip.weapon].color, armorColor: ITEMS[S.equip.armor].color, flash: p.flash > 0, helmet: S.settings.helmet, rank: Game.rank() });
     if (sq) c.restore();
     c.globalAlpha = 1;
@@ -2285,7 +2340,8 @@ const Battle = (() => {
       victory: st.victory, abandoned: !!st.abandoned, stage: st.stage, boss: st.info.boss, loot: st.loot,
       specialDrop: st.specialDrop, killed: st.killed, kills: st.kills, maxCombo: st.maxCombo, elites: st.elites,
       tower: st.tower ? { floor: Math.max(1, st.tower.floor), cleared: st.tower.cleared, bless: st.blessList.length } : null, potionsUsed: st.potionsUsed,
-      diff: st.diff ? st.diff.id : 0,
+      diff: st.diff ? st.diff.id : 0, daily: st.daily, mods: [...st.mods],
+      time: st.time, hpPct: st.p.maxHp ? Math.max(0, st.p.hp) / st.p.maxHp : 0, par: st.tower ? 0 : STAR_PAR(st.info),
     };
     stop();
     if (onEnd) onEnd(result);

@@ -170,13 +170,14 @@ const UIcons = (() => {
 
   /* ---------- Cambio automático de emojis en la pantalla ---------- */
   const EMOJI = /(?:\p{Extended_Pictographic}(?:️|⃣)?(?:‍\p{Extended_Pictographic}️?)*|[⬅-⬇⬛⬜⭐⭕⏸-⏺▶◀⛶]️?)/gu;
+  const KEEP = /^[\u2605\u2606\u2730-\u2737]/;
   const SKIP = new Set(['SCRIPT', 'STYLE', 'TEXTAREA', 'INPUT', 'CANVAS', 'svg', 'SVG', 'OPTION']);
   /** Quita los emojis de un texto (para lo que se dibuja en el lienzo). */
   const strip = t => String(t).replace(EMOJI, '').replace(/\s{2,}/g, ' ').trim();
   function swapNode(node) {
     const t = node.nodeValue;
     EMOJI.lastIndex = 0;
-    if (!t || !EMOJI.test(t)) return;
+    if (!t || !EMOJI.test(t.replace(/[\u2605\u2606\u2730-\u2737]/g, ''))) return;   // solo estrellas: nada que cambiar
     EMOJI.lastIndex = 0;
     const frag = document.createDocumentFragment();
     let last = 0, m;
@@ -188,7 +189,7 @@ const UIcons = (() => {
         sp.className = 'gi-wrap ui-ico';
         sp.innerHTML = svg;
         frag.appendChild(sp);
-      }
+      } else if (KEEP.test(m[0])) frag.appendChild(document.createTextNode(m[0]));   // símbolos de texto (★) se quedan
       last = m.index + m[0].length;
     }
     if (last < t.length) frag.appendChild(document.createTextNode(t.slice(last)));

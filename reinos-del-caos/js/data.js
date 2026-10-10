@@ -755,3 +755,42 @@ const WAVE_TYPES = {
   invasores: { w: 9,  name: 'Invasores', sub: 'Enemigos de otro reino', from: 6 },
   asedio:    { w: 9,  name: 'Asedio', sub: 'Tiradores a distancia y guardianes', from: 5 },
 };
+
+/* =====================================================================
+   TALENTOS — mejoras permanentes que se compran con oro
+   ===================================================================== */
+const TALENTS = {
+  fuerza:    { name: 'Fuerza',    icon: '⚔️', color: '#f87171', per: 0.03, max: 25, base: 1500, desc: v => `+${Math.round(v * 100)}% de daño` },
+  vitalidad: { name: 'Vitalidad', icon: '❤️', color: '#fb7185', per: 0.04, max: 25, base: 1500, desc: v => `+${Math.round(v * 100)}% de vida` },
+  coraza:    { name: 'Coraza',    icon: '🛡️', color: '#93c5fd', per: 0.04, max: 20, base: 1800, desc: v => `+${Math.round(v * 100)}% de defensa` },
+  precision: { name: 'Precisión', icon: '🎯', color: '#fde047', per: 0.01, max: 15, base: 2500, desc: v => `+${Math.round(v * 100)}% de golpe crítico` },
+  furia:     { name: 'Furia',     icon: '💥', color: '#fb923c', per: 0.06, max: 10, base: 3000, desc: v => `La Furia del Caos se llena ${Math.round(v * 100)}% más rápido` },
+  remolino:  { name: 'Remolino',  icon: '🌀', color: '#60a5fa', per: 0.08, max: 10, base: 2500, desc: v => `+${Math.round(v * 100)}% de daño del Remolino (4.º golpe)` },
+  codicia:   { name: 'Codicia',   icon: '💰', color: '#facc15', per: 0.06, max: 20, base: 1200, desc: v => `+${Math.round(v * 100)}% de oro` },
+  sabiduria: { name: 'Sabiduría', icon: '⭐', color: '#c4b5fd', per: 0.05, max: 20, base: 1600, desc: v => `+${Math.round(v * 100)}% de experiencia` },
+};
+const TALENT_ORDER = Object.keys(TALENTS);
+const talentCost = (id, lvl) => Math.round(TALENTS[id].base * Math.pow(1.22, lvl) / 50) * 50;
+
+/* =====================================================================
+   ESTRELLAS — hasta 3 por etapa en cada dificultad
+   ★ victoria · ★★ terminar con más de la mitad de vida · ★★★ terminar a tiempo
+   ===================================================================== */
+const STAR_PAR = info => Math.round(info.boss ? 110 : 22 + info.enemyCount * 3.2);   // segundos para la 3.ª estrella
+const STAR_CHEST_EVERY = 10;
+const starChestReward = n => ({ bundle: [{ gems: 4 + Math.floor(n / 15) }, { tickets: 1 + Math.floor(n / 60) }, { coins: 300 * Math.ceil(n / 10) }] });
+
+/* =====================================================================
+   DESAFÍO DEL DÍA — un jefe con modificadores que cambian cada día
+   ===================================================================== */
+const DAILY_MODS = {
+  rapidos:  { name: 'Enemigos veloces',   icon: '💨', bad: true,  desc: 'Los enemigos se mueven un 35% más rápido' },
+  gigantes: { name: 'Gigantes',           icon: '👹', bad: true,  desc: 'Enemigos más grandes, con más vida y más fuerza' },
+  elites:   { name: 'Ejército de élite',  icon: '⭐', bad: true,  desc: 'Casi todos los enemigos son élites' },
+  meteoros: { name: 'Lluvia de meteoros', icon: '☄️', bad: true,  desc: 'Caen meteoritos durante todo el combate' },
+  cristal:  { name: 'Cañón de cristal',   icon: '💠', bad: true,  desc: 'Haces el doble de daño, pero tienes la mitad de vida' },
+  furia:    { name: 'Furia desatada',     icon: '💥', bad: false, desc: 'La Furia del Caos se llena el doble de rápido' },
+  sangre:   { name: 'Sed de sangre',      icon: '🩸', bad: false, desc: 'Cada enemigo derrotado te cura un 4% de vida' },
+  oro:      { name: 'Lluvia de oro',      icon: '💰', bad: false, desc: 'Ganas el triple de oro' },
+};
+const DAILY_REWARD = { gems: 20, tickets: 3 };

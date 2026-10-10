@@ -35,6 +35,10 @@ const Game = (() => {
       tickets: 1, ticketShards: 0,   // 🎟️ tickets de ruleta y fragmentos
       streak: 0, bestStreak: 0,      // racha de victorias seguidas
       daily: null,                   // misiones del día
+      talents: {},                   // { talento: nivel } comprados con oro
+      stars: { 0: {}, 1: {}, 2: {} },  // estrellas por dificultad y etapa
+      starChests: 0,                 // cofres de estrellas ya abiertos
+      dailyCh: { day: '', done: false, wins: 0 },   // desafío del día
       rank: 0,                       // último rango del caballero celebrado
       username: '',                  // nombre que elige el jugador
       savedAt: 0,                    // momento del último guardado (para elegir la copia más nueva)
@@ -58,6 +62,10 @@ const Game = (() => {
     }
     if (![0, 1, 2].includes(S.diff) || !diffUnlocked(S.diff)) S.diff = 0;
     if (!S.wheelPity || typeof S.wheelPity !== 'object') S.wheelPity = {};
+    if (!S.talents || typeof S.talents !== 'object') S.talents = {};
+    if (!S.stars || typeof S.stars !== 'object') S.stars = defaults.stars;
+    for (const d of [0, 1, 2]) if (!S.stars[d] || typeof S.stars[d] !== 'object') S.stars[d] = {};
+    S.dailyCh = Object.assign({ day: '', done: false, wins: 0 }, S.dailyCh || {});
     if (data.diamondPity && !S.wheelPity.diamante) S.wheelPity.diamante = data.diamondPity;
     delete S.diamondPity;
     // Encantamientos ya pagados: se guardan por arma y cambiar entre ellos es gratis
@@ -650,11 +658,11 @@ const Game = (() => {
   function stats() {
     const B = BALANCE, L = S.level - 1;
     const w = itemStats(S.equip.weapon), a = itemStats(S.equip.armor);
-    const maxHp = Math.round(100 + L * B.levelHp + S.alloc.hp * B.pointHp + a.hp);
-    const dmg = Math.round(8 + L * B.levelDmg + S.alloc.dmg * B.pointDmg + w.dmg);
-    const def = Math.round(L * B.levelDef + S.alloc.def * B.pointDef + a.def);
+    const maxHp = Math.round((100 + L * B.levelHp + S.alloc.hp * B.pointHp + a.hp) * (1 + talent('vitalidad')));
+    const dmg = Math.round((8 + L * B.levelDmg + S.alloc.dmg * B.pointDmg + w.dmg) * (1 + talent('fuerza')));
+    const def = Math.round((L * B.levelDef + S.alloc.def * B.pointDef + a.def) * (1 + talent('coraza')));
     const spd = Math.min(2.6, 1 + S.alloc.spd * B.pointSpd + w.spd);
-    const crit = Math.min(0.6, 0.05 + w.crit + (S.enchants[S.equip.weapon] === 'llama' ? 0.08 : 0));
+    const crit = Math.min(0.7, 0.05 + w.crit + (S.enchants[S.equip.weapon] === 'llama' ? 0.08 : 0) + talent('precision'));
     const skillBonus = Object.values(S.skills).reduce((t, l) => t + l * 0.06, 0);
     const power = Math.round((dmg * spd * (1 + crit) * 3) * (1 + skillBonus) + maxHp * 0.5 + def * 4);
     return { maxHp, dmg, def, spd, crit, power };
@@ -748,6 +756,61 @@ const Game = (() => {
 
   /* ---------- Racha ---------- */
   const streakBonus = () => Math.min(STREAK.bonusMax, S.streak * STREAK.bonusPer);
+
+  /* ---------- Talentos (con oro) ---------- */
+  const talentLvl = id => (S.talents && S.talents[id]) || 0;
+  /** Bono total del talento (p. ej. 0.15 = +15%). */
+  const talent = id => (TALENTS[id] ? talentLvl(id) * TALENTS[id].per : 0);
+  function buyTalent(id) {
+    const T = TALENTS[id], l = talentLvl(id);
+    if (!T || l >= T.max) return false;
+    const c = talentCost(id, l);
+    if (S.coins < c) return false;
+    S.coins -= c; S.talents[id] = l + 1; save(true);
+    return true;
+  }
+
+  /* ---------- Estrellas ---------- */
+  const starsOf = (d, stage) => (S.stars[d] && S.stars[d][stage]) || 0;
+  /** Guarda las estrellas si son más que las anteriores. Devuelve cuántas nuevas. */
+  function setStars(d, stage, n) {
+    const old = starsOf(d, stage);
+    if (n <= old) return 0;
+    S.stars[d][stage] = n;
+    return n - old;
+  }
+  const totalStars = () => [0, 1, 2].reduce((t, d) => t + Object.values(S.stars[d] || {}).reduce((a, b) => a + b, 0), 0);
+  const starChestsReady = () => Math.max(0, Math.floor(totalStars() / STAR_CHEST_EVERY) - S.starChests);
+  function claimStarChest() {
+    if (!starChestsReady()) return null;
+    S.starChests++;
+    const text = grant(starChestReward(S.starChests * STAR_CHEST_EVERY));
+    save(true);
+    return text;
+  }
+
+  /* ---------- Desafío del día ---------- */
+  function dailyChallenge() {
+    const day = today();
+    if (S.dailyCh.day !== day) { S.dailyCh.day = day; S.dailyCh.done = false; }
+    let seed = [...day].reduce((a, ch) => a * 37 + ch.charCodeAt(0), 11) >>> 0;
+    const rnd = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 4294967296);
+    const bad = Object.keys(DAILY_MODS).filter(k => DAILY_MODS[k].bad), good = Object.keys(DAILY_MODS).filter(k => !DAILY_MODS[k].bad);
+    const mods = [];
+    while (mods.length < 2) { const k = bad[Math.floor(rnd() * bad.length)]; if (!mods.includes(k)) mods.push(k); }
+    mods.push(good[Math.floor(rnd() * good.length)]);
+    // Jefe del mundo más alto alcanzado en la dificultad más alta
+    const diff = maxDiff(), P = prog(diff);
+    const world = Math.max(1, Math.min(WORLDS.length, Math.ceil(P.unlocked / STAGES_PER_WORLD)));
+    const pickW = 1 + Math.floor(rnd() * world);
+    return { day, mods, diff, stage: pickW * STAGES_PER_WORLD, done: S.dailyCh.done };
+  }
+  function finishDaily() {
+    dailyChallenge();
+    if (S.dailyCh.done) return null;
+    S.dailyCh.done = true; S.dailyCh.wins = (S.dailyCh.wins || 0) + 1;
+    return grant({ bundle: [{ gems: DAILY_REWARD.gems }, { tickets: DAILY_REWARD.tickets }] });
+  }
 
   /* ---------- Misiones diarias ---------- */
   const today = () => { const d = new Date(); return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`; };
@@ -1040,6 +1103,7 @@ const Game = (() => {
     prog, diffUnlocked, setDiff, maxDiff, diffCleared, wheelOpen,
     claimGifts, redeemCode, shopToday, shopBuy, shopRefresh, shopRefreshCost, itemMaxLevel, lookEntry,
     addShards, streakBonus, ensureDaily, track, missionText,
+    talentLvl, talent, buyTalent, starsOf, setStars, totalStars, starChestsReady, claimStarChest, dailyChallenge, finishDaily,
     connectCloud, cloudWrite, exportCode, importCode, get cloud() { return Cloud; },
     createAccount, login, logout, accountsBlocked, canSaveOnline, syncNow, accountPending, get account() { return Acc; },
     get online() { return canOnline; },
